@@ -1,0 +1,111 @@
+<template>
+	<view class="page">
+		<view class="header">
+			<TopSafeArea background-color="#ffffff" />
+			<view class="nav-row">
+				<text class="back" @click="goBack">←</text>
+				<text class="title">本地数据表</text>
+				<text class="refresh" @click="loadSnapshot">刷新</text>
+			</view>
+		</view>
+
+		<view class="engine-card">
+			<text class="engine-title">当前实际存储引擎：SQLite</text>
+			<text class="engine-desc">数据库文件：qarma_offline.db。报告、检查项、照片路径和同步队列均持久化到原生数据库；旧版 uniStorage 数据首次启动时自动迁移。</text>
+		</view>
+
+		<scroll-view class="table-tabs" scroll-x="true">
+			<view class="table-tab-row">
+				<view v-for="table in tables" :key="table.name" class="table-tab" :class="{ active: activeTable === table.name }" @click="selectTable(table.name)">
+					<text>{{ table.name }} ({{ table.count }})</text>
+				</view>
+			</view>
+		</scroll-view>
+
+		<view class="table-head">
+			<view>
+				<text class="table-title">{{ activeTable }}</text>
+				<text class="table-count">共 {{ activeRows.length }} 行</text>
+			</view>
+			<text class="copy" @click="copyActiveTable">复制 JSON</text>
+		</view>
+
+		<scroll-view class="rows" scroll-y="true">
+			<view v-if="loading" class="empty"><text>正在读取本地数据...</text></view>
+			<view v-else-if="activeRows.length === 0" class="empty"><text>当前表暂无数据</text></view>
+			<view v-for="(row, index) in activeRows" :key="rowKey(row, index)" class="row-card">
+				<text class="row-index">#{{ index + 1 }}</text>
+				<text class="row-json">{{ formatRow(row) }}</text>
+			</view>
+			<view class="bottom-space"></view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed, onMounted, ref } from 'vue'
+	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
+	import { getLocalDatabaseSnapshot } from '../../runtime/appRuntime.uts'
+
+	const TABLE_ORDER = ['user', 'report', 'checklist', 'defect', 'photo', 'sync_log', 'request_queue', 'schema_migration', 'app_setting']
+	const snapshot = ref({})
+	const activeTable = ref('report')
+	const loading = ref(true)
+
+	/** 返回全部本地表名称及实时行数。 */
+	const tables = computed(() => TABLE_ORDER.map((name) => ({ name, count: Array.isArray(snapshot.value?.[name]) ? snapshot.value[name].length : 0 })))
+	/** 返回当前选中表的全部原始行。 */
+	const activeRows = computed(() => Array.isArray(snapshot.value?.[activeTable.value]) ? snapshot.value[activeTable.value] : [])
+
+	/** 从运行时数据库重新读取全部表的深拷贝快照。 */
+	async function loadSnapshot() {
+		loading.value = true
+		try {
+			snapshot.value = await getLocalDatabaseSnapshot()
+		} catch (error) {
+			uni.showToast({ title: error?.message ?? '读取本地数据失败', icon: 'none' })
+		} finally {
+			loading.value = false
+		}
+	}
+	/** 切换当前查看的本地数据表。 */
+	function selectTable(tableName) { activeTable.value = String(tableName ?? 'report') }
+	/** 将单行数据格式化为便于检查的缩进 JSON。 */
+	function formatRow(row) { try { return JSON.stringify(row, null, 2) } catch (_) { return String(row ?? '') } }
+	/** 返回本地数据行可稳定渲染的主键。 */
+	function rowKey(row, index) { return String(row?.reportId ?? row?.itemId ?? row?.defectId ?? row?.photoId ?? row?.userId ?? row?.id ?? `${activeTable.value}-${index}`) }
+	/** 将当前数据表完整 JSON 复制到系统剪贴板。 */
+	function copyActiveTable() { uni.setClipboardData({ data: JSON.stringify(activeRows.value, null, 2), success: () => uni.showToast({ title: '已复制当前表', icon: 'success' }) }) }
+	/** 返回验货任务列表页。 */
+	function goBack() { uni.navigateBack() }
+
+	onMounted(loadSnapshot)
+</script>
+
+<style>
+	.page { flex: 1; background-color: #f3f6f8; }
+	.header { background-color: #ffffff; border-bottom-width: 2rpx; border-bottom-color: #e8edf2; }
+	.nav-row { height: 88rpx; padding: 0 24rpx; flex-direction: row; align-items: center; }
+	.back, .refresh { width: 110rpx; color: #334155; font-size: 27rpx; }
+	.refresh { color: #03a84e; text-align: right; }
+	.title { flex: 1; color: #172033; font-size: 31rpx; font-weight: 700; text-align: center; }
+	.engine-card { margin: 22rpx; padding: 22rpx; border-radius: 18rpx; background-color: #fff7ed; }
+	.engine-title { color: #9a3412; font-size: 25rpx; font-weight: 700; }
+	.engine-desc { margin-top: 10rpx; color: #c2410c; font-size: 21rpx; line-height: 1.5; }
+	.table-tabs { width: 100%; background-color: #ffffff; }
+	.table-tab-row { padding: 16rpx 20rpx; flex-direction: row; }
+	.table-tab { margin-right: 12rpx; padding: 13rpx 20rpx; border-radius: 20rpx; background-color: #f1f5f9; }
+	.table-tab { margin-right: 12rpx; padding: 13rpx 20rpx; border-radius: 20rpx; color: #64748b; font-size: 22rpx; background-color: #f1f5f9; }
+	.table-tab.active { background-color: #dcfce7; }
+	.table-head { padding: 22rpx 24rpx 12rpx; flex-direction: row; align-items: center; justify-content: space-between; }
+	.table-title { color: #172033; font-size: 29rpx; font-weight: 700; }
+	.table-count { margin-top: 4rpx; color: #94a3b8; font-size: 21rpx; }
+	.copy { padding: 12rpx 18rpx; border-radius: 16rpx; color: #038b42; font-size: 22rpx; background-color: #ecfdf3; }
+	.rows { flex: 1; padding: 0 22rpx; }
+	.row-card { margin-bottom: 18rpx; padding: 20rpx; border-radius: 18rpx; background-color: #ffffff; }
+	.row-index { color: #03a84e; font-size: 22rpx; font-weight: 700; }
+	.row-json { margin-top: 12rpx; color: #334155; font-size: 20rpx; line-height: 1.45; font-family: monospace; }
+	.empty { padding: 80rpx 20rpx; align-items: center; }
+	.empty { padding: 80rpx 20rpx; align-items: center; color: #94a3b8; font-size: 24rpx; }
+	.bottom-space { height: 60rpx; }
+</style>

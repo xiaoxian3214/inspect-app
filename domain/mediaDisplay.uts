@@ -1,0 +1,32 @@
+/**
+ * 将服务端相对媒体路径补全为当前 API 域名下的绝对地址。
+ */
+function normalizeRemoteMediaUrl(value, apiBaseUrl) {
+  const path = String(value ?? '').trim()
+  if (path === '') return ''
+  if (/^(https?:|file:|blob:|data:|wxfile:|_doc\/|_downloads\/)/i.test(path)) return path
+  const baseUrl = String(apiBaseUrl ?? '').replace(/\/+$/, '')
+  if (baseUrl === '') return path
+  return path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`
+}
+
+/**
+ * 按 App 离线优先和 H5 fileId 规则返回缩略图或预览图地址。
+ */
+export function getMediaDisplayUrl(media, mode = 'thumbnail', apiBaseUrl = '') {
+  if (media == null) return ''
+  if (typeof media === 'string') return normalizeRemoteMediaUrl(media, apiBaseUrl)
+  const localPath = String(media?.localPath ?? '').trim()
+  if (localPath !== '') return localPath
+  const previewUrl = String(media?.previewUrl ?? '').trim()
+  if (previewUrl !== '') return normalizeRemoteMediaUrl(previewUrl, apiBaseUrl)
+  const fileId = String(media?.fileId ?? '').trim()
+  if (fileId !== '') {
+    const endpoint = mode === 'preview' ? 'preview' : 'thumbnail'
+    return `${String(apiBaseUrl ?? '').replace(/\/+$/, '')}/api/inspect/file/${encodeURIComponent(fileId)}/${endpoint}`
+  }
+  const candidate = mode === 'preview'
+    ? media?.filePath || media?.thumbnailPath || media?.coverUrl || media?.url || media?.dataUrl
+    : media?.thumbnailPath || media?.coverUrl || media?.filePath || media?.url || media?.dataUrl
+  return normalizeRemoteMediaUrl(candidate, apiBaseUrl)
+}

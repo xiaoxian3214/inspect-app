@@ -1,0 +1,70 @@
+<template>
+	<view v-if="visible" class="overlay" @click="closeSheet">
+		<view class="dialog" @click.stop="stopEvent">
+			<text class="title">{{ t('总结并提交') }}</text>
+			<text class="notice">{{ t('最终提交需要联网，并等待全部图片上传完成。离线时只能保存草稿，系统不会自动完成最终提交。') }}</text>
+			<text class="label">{{ t('疵点') }}</text>
+			<view class="stat-header"><text class="stat-label"></text><text class="stat-col">{{ t('实际发现') }}</text><text class="stat-col">{{ t('最大值') }}</text></view>
+			<view v-for="stat in defectStats" :key="stat.key" class="stat-row"><text class="stat-label" :class="[{ 'stat-exceed': stat.exceed }]">{{ t(stat.label) }}</text><text class="stat-col" :class="[{ 'stat-exceed': stat.exceed }]">{{ stat.actual }}</text><text class="stat-col" :class="[{ 'stat-exceed': stat.exceed }]">{{ stat.max }}</text></view>
+			<text v-if="exceedsAql" class="aql-warn">{{ t('疵点数量超出AQL允许最大值') }}</text>
+			<view v-if="exceedsAql">
+				<text class="label">{{ t('失败检查点') }}</text>
+				<view v-for="item in failedCheckpoints" :key="item.id" class="failed-item"><view class="failed-dot"></view><text class="failed-name">{{ item.name }}</text></view>
+				<text v-if="failedCheckpoints.length === 0" class="failed-empty">{{ t('暂无失败检查点') }}</text>
+			</view>
+			<text class="label">{{ t('验货总结结果') }}</text>
+			<view class="result-row"><view v-for="option in options" :key="option.value" class="result-option" :class="[{ active: overallResult === option.value }, option.value.toLowerCase()]" @click="selectResult(option.value)"><text>{{ t(option.label) }}</text></view></view>
+			<text class="label">{{ t('总结性评语') }}</text>
+			<textarea class="remarks" :value="overallRemarks" :maxlength="3000" :placeholder="t('填写整体质量情况和结论')" @input="updateRemarks" />
+			<view v-if="pendingUploadCount > 0" class="pending-warning"><text>{{ t('仍有 {count} 张图片等待上传，提交时将先处理图片上传。', { count: pendingUploadCount }) }}</text></view>
+			<view class="actions"><button class="button cancel" :disabled="submitting" @click="closeSheet">{{ t('取消') }}</button><button class="button submit" :disabled="submitting" @click="submit">{{ t(submitting ? '提交中...' : '确认提交') }}</button></view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	defineProps({ visible: { type: Boolean, default: false }, overallResult: { type: String, default: '' }, overallRemarks: { type: String, default: '' }, pendingUploadCount: { type: Number, default: 0 }, submitting: { type: Boolean, default: false }, defectStats: { type: Array, default: () => [] }, exceedsAql: { type: Boolean, default: false }, failedCheckpoints: { type: Array, default: () => [] } })
+	const emit = defineEmits(['close', 'update-result', 'update-remarks', 'submit'])
+	const options = [{ value: 'APPROVED', label: '合格' }, { value: 'REJECTED', label: '不合格' }, { value: 'PENDING', label: '待定' }]
+	/** 更新最终验货总结结果。 */
+	function selectResult(value) { emit('update-result', value) }
+	/** 更新最终验货总结评语。 */
+	function updateRemarks(event) { emit('update-remarks', String(event?.detail?.value ?? '')) }
+	/** 请求页面执行联网最终提交。 */
+	function submit() { emit('submit') }
+	/** 关闭最终提交弹层。 */
+	function closeSheet() { emit('close') }
+	/** 阻止点击内容区域关闭弹层。 */
+	function stopEvent() {}
+</script>
+
+<style>
+	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2300; justify-content: flex-end; background-color: rgba(15,23,42,0.55); }
+	.dialog { width: 100%; max-height: 92vh; padding: 24rpx 32rpx calc(32rpx + env(safe-area-inset-bottom)); border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }
+	.title { color: #172033; font-size: 34rpx; font-weight: 700; }
+	.notice { margin-top: 16rpx; padding: 18rpx; border-radius: 15rpx; color: #9a6700; font-size: 23rpx; line-height: 36rpx; background-color: #fffbeb; }
+	.label { margin: 24rpx 0 12rpx; color: #334155; font-size: 24rpx; font-weight: 600; }
+	.stat-header { flex-direction: row; }
+	.stat-row { flex-direction: row; padding: 10rpx 0; border-bottom-width: 1rpx; border-bottom-color: #f1f5f9; }
+	.stat-label { flex: 1; color: #334155; font-size: 25rpx; }
+	.stat-col { flex: 1; color: #334155; font-size: 25rpx; text-align: center; }
+	.stat-exceed { color: #dc2626; font-weight: 700; }
+	.aql-warn { margin-top: 14rpx; color: #dc2626; font-size: 23rpx; }
+	.failed-item { flex-direction: row; align-items: center; padding: 8rpx 0; }
+	.failed-dot { width: 12rpx; height: 12rpx; margin-right: 12rpx; border-radius: 6rpx; background-color: #ef4444; }
+	.failed-name { color: #475569; font-size: 24rpx; }
+	.failed-empty { color: #94a3b8; font-size: 23rpx; }
+	.result-row { flex-direction: row; }
+	.result-option { flex: 1; height: 70rpx; margin: 0 6rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 15rpx; align-items: center; justify-content: center; }
+	.result-option { color: #64748b; font-size: 24rpx; }
+	.result-option.active.approved { border-color: #22c55e; background-color: #ecfdf3; }
+	.result-option.active.rejected { border-color: #ef4444; background-color: #fef2f2; }
+	.result-option.active.pending { border-color: #f59e0b; background-color: #fffbeb; }
+	.remarks { min-height: 170rpx; padding: 18rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 15rpx; font-size: 25rpx; background-color: #f8fafc; }
+	.pending-warning { margin-top: 18rpx; color: #dc2626; font-size: 23rpx; }
+	.actions { margin-top: 28rpx; flex-direction: row; }
+	.button { flex: 1; height: 82rpx; margin: 0 8rpx; border-radius: 17rpx; font-size: 26rpx; }
+	.button.cancel { color: #475569; background-color: #f1f5f9; }
+	.button.submit { color: #fff; background-color: #03ae4f; }
+</style>

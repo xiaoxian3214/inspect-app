@@ -1,0 +1,84 @@
+/**
+ * 创建搜索页计划操作服务，统一编排远程接口与本地离线数据变更。
+ */
+export function createPlanOperationService(options) {
+  const planApi = options.planApi
+  const reportRepository = options.reportRepository
+  const planDownloadService = options.planDownloadService
+  const searchViewModel = options.searchViewModel
+
+  /**
+   * 合并指定计划并返回后台生成的合并计划信息。
+   */
+  async function mergePlans(sourcePlanIds) {
+    return planApi.mergePlans(sourcePlanIds)
+  }
+
+  /**
+   * 拆分指定合并计划并返回后台拆分结果。
+   */
+  async function splitPlan(planId) {
+    return planApi.splitPlan(planId)
+  }
+
+  /**
+   * 复制当前或合并验货计划并返回新计划信息。
+   */
+  async function copyPlan(planId, payload) {
+    return planApi.copyPlan(planId, payload ?? {})
+  }
+
+  /**
+   * 下载指定计划的完整离线数据并事务性保存到本地。
+   */
+  async function downloadToLocal(planId, payload) {
+    return planDownloadService.downloadToLocal(planId, payload ?? {})
+  }
+
+  /**
+   * 解锁或重置计划，并清理当前计划或同一合并组的全部本地记录。
+   */
+  async function releasePlan(item, reportDeleteFlag = 0) {
+    const planId = searchViewModel.getPlanOperationId(item)
+    if (planId === '') throw new Error('计划ID缺失，无法执行操作')
+    const mergeType = Number(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0)
+    const parentPlanId = mergeType === 2 ? searchViewModel.getItemParentPlanId(item) : ''
+    const removeIdSet = new Set([planId])
+    if (parentPlanId !== '') {
+      const localPlans = await reportRepository.listPlans()
+      for (const localPlan of localPlans) {
+        if (searchViewModel.getItemParentPlanId(localPlan) !== parentPlanId) continue
+        const localPlanId = searchViewModel.getPlanOperationId(localPlan)
+        if (localPlanId !== '') removeIdSet.add(localPlanId)
+      }
+    }
+    const result = await planApi.releasePlan(planId, reportDeleteFlag)
+    const removedIds = Array.from(removeIdSet)
+    await reportRepository.removePlansByIds(removedIds)
+    return { result, removedIds, parentPlanId }
+  }
+
+  /**
+   * 解锁计划并保留云端报告删除标记为否。
+   */
+  async function unlockPlan(item) {
+    return releasePlan(item, 0)
+  }
+
+  /**
+   * 重置计划并要求云端删除已生成的报告数据。
+   */
+  async function resetPlan(item) {
+    return releasePlan(item, 1)
+  }
+
+  return {
+    mergePlans,
+    splitPlan,
+    copyPlan,
+    downloadToLocal,
+    releasePlan,
+    unlockPlan,
+    resetPlan
+  }
+}

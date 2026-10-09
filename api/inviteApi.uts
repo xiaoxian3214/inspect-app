@@ -1,0 +1,19 @@
+/**
+ * 创建供应商邀请相关接口。
+ */
+export function createInviteApi(apiClient) {
+  /**
+   * 生成供应商注册链接。
+   */
+  async function generateVendorInviteLink() {
+    return apiClient.request({
+      url: '/api/invite/generate',
+      method: 'POST',
+      data: {},
+      key: 'invite:vendor:generate',
+      priority: 30
+    })
+  }
+
+  return { generateVendorInviteLink }
+}

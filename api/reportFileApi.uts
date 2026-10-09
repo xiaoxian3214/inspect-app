@@ -1,0 +1,236 @@
+/**
+ * 去除服务端地址末尾的斜杠，避免拼接上传路径时出现双斜杠。
+ */
+function trimTrailingSlash(value) {
+  return String(value ?? '').replace(/\/+$/, '')
+}
+
+/**
+ * 将图片上传参数转换为 uni.uploadFile 接受的字符串表单字段。
+ */
+function buildUploadFormData(params) {
+  const formData = {}
+  const source = params != null && typeof params === 'object' ? params : {}
+  for (const key of ['bizId', 'bizType', 'subGoodsNo', 'sortNo', 'thumbnailBase64']) {
+    const value = source[key]
+    if (value !== undefined && value !== null && value !== '') formData[key] = String(value)
+  }
+  return formData
+}
+
+/**
+ * 构造携带 HTTP 状态码的上传错误，供上层按状态判断是否自动重试。
+ */
+function createUploadError(message, statusCode) {
+  const error = new Error(message)
+  const normalizedStatus = Number(statusCode)
+  error.httpStatus = Number.isFinite(normalizedStatus) ? normalizedStatus : 0
+  return error
+}
+
+/**
+ * 判断上传响应体是否为令牌缺失业务错误：code 401，或 code 400 且提示包含令牌缺失关键字。
+ */
+function isMissingTokenUploadBody(body) {
+  if (body == null || typeof body !== 'object') return false
+  const code = Number(body.code)
+  if (code === 401) return true
+  if (code !== 400) return false
+  const message = String(body.message ?? '')
+  return message.includes('未提供访问令牌') || message.includes('请先登录') || message.includes('Token无效或已过期')
+}
+
+/**
+ * 解析上传响应中的鉴权失败信息；普通响应返回 null。
+ * HTTP 401 优先提示“登录已过期”，业务码缺失令牌提示“登录已失效”，与 apiClient 保持一致。
+ */
+function resolveUploadAuthFailure(response) {
+  const statusCode = Number(response?.statusCode ?? 0)
+  if (statusCode === 401) return { fallbackMessage: '登录已过期，请重新登录' }
+  let body = response?.data
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body === '' ? '{}' : body)
+    } catch (_) {
+      return null
+    }
+  }
+  if (isMissingTokenUploadBody(body)) return { fallbackMessage: '登录已失效，请重新登录' }
+  return null
+}
+
+/**
+ * 解析 uni.uploadFile 返回值并统一抛出服务端或 HTTP 错误。
+ */
+function unwrapUploadResponse(response) {
+  const statusCode = Number(response?.statusCode ?? 0)
+  let body = response?.data
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body === '' ? '{}' : body)
+    } catch (_) {
+      throw createUploadError('上传响应格式错误', statusCode)
+    }
+  }
+  if (statusCode < 200 || statusCode >= 300) throw createUploadError(body?.message ?? `上传失败: ${statusCode}`, statusCode)
+  if (body != null && typeof body === 'object') {
+    const success = body?.success !== false && (body?.code === undefined || Number(body.code) === 200 || Number(body.code) === 0)
+    if (!success) throw createUploadError(body?.message ?? '图片上传失败', statusCode)
+    return body?.data ?? body
+  }
+  return body
+}
+
+/**
+ * 创建基于 uni.uploadFile 的默认本地文件上传传输器。
+ */
+export function createUniUploadTransport() {
+  return function uploadTransport(request) {
+    return new Promise((resolve, reject) => {
+      uni.uploadFile({
+        url: request.url,
+        filePath: request.filePath,
+        name: request.name,
+        header: request.header,
+        formData: request.formData,
+        timeout: request.timeout,
+        success: resolve,
+        fail: reject
+      })
+    })
+  }
+}
+
+/**
+ * 创建基于 uni.downloadFile 的默认报告 PDF 下载传输器。
+ */
+export function createUniDownloadTransport() {
+  return function downloadTransport(request) {
+    return new Promise((resolve, reject) => {
+      uni.downloadFile({
+        url: request.url,
+        header: request.header,
+        timeout: request.timeout,
+        success: resolve,
+        fail: reject
+      })
+    })
+  }
+}
+
+/**
+ * 创建验货图片上传、删除、排序、移动和报告 PDF 下载接口集合。
+ */
+export function createReportFileApi(options) {
+  const apiClient = options.apiClient
+  const baseUrl = trimTrailingSlash(options.baseUrl)
+  const getSession = typeof options.getSession === 'function' ? options.getSession : () => null
+  const uploadTransport = options.uploadTransport ?? createUniUploadTransport()
+  const downloadTransport = options.downloadTransport ?? createUniDownloadTransport()
+  const onAuthFailure = typeof options.onAuthFailure === 'function' ? options.onAuthFailure : null
+  const UPLOAD_ENDPOINT = '/api/inspect/file/upload'
+
+  /**
+   * 上传手机本地图片或视频，并返回服务端文件记录。
+   * params.fileType（'video'/'image'）作为 uni 上传通道的顶层字段透传，不进入 formData；
+   * params.uploadTimeoutMs 覆盖默认 120000 兜底超时（视频由服务层传 15 分钟）。
+   * 会话过期（HTTP 401 或业务缺失令牌）时交由统一鉴权守卫清除会话并跳转登录页。
+   */
+  async function uploadInspectFile(localPath, params: any = {}) {
+    const normalizedPath = String(localPath ?? '').trim()
+    if (normalizedPath === '') throw new Error('本地文件路径不能为空')
+    const session = getSession()
+    const header = {}
+    if (String(session?.token ?? '').trim() !== '') header.Authorization = `Bearer ${session.token}`
+    const fileType = String(params?.fileType ?? '').trim().toLowerCase() === 'video' ? 'video' : 'image'
+    const uploadTimeoutMs = Number(params?.uploadTimeoutMs) > 0 ? Number(params.uploadTimeoutMs) : 120000
+    const response = await uploadTransport({
+      url: `${baseUrl}/api/inspect/file/upload`,
+      filePath: normalizedPath,
+      name: 'file',
+      header,
+      fileType,
+      formData: buildUploadFormData(params),
+      timeout: uploadTimeoutMs
+    })
+    const authFailure = resolveUploadAuthFailure(response)
+    if (authFailure != null && onAuthFailure != null) {
+      return onAuthFailure({ url: UPLOAD_ENDPOINT, fallbackMessage: authFailure.fallbackMessage })
+    }
+    return unwrapUploadResponse(response)
+  }
+
+  /**
+   * 删除已经上传到服务端的验货文件。
+   */
+  async function deleteInspectFile(fileId) {
+    const normalizedFileId = String(fileId ?? '').trim()
+    if (normalizedFileId === '') throw new Error('文件ID不能为空')
+    return apiClient.request({
+      url: `/api/inspect/file/delete/${encodeURIComponent(normalizedFileId)}`,
+      method: 'POST',
+      data: {},
+      key: `inspect-file:delete:${normalizedFileId}`,
+      priority: 60
+    })
+  }
+
+  /**
+   * 按页面顺序批量更新验货文件排序。
+   */
+  async function sortInspectFiles(items) {
+    const normalizedItems = Array.isArray(items) ? items : []
+    return apiClient.request({
+      url: '/api/inspect/file/sort',
+      method: 'POST',
+      data: { items: normalizedItems },
+      key: `inspect-file:sort:${JSON.stringify(normalizedItems)}`,
+      priority: 40
+    })
+  }
+
+  /**
+   * 将已上传验货文件移动到新的检查项或疵点记录。
+   */
+  async function moveInspectFile(payload) {
+    return apiClient.request({
+      url: '/api/inspect/file/move',
+      method: 'POST',
+      data: payload ?? {},
+      key: `inspect-file:move:${JSON.stringify(payload ?? {})}`,
+      priority: 50
+    })
+  }
+
+  /**
+   * 下载已生成验货报告的 PDF 到本地临时文件，成功返回 tempFilePath 供页面唤起文档预览。
+   * 与 H5 downloadReportPdfByUni 保持一致：携带 Bearer 鉴权与 PDF Accept 头，
+   * 会话过期（HTTP 401 或业务缺失令牌）时交由统一鉴权守卫清除会话并跳转登录页；
+   * 非 2xx 或缺失临时文件时抛出携带 httpStatus 的错误供上层提示。
+   */
+  async function downloadReportPdf(reportId, params: any = {}) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    if (normalizedReportId === '') throw new Error('报告ID不能为空')
+    const pdfEndpoint = `/api/reports/${encodeURIComponent(normalizedReportId)}/pdf`
+    const session = getSession()
+    const header = { Accept: 'application/pdf' }
+    if (String(session?.token ?? '').trim() !== '') header.Authorization = `Bearer ${session.token}`
+    const response = await downloadTransport({
+      url: `${baseUrl}${pdfEndpoint}`,
+      header,
+      timeout: Number(params?.timeout) > 0 ? Number(params.timeout) : 120000
+    })
+    const authFailure = resolveUploadAuthFailure(response)
+    if (authFailure != null && onAuthFailure != null) {
+      return onAuthFailure({ url: pdfEndpoint, fallbackMessage: authFailure.fallbackMessage })
+    }
+    const statusCode = Number(response?.statusCode ?? 0)
+    const tempFilePath = String(response?.tempFilePath ?? '').trim()
+    if (statusCode < 200 || statusCode >= 300 || tempFilePath === '') {
+      throw createUploadError(`下载报告失败: ${statusCode}`, statusCode)
+    }
+    return tempFilePath
+  }
+
+  return { uploadInspectFile, deleteInspectFile, sortInspectFiles, moveInspectFile, downloadReportPdf }
+}

@@ -1,0 +1,14 @@
+import { ref } from 'vue'
+import { normalizeLocale, translate } from './translate.uts'
+
+export const currentLocale = ref('zh')
+
+/** 即时更新全局响应式语言，供已打开的页面和组件重新渲染。 */
+export function applyLocale(locale) {
+  currentLocale.value = normalizeLocale(locale)
+}
+
+/** 读取当前语言并翻译界面文案，可传入占位符参数。 */
+export function t(key, params = {}) {
+  return translate(key, currentLocale.value, params)
+}

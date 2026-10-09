@@ -1,0 +1,80 @@
+function clone(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
+function createEmptyState() {
+  return {
+    user: [],
+    report: [],
+    checklist: [],
+    defect: [],
+    photo: [],
+    sync_log: [],
+    request_queue: [],
+    schema_migration: [],
+    app_setting: []
+  }
+}
+
+export function createMemoryDatabase(seed) {
+  let state = createEmptyState()
+  if (seed != null && typeof seed === 'object') {
+    for (const tableName of Object.keys(state)) {
+      if (Array.isArray(seed[tableName])) state[tableName] = clone(seed[tableName])
+    }
+  }
+
+  function ensureTable(target, tableName) {
+    if (!Array.isArray(target[tableName])) throw new Error(`未知数据表: ${tableName}`)
+    return target[tableName]
+  }
+
+  function createTransactionContext(draft) {
+    return {
+      read(tableName) {
+        return clone(ensureTable(draft, tableName))
+      },
+      upsert(tableName, primaryKey, row) {
+        const table = ensureTable(draft, tableName)
+        const primaryValue = row?.[primaryKey]
+        if (primaryValue == null || String(primaryValue) === '') {
+          throw new Error(`${tableName}.${primaryKey} 不能为空`)
+        }
+        const index = table.findIndex((item) => item?.[primaryKey] === primaryValue)
+        if (index >= 0) table[index] = { ...table[index], ...clone(row) }
+        else table.push(clone(row))
+      },
+      removeWhere(tableName, predicate) {
+        const table = ensureTable(draft, tableName)
+        draft[tableName] = table.filter((row) => !predicate(row))
+      },
+      replace(tableName, rows) {
+        ensureTable(draft, tableName)
+        draft[tableName] = clone(Array.isArray(rows) ? rows : [])
+      }
+    }
+  }
+
+  async function transaction(executor) {
+    const draft = clone(state)
+    const result = await executor(createTransactionContext(draft))
+    state = draft
+    return result
+  }
+
+  function readTable(tableName) {
+    return clone(ensureTable(state, tableName))
+  }
+
+  function snapshot() {
+    return clone(state)
+  }
+
+  return {
+    open: async () => {},
+    close: async () => {},
+    transaction,
+    readTable,
+    snapshot
+  }
+}

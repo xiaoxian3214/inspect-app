@@ -1,0 +1,57 @@
+<template>
+	<view class="media-grid">
+		<view
+			v-for="(media, index) in photos"
+			:key="media.photoId || media.fileId || media.localPath || index"
+			class="media-cell"
+		>
+			<InspectionMediaItem
+				:media="media"
+				:removable="removable"
+				@preview-media="previewMedia"
+				@remove-media="removeMedia"
+				@retry-media="retryMedia"
+			/>
+		</view>
+		<view v-if="canAdd" class="media-cell">
+			<view class="media-add" :class="{ disabled }" @click="captureMedia">
+				<AppIcon type="camera" :size="31" color="#03a84e" />
+				<text>{{ addLabel }}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed } from 'vue'
+	import AppIcon from '../icons/AppIcon.uvue'
+	import InspectionMediaItem from './InspectionMediaItem.uvue'
+
+	const props = defineProps({
+		photos: { type: Array, default: () => [] },
+		addLabel: { type: String, default: '拍照' },
+		maxCount: { type: Number, default: 30 },
+		disabled: { type: Boolean, default: false },
+		removable: { type: Boolean, default: true }
+	})
+	const emit = defineEmits(['capture-media', 'remove-media', 'preview-media', 'retry-media'])
+
+	/** 判断媒体数量是否仍允许继续拍摄或选择。 */
+	const canAdd = computed(() => props.photos.length < Math.max(1, Number(props.maxCount ?? 30)))
+	/** 通知父组件打开原生连拍相机。 */
+	function captureMedia() { if (!props.disabled && canAdd.value) emit('capture-media') }
+	/** 转发媒体删除事件。 */
+	function removeMedia(media) { emit('remove-media', media) }
+	/** 转发媒体预览事件。 */
+	function previewMedia(media) { emit('preview-media', media) }
+	/** 转发失败媒体重新上传事件。 */
+	function retryMedia(media) { emit('retry-media', media) }
+</script>
+
+<style>
+	.media-grid { width: 100%; flex-direction: row; flex-wrap: wrap; }
+	.media-cell { width: 33.333333%; height: 231rpx; padding: 8rpx; box-sizing: border-box; }
+	.media-add { width: 100%; height: 100%; box-sizing: border-box; border-width: 2rpx; border-style: dashed; border-color: #b7c1cf; border-radius: 18rpx; align-items: center; justify-content: center; background-color: #f8fafc; }
+	.media-add { color: #64748b; font-size: 22rpx; }
+	.media-add.disabled { opacity: 0.5; }
+</style>

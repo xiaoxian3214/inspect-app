@@ -1,0 +1,182 @@
+<template>
+	<view v-if="visible" class="overlay" @click="closeSheet">
+		<view class="dialog" @click.stop="stopEvent">
+			<view class="sheet-header">
+				<text class="title">{{ t('报告评论') }}</text>
+				<view class="close-button" @click="closeSheet"><AppIcon type="close" :size="18" color="#64748b" /></view>
+			</view>
+			<scroll-view class="comment-list" scroll-y="true" show-scrollbar="false">
+				<text v-if="loading" class="state-text">{{ t('加载中...') }}</text>
+				<text v-else-if="threads.length === 0" class="state-text">{{ t('暂无评论，发布第一条评论吧。') }}</text>
+				<view v-else class="thread-list">
+					<view v-for="thread in threads" :key="thread.id" class="comment-card">
+						<view class="comment-head">
+							<view class="head-left">
+								<text class="author">{{ thread.authorName ?? '-' }}</text>
+								<text class="time">{{ thread.updatedAt || thread.createdAt ?? '-' }}</text>
+							</view>
+							<view class="head-actions">
+								<text class="action" @click="startReply(thread)">{{ t('回复') }}</text>
+								<text class="action danger" @click="removeComment(thread)">{{ t(deletingId === thread.id ? '删除中...' : '删除') }}</text>
+							</view>
+						</view>
+						<text class="content">{{ thread.content ?? '-' }}</text>
+						<view v-if="thread.replies.length > 0" class="reply-list">
+							<view v-for="reply in thread.replies" :key="reply.id" class="reply-card">
+								<view class="comment-head">
+									<view class="head-left">
+										<view class="reply-author"><text class="author">{{ reply.authorName ?? '-' }}</text><text v-if="reply.replyToName !== ''" class="reply-to">回复 {{ reply.replyToName }}</text></view>
+										<text class="time">{{ reply.updatedAt || reply.createdAt ?? '-' }}</text>
+									</view>
+									<view class="head-actions">
+										<text class="action" @click="startReply(thread)">{{ t('继续回复') }}</text>
+										<text class="action danger" @click="removeComment(reply)">{{ t(deletingId === reply.id ? '删除中...' : '删除') }}</text>
+									</view>
+								</view>
+								<text class="content">{{ reply.content ?? '-' }}</text>
+							</view>
+						</view>
+					</view>
+				</view>
+			</scroll-view>
+			<view class="editor">
+				<view v-if="String(replyTarget.id ?? '') !== ''" class="reply-target">
+					<text class="reply-target-text">回复给：{{ replyTarget.authorName ?? '-' }}</text>
+					<text class="reply-target-cancel" @click="cancelReply">{{ t('取消回复') }}</text>
+				</view>
+				<textarea class="comment-input" :value="draft" :placeholder="String(replyTarget.id ?? '') !== '' ? '写回复' : '写评论'" :maxlength="500" @input="handleInput" />
+				<view class="editor-actions">
+					<button v-if="String(replyTarget.id ?? '') !== ''" class="editor-button secondary" :disabled="saving" @click="cancelReply">{{ t('取消') }}</button>
+					<button class="editor-button primary" :disabled="saving || draft.trim() === ''" @click="submitComment">{{ t(saving ? '提交中...' : (String(replyTarget.id ?? '') !== '' ? '提交回复' : '提交评论')) }}</button>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { ref, watch } from 'vue'
+	import AppIcon from '../icons/AppIcon.uvue'
+	import { reportCommentsApi } from '../../runtime/appRuntime.uts'
+	import { buildCommentThreads, buildReportCommentParams, normalizeReportComments, resolveReplyTarget, validateCommentContent } from '../../domain/reportCommentsViewModel.uts'
+
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		reportId: { type: String, default: '' }
+	})
+
+	const emit = defineEmits(['close'])
+
+	const threads = ref([])
+	const loading = ref(false)
+	const saving = ref(false)
+	const deletingId = ref('')
+	const draft = ref('')
+	const replyTarget = ref({})
+
+	watch(() => props.visible, (visible) => { if (visible) { resetEditor(); loadComments() } })
+
+	/** 显示统一轻提示。 */
+	function showToast(message) { uni.showToast({ title: String(message ?? ''), icon: 'none', duration: 2400 }) }
+	/** 重置草稿与回复目标，便于每次打开弹层回到干净状态。 */
+	function resetEditor() { draft.value = ''; replyTarget.value = {}; deletingId.value = '' }
+	/** 按 H5 归一化规则加载报告全部评论并压平为两级楼层。 */
+	async function loadComments() {
+		const reportId = String(props.reportId ?? '').trim()
+		if (reportId === '') return
+		loading.value = true
+		try {
+			const rows = await reportCommentsApi.listCommentsByReport(reportId)
+			threads.value = buildCommentThreads(normalizeReportComments(rows))
+		} catch (error) {
+			showToast(error?.message ?? '加载评论失败')
+		} finally {
+			loading.value = false
+		}
+	}
+	/** 以楼层根评论为回复目标，与 H5 二级回复规则保持一致。 */
+	function startReply(comment) { replyTarget.value = resolveReplyTarget(threads.value, comment?.id) || comment ?? {}; draft.value = '' }
+	/** 取消回复目标并清空草稿。 */
+	function cancelReply() { replyTarget.value = {}; draft.value = '' }
+	/** 同步评论输入草稿。 */
+	function handleInput(event) { draft.value = String(event?.detail?.value ?? '') }
+	/** 提交评论或楼层回复，成功后重新拉取全部评论。 */
+	async function submitComment() {
+		if (saving.value) return
+		const validation = validateCommentContent(draft.value)
+		if (!validation.valid) { showToast(validation.message); return }
+		saving.value = true
+		try {
+			const params = buildReportCommentParams({ reportId: props.reportId, content: draft.value, parentId: String(replyTarget.value?.id ?? '') })
+			await reportCommentsApi.createReportComment(params)
+			showToast('提交成功')
+			cancelReply()
+			await loadComments()
+		} catch (error) {
+			showToast(error?.message ?? '提交评论失败')
+		} finally {
+			saving.value = false
+		}
+	}
+	/** 二次确认后删除评论；删除的是当前回复目标时同步取消回复。 */
+	async function removeComment(comment) {
+		const commentId = String(comment?.id ?? '').trim()
+		if (commentId === '' || deletingId.value !== '') return
+		uni.showModal({
+			title: t('删除评论'),
+			content: t('确定删除这条评论吗？'),
+			success: async (result) => {
+				if (!result.confirm) return
+				deletingId.value = commentId
+				try {
+					await reportCommentsApi.deleteReportComment(commentId)
+					if (String(replyTarget.value?.id ?? '') === commentId) cancelReply()
+					showToast('删除成功')
+					await loadComments()
+				} catch (error) {
+					showToast(error?.message ?? '删除评论失败')
+				} finally {
+					deletingId.value = ''
+				}
+			}
+		})
+	}
+	/** 关闭评论弹层；提交或删除进行中时不允许关闭。 */
+	function closeSheet() { if (!saving.value && deletingId.value === '') emit('close') }
+	/** 阻止点击内容区域关闭弹层。 */
+	function stopEvent() {}
+</script>
+
+<style>
+	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2300; justify-content: flex-end; background-color: rgba(15,23,42,0.55); }
+	.dialog { width: 100%; height: 82vh; padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom)); border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }
+	.sheet-header { flex-direction: row; align-items: center; justify-content: space-between; }
+	.title { color: #172033; font-size: 34rpx; font-weight: 700; }
+	.close-button { width: 56rpx; height: 56rpx; border-radius: 14rpx; background-color: #f1f5f9; align-items: center; justify-content: center; }
+	.comment-list { flex: 1; margin-top: 20rpx; }
+	.state-text { padding: 60rpx 0; color: #94a3b8; font-size: 24rpx; text-align: center; }
+	.thread-list { padding-bottom: 20rpx; }
+	.comment-card { margin-bottom: 20rpx; padding: 22rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 16rpx; background-color: #ffffff; }
+	.reply-list { margin-top: 16rpx; }
+	.reply-card { margin-top: 12rpx; padding: 18rpx 18rpx 18rpx 22rpx; border-left-width: 6rpx; border-left-color: #bfdbfe; border-radius: 10rpx; background-color: #f8fafc; }
+	.comment-head { flex-direction: row; align-items: flex-start; justify-content: space-between; }
+	.head-left { flex: 1; }
+	.author { color: #0f172a; font-size: 26rpx; font-weight: 700; }
+	.reply-author { flex-direction: row; align-items: center; }
+	.reply-to { color: #64748b; font-size: 22rpx; font-weight: 400; }
+	.time { margin-top: 6rpx; color: #94a3b8; font-size: 22rpx; }
+	.head-actions { flex-direction: row; align-items: center; }
+	.action { margin-left: 20rpx; color: #2563eb; font-size: 24rpx; }
+	.action.danger { color: #dc2626; }
+	.content { margin-top: 14rpx; color: #334155; font-size: 26rpx; line-height: 40rpx; }
+	.editor { margin-top: 16rpx; padding: 20rpx; border-width: 2rpx; border-color: #dbe3ef; border-radius: 16rpx; background-color: #f8fbff; }
+	.reply-target { flex-direction: row; align-items: center; justify-content: space-between; margin-bottom: 14rpx; padding: 14rpx 18rpx; border-radius: 12rpx; background-color: #e0f2fe; }
+	.reply-target-text { color: #0f172a; font-size: 24rpx; font-weight: 600; }
+	.reply-target-cancel { color: #2563eb; font-size: 22rpx; }
+	.comment-input { width: 100%; min-height: 140rpx; padding: 16rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 12rpx; font-size: 25rpx; background-color: #ffffff; }
+	.editor-actions { margin-top: 16rpx; flex-direction: row; justify-content: flex-end; }
+	.editor-button { height: 68rpx; margin-left: 14rpx; padding: 0 30rpx; border-radius: 34rpx; font-size: 24rpx; line-height: 68rpx; }
+	.editor-button.primary { color: #ffffff; background-color: #2563eb; }
+	.editor-button.secondary { color: #334155; background-color: #e2e8f0; }
+</style>

@@ -1,0 +1,113 @@
+export function normalizePlanStatus(itemOrStatus) {
+  const rawStatus = itemOrStatus != null && typeof itemOrStatus === 'object'
+    ? (itemOrStatus.status ?? itemOrStatus.plan?.status)
+    : itemOrStatus
+  const numericStatus = Number(rawStatus)
+  if (Number.isFinite(numericStatus)) {
+    if (numericStatus === 0) return 0
+    if (numericStatus === 1 || numericStatus === 2) return 1
+    if (numericStatus === 3) return 3
+  }
+
+  const textStatus = String(rawStatus ?? '').trim().toUpperCase()
+  if (textStatus === 'DOWNLOADED' || textStatus === 'NEW') return 0
+  if (textStatus === 'DRAFT' || textStatus === 'IN_PROGRESS') return 1
+  if (textStatus === 'DONE' || textStatus === 'COMPLETED' || textStatus === 'SUBMITTED') return 3
+  return 0
+}
+
+/** 从计划或报告数据中提取稳定的列表去重 ID。 */
+export function getPlanUniqueId(item) {
+  if (item == null || typeof item !== 'object') return ''
+  return (item.plan?.id
+    || item.plan?.planId
+    || item.planId
+    || item.id
+    || item.plan?.reportId
+    || item.reportId)
+    ?? ''
+}
+
+export function isPlanInTab(item, tabKey) {
+  const status = normalizePlanStatus(item)
+  if (tabKey === 'planned') return status === 0
+  if (tabKey === 'progress') return status === 1
+  if (tabKey === 'report') return status === 3
+  return true
+}
+
+export function mergePlansLocalFirst(localPlans, remotePlans) {
+  const localList = Array.isArray(localPlans) ? localPlans : []
+  const remoteList = Array.isArray(remotePlans) ? remotePlans : []
+  const localIds = new Set(localList.map(getPlanUniqueId).filter((id) => id !== ''))
+  const merged = [...localList]
+
+  for (const remotePlan of remoteList) {
+    const id = getPlanUniqueId(remotePlan)
+    if (id !== '' && localIds.has(id)) continue
+    merged.push(remotePlan)
+  }
+  return merged
+}
+
+/** 将计划按客户订单号分组，并保留各组的供应商与日期信息。 */
+export function groupPlans(items) {
+  const source = Array.isArray(items) ? items : []
+  const groups = []
+  const groupMap = new Map()
+
+  for (const item of source) {
+    const clientOrderNo = (item?.plan?.clientOrderNo || item?.clientOrderNo) ?? '未分组'
+    if (!groupMap.has(clientOrderNo)) {
+      const group = {
+        groupKey: clientOrderNo,
+        clientOrderNo,
+        supplierName: (item?.plan?.factoryName || item?.supplierName || item?.factoryName) ?? '-',
+        orderDate: (item?.plan?.createDate || item?.createDate || item?.downloadedAt) ?? '',
+        items: []
+      }
+      groupMap.set(clientOrderNo, group)
+      groups.push(group)
+    }
+    groupMap.get(clientOrderNo).items.push(item)
+  }
+  return groups
+}
+
+/**
+ * 将 H5 下载接口返回的 inspectionPlans、plans 或单计划结构拆成本地记录。
+ */
+export function splitDownloadDataToLocalPlans(downloadData) {
+  if (downloadData == null || typeof downloadData !== 'object') return []
+  const downloadedAt = downloadData?.downloadedAt || new Date().toISOString()
+  const plans = Array.isArray(downloadData.inspectionPlans) && downloadData.inspectionPlans.length > 0
+    ? downloadData.inspectionPlans
+    : (Array.isArray(downloadData.plans) && downloadData.plans.length > 0
+      ? downloadData.plans
+      : [downloadData.plan || downloadData.report || null].filter((item) => item != null && typeof item === 'object'))
+
+  if (plans.length === 0) {
+    const fallbackId = getPlanUniqueId(downloadData)
+    return fallbackId === '' ? [] : [{
+      ...downloadData,
+      planId: fallbackId,
+      status: normalizePlanStatus(downloadData),
+      syncStatus: 'SYNCED',
+      pendingSyncPayload: null,
+      progress: Number(downloadData?.progress ?? 0),
+      downloadedAt
+    }]
+  }
+
+  return plans.map((plan) => ({
+    ...downloadData,
+    id: (plan.id || plan.planId) ?? '',
+    planId: (plan.id || plan.planId) ?? '',
+    plan,
+    status: normalizePlanStatus(plan?.status ?? downloadData?.status),
+    syncStatus: 'SYNCED',
+    pendingSyncPayload: null,
+    progress: Number(downloadData?.progress ?? 0),
+    downloadedAt
+  }))
+}

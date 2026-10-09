@@ -1,0 +1,916 @@
+/**
+ * 安全解析可能来自服务端字符串字段的 JSON 数组。
+ */
+function parseRows(value) {
+  if (Array.isArray(value)) return value
+  if (value != null && typeof value === 'object') return [value]
+  if (typeof value !== 'string' || value.trim() === '') return []
+  try {
+    const parsed = JSON.parse(value)
+    if (Array.isArray(parsed)) return parsed
+    return parsed != null && typeof parsed === 'object' ? [parsed] : []
+  } catch (_) {
+    return []
+  }
+}
+
+/**
+ * 从服务端多语言字段中选择当前详情页可展示的文本。
+ */
+function pickLocalizedText(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'object') return (value?.zh || value?.en || value?.vi) ?? ''
+  return ''
+}
+
+/**
+ * 将 H5 检查项规格属性转换为弹层统一使用的 attrId、attrName 结构。
+ */
+function normalizeSpecAttributes(specAttributes) {
+  if (!Array.isArray(specAttributes)) return []
+  return specAttributes.map((attribute) => ({
+    ...attribute,
+    attrId: attribute?.attrId ?? '',
+    attrName: (attribute?.displayName || pickLocalizedText(attribute?.attrKey) || attribute?.attrName || attribute?.attrId) ?? ''
+  }))
+}
+
+/**
+ * 按服务端 sortOrder 对检查项节点排序。
+ */
+function sortByOrder(left, right) {
+  return Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0)
+}
+
+/**
+ * 按 H5 规则从 itemResults 重建章节树，兼容 parentItemId 指向行 ID 或 standardItemId。
+ */
+export function buildStandardItemsFromItemResults(itemResults: any[] = []) {
+  const rows = (Array.isArray(itemResults) ? itemResults : []).filter((row) => !row?.sonPlanId)
+  if (rows.length === 0) return []
+  const nodeMap = new Map()
+  const nodeByStandardItemId = new Map()
+  rows.forEach((row) => {
+    const rowId = String(row?.id ?? row?.itemResultId ?? '')
+    const standardItemId = String(row?.standardItemId ?? row?.itemId ?? row?.standardId ?? '')
+    const nodeId = rowId || standardItemId
+    if (nodeId === '' || nodeMap.has(nodeId)) return
+    const node = {
+      ...row,
+      id: nodeId,
+      standardItemId,
+      parentItemId: row?.parentItemId ? String(row.parentItemId) : '',
+      itemName: (row?.localizedItemName || pickLocalizedText(row?.itemName)) ?? '',
+      itemDescription: (row?.localizedItemDescription || pickLocalizedText(row?.itemDescription)) ?? '',
+      itemType: row?.itemType ?? 'Standard',
+      isRequired: Number(row?.isRequired ?? 0),
+      isPhotoRequired: Number(row?.isPhotoRequired ?? 0),
+      sortOrder: Number(row?.sortOrder ?? 0),
+      specAttributes: normalizeSpecAttributes(row?.specAttributes),
+      children: []
+    }
+    nodeMap.set(nodeId, node)
+    if (standardItemId !== '' && !nodeByStandardItemId.has(standardItemId)) nodeByStandardItemId.set(standardItemId, node)
+  })
+  const roots = []
+  nodeMap.forEach((node) => {
+    const parentId = String(node?.parentItemId ?? '')
+    if (parentId === '') { roots.push(node); return }
+    const parent = nodeMap.get(parentId) || nodeByStandardItemId.get(parentId)
+    if (parent && parent.id !== node.id) parent.children.push(node)
+    else roots.push(node)
+  })
+  /** 递归排序章节及其检查项，保持 H5 服务端顺序。 */
+  function sortNodes(nodes) {
+    nodes.sort(sortByOrder)
+    nodes.forEach((node) => { if (Array.isArray(node?.children) && node.children.length > 0) sortNodes(node.children) })
+  }
+  sortNodes(roots)
+  return roots
+}
+
+/**
+ * 将本地检查结果转换为 H5 使用的服务端状态枚举。
+ */
+export function mapResultStatus(result) {
+  if (result === 'pass') return 'APPROVED'
+  if (result === 'fail') return 'REJECTED'
+  if (result === 'pending') return 'PENDING'
+  if (result === 'na') return 'NA'
+  return null
+}
+
+/**
+ * 将服务端结果状态转换为详情页本地编辑值。
+ */
+export function parseResultStatus(resultStatus) {
+  const status = String(resultStatus ?? '').toUpperCase()
+  if (status === 'APPROVED' || status === 'PASS') return 'pass'
+  if (status === 'REJECTED' || status === 'FAIL') return 'fail'
+  if (status === 'PENDING') return 'pending'
+  if (status === 'NA' || status === 'N/A') return 'na'
+  return ''
+}
+
+/**
+ * 生成 H5 清单本地数据键；合并验货子行使用双下划线隔离子计划。
+ */
+export function makeChecklistDataKey(itemId, sonPlanId: string = '') {
+  const baseId = String(itemId ?? '').trim()
+  const childPlanId = String(sonPlanId ?? '').trim()
+  return childPlanId === '' ? baseId : `${baseId}__${childPlanId}`
+}
+
+/**
+ * 生成 H5 提交到服务端的 itemResult 行 ID；合并子行使用单下划线。
+ */
+export function makeItemResultId(itemId, sonPlanId: string = '') {
+  const baseId = String(itemId ?? '').trim()
+  const childPlanId = String(sonPlanId ?? '').trim()
+  return childPlanId === '' ? baseId : `${baseId}_${childPlanId}`
+}
+
+/**
+ * 将服务端或中文严重等级统一为 H5 使用的 CRITICAL、MAJOR、MINOR。
+ */
+export function normalizeDefectSeverity(rawValue, rawLabel: string = '') {
+  const text = `${String(rawValue ?? '').toLowerCase()} ${String(rawLabel ?? '').toLowerCase()}`
+  if (text.includes('critical') || text.includes('致命') || text.includes('极严重')) return 'CRITICAL'
+  if (text.includes('major') || text.includes('主要') || text.includes('严重') || text.includes('大')) return 'MAJOR'
+  if (text.includes('minor') || text.includes('次要') || text.includes('轻微') || text.includes('小')) return 'MINOR'
+  const fallback = String(rawValue ?? 'MINOR').toUpperCase()
+  return fallback === 'CRITICAL' || fallback === 'MAJOR' || fallback === 'MINOR' ? fallback : 'MINOR'
+}
+
+/**
+ * 构建 H5 疵点页使用的等级数量和按配置顺序排列的分组。
+ */
+export function buildDefectViewModel(defects, severityOptions: any[] = []) {
+  const rows = Array.isArray(defects) ? defects : []
+  const optionRows = Array.isArray(severityOptions) ? severityOptions : []
+  const defaultLabels = { CRITICAL: '致命缺陷', MAJOR: '主要缺陷', MINOR: '次要缺陷' }
+  const groupMap = new Map()
+  optionRows.forEach((option) => {
+    const key = normalizeDefectSeverity(option?.value, option?.label)
+    groupMap.set(key, {
+      key,
+      label: option?.label || defaultLabels[key],
+      order: Number(option?.sortOrder ?? 999),
+      affectedTotal: 0,
+      items: []
+    })
+  })
+  const counts = { critical: 0, major: 0, minor: 0 }
+  rows.forEach((defect) => {
+    const key = normalizeDefectSeverity(defect?.type || defect?.defectType || defect?.defectLevel, defect?.typeLabel || defect?.defectLevel)
+    counts[key.toLowerCase()] += 1
+    if (!groupMap.has(key)) {
+      groupMap.set(key, { key, label: defaultLabels[key], order: key === 'CRITICAL' ? 1 : (key === 'MAJOR' ? 2 : 3), affectedTotal: 0, items: [] })
+    }
+    const group = groupMap.get(key)
+    group.items.push(defect)
+    const quantity = Number(defect?.quantity ?? defect?.defectCount ?? 0)
+    if (quantity > 0) group.affectedTotal += quantity
+  })
+  return {
+    counts,
+    groups: Array.from(groupMap.values()).filter((group) => group.items.length > 0).sort((left, right) => left.order - right.order)
+  }
+}
+
+/**
+ * 将空值格式化为订单信息页统一占位符，同时保留数字零。
+ */
+function formatPlanValue(value, fallback: string = '-') {
+  if (value === 0) return 0
+  if (value === null || value === undefined || value === '') return fallback
+  return value
+}
+
+/**
+ * 构建与 H5 完全一致的十八个订单详情字段及显示值。
+ */
+export function buildPlanInfoFields(plan) {
+  const source = plan != null && typeof plan === 'object' ? plan : {}
+  const inspectionLevel = formatPlanValue(source?.inspectionLevel, '-')
+  const criticalAql = formatPlanValue(source?.criticalAql, '-')
+  const majorAql = formatPlanValue(source?.majorAql, '-')
+  const minorAql = formatPlanValue(source?.minorAql, '-')
+  return [
+    { label: '产品名称', value: formatPlanValue(source?.goodsName, '-') },
+    { label: '需验数量', value: `${formatPlanValue(source?.requiredQuantity, 0)} 件` },
+    { label: '样品数量', value: `${formatPlanValue(source?.sampleSize, 0)} 件` },
+    { label: '供应商名称', value: formatPlanValue(source?.factoryName, '-') },
+    { label: '交货日期', value: formatPlanValue(source?.deliveryDate, '-') },
+    { label: '清单', value: formatPlanValue(source?.templateName, '-') },
+    { label: '验货类型', value: formatPlanValue(source?.inspectType, '-') },
+    { label: '抽样标准', value: `${inspectionLevel} ${criticalAql}/${majorAql}/${minorAql}` },
+    { label: '供应商编号', value: formatPlanValue(source?.factoryNo, '-') },
+    { label: '客户名称', value: formatPlanValue(source?.clientName, '-') },
+    { label: '客户编号', value: formatPlanValue(source?.clientNo, '-') },
+    { label: '货号', value: formatPlanValue(source?.subGoodsNo, '-') },
+    { label: '客户订单号', value: formatPlanValue(source?.clientOrderNo, '-') },
+    { label: '采购合同号', value: formatPlanValue(source?.domeNo, '-') },
+    { label: '制造令', value: formatPlanValue(source?.produceNo, '-') },
+    { label: '模具色卡号', value: formatPlanValue(source?.modelNo, '-') },
+    { label: '批次', value: formatPlanValue(source?.batchNo, '-') },
+    { label: '验货员', value: formatPlanValue(source?.inspectorName, '-') }
+  ]
+}
+
+/**
+ * 汇总合并验货所有子计划的需验数量和样品数量。
+ */
+export function buildMergedPlanSummary(inspectionPlans) {
+  const rows = Array.isArray(inspectionPlans) ? inspectionPlans : []
+  return rows.reduce((totals, row) => ({
+    requiredQuantity: totals.requiredQuantity + (Number(row?.requiredQuantity) ?? 0),
+    sampleSize: totals.sampleSize + (Number(row?.sampleSize) ?? 0)
+  }), { requiredQuantity: 0, sampleSize: 0 })
+}
+
+/**
+ * 将 H5 的章节树或已有扁平检查项转换为页面使用的一维列表。
+ */
+export function flattenStandardItems(standardItems, fallbackItems: any[] = []) {
+  const rows = []
+  const sections = Array.isArray(standardItems) ? standardItems : []
+  sections.forEach((section) => {
+    const children = Array.isArray(section?.children) ? section.children : []
+    if (children.length > 0) {
+      children.forEach((item) => rows.push({
+        ...item,
+        sectionId: section?.id ?? '',
+        sectionName: (section?.itemName || section?.name || section?.title) ?? ''
+      }))
+    } else if (section?.id || section?.itemId) {
+      rows.push(section)
+    }
+  })
+  if (rows.length > 0) return rows
+  return Array.isArray(fallbackItems) ? fallbackItems : []
+}
+
+/**
+ * 将对象中有意义的字段覆盖到基础对象，避免空字符串覆盖远程产品信息。
+ */
+function mergeNonEmptyFields(base, overlay) {
+  const result = { ...(base ?? {}) }
+  Object.keys(overlay ?? {}).forEach((key) => {
+    const value = overlay[key]
+    if (value !== undefined && value !== null && value !== '') result[key] = value
+  })
+  return result
+}
+
+/**
+ * 按当前计划 ID 从 H5 inspectionPlans 详情包中选中产品计划，并合并显式 plan 字段。
+ */
+function resolveDetailPlan(detail, requestedPlanId) {
+  const explicitPlan = detail?.plan != null && typeof detail.plan === 'object' ? detail.plan : {}
+  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : []
+  const normalizedPlanId = String(requestedPlanId ?? explicitPlan?.id ?? explicitPlan?.planId ?? '').trim()
+  const matchedPlan = plans.find((plan) => {
+    return String(plan?.id ?? plan?.planId ?? plan?.reportId ?? '').trim() === normalizedPlanId
+  }) || null
+  const fallbackPlan = matchedPlan || (plans.length > 0 ? plans[0] : {})
+  return mergeNonEmptyFields(fallbackPlan, explicitPlan)
+}
+
+/**
+ * 将服务端文件列表转换为 App 可直接展示和同步的照片记录。
+ */
+function normalizeFileList(fileList, ownerId: string = '', ownerType: string = 'checklist') {
+  return (Array.isArray(fileList) ? fileList : []).map((file, index) => {
+    if (typeof file === 'string') {
+      return {
+        photoId: `${ownerId}-remote-${index}`,
+        ownerId,
+        ownerType,
+        filePath: file,
+        uploadStatus: 'done'
+      }
+    }
+    const fileId = String(file?.fileId ?? file?.id ?? '').trim()
+    return {
+      ...file,
+      photoId: String(file?.photoId || fileId || `${ownerId}-remote-${index}`),
+      ownerId: file?.ownerId || ownerId,
+      ownerType: file?.ownerType || ownerType,
+      fileId,
+      filePath: (file?.filePath || file?.fileUrl || file?.url || file?.path) ?? '',
+      thumbnailPath: (file?.thumbnailPath || file?.thumbPath) ?? '',
+      uploadStatus: file?.uploadStatus || (fileId ? 'done' : 'pending')
+    }
+  }).filter((photo) => photo.fileId || photo.filePath || photo.localPath || photo.thumbnailPath)
+}
+
+/**
+ * 根据 H5 itemResults 构建详情页可编辑的 checklistData。
+ */
+function buildChecklistData(itemResults) {
+  const data = {}
+  ;(Array.isArray(itemResults) ? itemResults : []).forEach((row) => {
+    const rowId = String(row?.id ?? row?.itemResultId ?? '').trim()
+    if (rowId === '') return
+    const sonPlanId = String(row?.sonPlanId ?? '').trim()
+    const baseItemId = row?.baseItemResultId
+      ? String(row.baseItemResultId)
+      : (sonPlanId && rowId.endsWith(`_${sonPlanId}`) ? rowId.slice(0, -(`_${sonPlanId}`.length)) : rowId)
+    const key = makeChecklistDataKey(baseItemId, sonPlanId)
+    const result = parseResultStatus(row?.resultStatus)
+    const photos = normalizeFileList(row?.fileList, baseItemId, 'checklist')
+    const measurements = parseRows(row?.specResult)
+    const textGroups = parseRows(row?.textContent)
+    const comment = String(row?.remarks ?? '')
+    data[key] = {
+      result,
+      comment,
+      photos,
+      measurements,
+      textGroups,
+      barcode: '',
+      barcodeList: [],
+      completed: result !== '' || comment.trim() !== '' || photos.length > 0 || measurements.length > 0 || textGroups.length > 0
+    }
+  })
+  return data
+}
+
+/**
+ * 统一检查项草稿中的照片结构并补充所属检查项信息。
+ */
+function normalizeChecklistData(checklistData) {
+  const normalized = {}
+  Object.keys(checklistData ?? {}).forEach((itemId) => {
+    const data = checklistData[itemId] ?? {}
+    normalized[itemId] = {
+      ...data,
+      photos: normalizeFileList(data?.photos, itemId, 'checklist')
+    }
+  })
+  return normalized
+}
+
+/**
+ * 统一服务端和本地疵点结构，并还原疵点关联媒体。
+ */
+function normalizeDefects(defects) {
+  return (Array.isArray(defects) ? defects : []).map((defect, index) => {
+    const defectId = String(defect?.defectId ?? defect?.id ?? `local-defect-${index}`)
+    const sonPlanId = String(defect?.sonPlanId ?? '').trim()
+    const checkItemResultId = String(defect?.checkItemResultId ?? defect?.itemResultId ?? '').trim()
+    const derivedCheckItemId = sonPlanId && checkItemResultId.endsWith(`_${sonPlanId}`)
+      ? checkItemResultId.slice(0, -(`_${sonPlanId}`.length))
+      : checkItemResultId
+    return {
+      ...defect,
+      id: defect?.id || defectId,
+      defectId,
+      type: (defect?.type || defect?.defectType || defect?.defectLevel) ?? 'MINOR',
+      quantity: Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1 ? null : Number(defect?.quantity ?? defect?.defectCount ?? 0),
+      description: (defect?.description || defect?.remark) ?? '',
+      checkItemId: defect?.checkItemId || derivedCheckItemId,
+      checkItemResultId,
+      sonPlanId: sonPlanId || null,
+      photos: normalizeFileList(defect?.photos || defect?.fileList, defectId, 'defect')
+    }
+  })
+}
+
+/**
+ * 汇总检查项和疵点中的全部媒体记录并按稳定标识去重。
+ */
+export function collectDetailPhotos(checklistData, defects, directPhotos: any[] = []) {
+  const photos = []
+  const seen = new Set()
+  const append = (photo, ownerId = '', ownerType = '') => {
+    if (photo == null || typeof photo !== 'object') return
+    const normalized = {
+      ...photo,
+      ownerId: photo?.ownerId || ownerId,
+      ownerType: photo?.ownerType || ownerType
+    }
+    const key = String(normalized?.photoId ?? normalized?.fileId ?? normalized?.localPath ?? normalized?.filePath ?? '')
+    if (key === '' || seen.has(key)) return
+    seen.add(key)
+    photos.push(normalized)
+  }
+  ;(Array.isArray(directPhotos) ? directPhotos : []).forEach((photo) => append(photo))
+  Object.keys(checklistData ?? {}).forEach((itemId) => {
+    ;(Array.isArray(checklistData[itemId]?.photos) ? checklistData[itemId].photos : []).forEach((photo) => append(photo, itemId, 'checklist'))
+  })
+  ;(Array.isArray(defects) ? defects : []).forEach((defect) => {
+    const defectId = String(defect?.defectId ?? defect?.id ?? '')
+    ;(Array.isArray(defect?.photos) ? defect.photos : []).forEach((photo) => append(photo, defectId, 'defect'))
+  })
+  return photos
+}
+
+/**
+ * 按已完成检查项数量计算 0 到 100 的验货进度。
+ */
+export function calculateDetailProgress(checklistItems, checklistData) {
+  const items = (Array.isArray(checklistItems) ? checklistItems : []).filter((item) => String(item?.sonPlanId ?? '') === '')
+  if (items.length === 0) return 0
+  const completed = items.filter((item) => {
+    const itemId = String(item?.itemId ?? item?.id ?? '')
+    const data = (checklistData?.[itemId] || item?.data) ?? {}
+    return data?.completed === true
+  }).length
+  return Math.round((completed / items.length) * 100)
+}
+
+/**
+ * 将远程或本地报告详情归一化为 App 详情页统一数据结构。
+ */
+export function normalizeInspectionDetail(source, requestedPlanId: string = '') {
+  const detail = source != null && typeof source === 'object' ? source : {}
+  const plan = resolveDetailPlan(detail, requestedPlanId)
+  const planId = String(requestedPlanId ?? plan?.id ?? detail?.planId ?? detail?.id ?? '').trim()
+  const itemResults = Array.isArray(detail?.itemResults) ? detail.itemResults : []
+  const standardItems = Array.isArray(detail?.standardItems) && detail.standardItems.length > 0
+    ? detail.standardItems
+    : buildStandardItemsFromItemResults(itemResults)
+  const baseChecklistItems = flattenStandardItems(standardItems, detail?.checklistItems)
+  const rawChecklistData = detail?.checklistData != null && typeof detail.checklistData === 'object' && Object.keys(detail.checklistData).length > 0
+    ? detail.checklistData
+    : buildChecklistData(itemResults)
+  const checklistData = normalizeChecklistData(rawChecklistData)
+  const defects = normalizeDefects(Array.isArray(detail?.defects)
+    ? detail.defects
+    : (Array.isArray(detail?.defectRecords) ? detail.defectRecords : []))
+  const itemsWithData = []
+  baseChecklistItems.forEach((item) => {
+    const baseItemId = String(item?.baseItemId ?? item?.itemId ?? item?.id ?? '')
+    itemsWithData.push({ ...item, itemId: baseItemId, baseItemId, sonPlanId: '', data: checklistData?.[baseItemId] ?? {} })
+    Object.keys(checklistData).filter((key) => key.startsWith(`${baseItemId}__`)).forEach((key) => {
+      const sonPlanId = key.slice(`${baseItemId}__`.length)
+      itemsWithData.push({ ...item, itemId: key, baseItemId, sonPlanId, itemName: `${item?.itemName || item?.name || baseItemId} · 子计划`, data: checklistData[key] ?? {} })
+    })
+  })
+  const photos = collectDetailPhotos(checklistData, defects, detail?.photos)
+  return {
+    ...detail,
+    id: detail?.id || planId,
+    planId,
+    reportId: detail?.reportId || detail?.report?.id || planId,
+    plan: { ...plan, id: plan?.id || planId },
+    itemResults,
+    standardItems,
+    checklistItems: itemsWithData,
+    checklistData,
+    defects,
+    photos,
+    progress: calculateDetailProgress(itemsWithData, checklistData)
+  }
+}
+
+/** 根据照片 ID、服务端文件 ID 或本地/服务端路径识别同一张媒体。 */
+function isSameDetailPhoto(left, right) {
+  const leftId = String(left?.photoId ?? left?.id ?? '').trim()
+  const rightId = String(right?.photoId ?? right?.id ?? '').trim()
+  const leftFileId = String(left?.fileId ?? '').trim()
+  const rightFileId = String(right?.fileId ?? '').trim()
+  const leftLocalPath = String(left?.localPath ?? '').trim()
+  const rightLocalPath = String(right?.localPath ?? '').trim()
+  const leftFilePath = String(left?.filePath ?? '').trim()
+  const rightFilePath = String(right?.filePath ?? '').trim()
+  return (leftId !== '' && leftId === rightId)
+    || (leftFileId !== '' && leftFileId === rightFileId)
+    || (leftLocalPath !== '' && leftLocalPath === rightLocalPath)
+    || (leftFilePath !== '' && leftFilePath === rightFilePath)
+}
+
+/** 保留详情快照中的原有媒体，并用照片表记录回填同一张图片的最新上传状态。 */
+function mergeDetailPhotoLists(existingPhotos, storedPhotos) {
+  const merged = Array.isArray(existingPhotos) ? [...existingPhotos] : []
+  ;(Array.isArray(storedPhotos) ? storedPhotos : []).forEach((photo) => {
+    const index = merged.findIndex((existing) => isSameDetailPhoto(existing, photo))
+    if (index >= 0) merged[index] = { ...merged[index], ...photo }
+    else merged.push(photo)
+  })
+  return merged
+}
+
+/**
+ * 将照片仓库中的最新上传状态合并回检查项、疵点和详情媒体集合，同时保留旧详情中未拆表的图片。
+ */
+export function mergeDetailPhotos(detail, photos) {
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const sourcePhotos = Array.isArray(photos) ? photos : []
+  const checklistData = { ...(normalized?.checklistData ?? {}) }
+  Object.keys(checklistData).forEach((itemId) => {
+    const owned = sourcePhotos.filter((photo) => photo?.ownerType === 'checklist' && String(photo?.dataKey ?? photo?.ownerId ?? '') === itemId)
+    checklistData[itemId] = { ...checklistData[itemId], photos: mergeDetailPhotoLists(checklistData[itemId]?.photos, owned) }
+  })
+  const defects = (normalized?.defects ?? []).map((defect) => {
+    const defectId = String(defect?.defectId ?? defect?.id ?? '')
+    const owned = sourcePhotos.filter((photo) => photo?.ownerType === 'defect' && String(photo?.ownerId ?? '') === defectId)
+    return { ...defect, photos: mergeDetailPhotoLists(defect?.photos, owned) }
+  })
+  return normalizeInspectionDetail({ ...normalized, checklistData, defects, photos: mergeDetailPhotoLists(normalized.photos, sourcePhotos) }, normalized.planId)
+}
+
+/**
+ * 更新单个检查项编辑数据并重新计算详情进度和媒体集合。
+ */
+export function updateChecklistItem(detail, itemId, patch) {
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const normalizedItemId = String(itemId ?? '').trim()
+  const current = normalized?.checklistData?.[normalizedItemId] ?? {}
+  const nextData = { ...current, ...(patch ?? {}) }
+  const hasExplicitCompleted = patch != null && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'completed')
+  nextData.completed = hasExplicitCompleted
+    ? patch.completed === true
+    : (nextData?.completed === true
+      || String(nextData?.result ?? '') !== ''
+      || String(nextData?.comment ?? '').trim() !== ''
+      || (Array.isArray(nextData?.photos) && nextData.photos.length > 0))
+  const checklistData = { ...normalized.checklistData, [normalizedItemId]: nextData }
+  const checklistItems = normalized.checklistItems.map((item) => {
+    return item.itemId === normalizedItemId ? { ...item, data: nextData } : item
+  })
+  const retainedDirectPhotos = (normalized.photos ?? []).filter((photo) => {
+    return !(photo?.ownerType === 'checklist' && String(photo?.ownerId ?? '') === normalizedItemId)
+  })
+  return {
+    ...normalized,
+    checklistData,
+    checklistItems,
+    photos: collectDetailPhotos(checklistData, normalized.defects, retainedDirectPhotos),
+    progress: calculateDetailProgress(checklistItems, checklistData)
+  }
+}
+
+/**
+ * 深拷贝可序列化的检查项字段，避免复制后源计划与目标计划共享可变引用。
+ */
+function cloneSerializableValue(value) {
+  if (value === undefined) return undefined
+  try { return JSON.parse(JSON.stringify(value)) } catch (_) { return value }
+}
+
+/**
+ * 按检查项 ID、标准项 ID 和合并子计划 ID 解析目标详情中的本地数据键及服务端业务 ID。
+ */
+function resolveChecklistTarget(detail, requestedItemId, sonPlanId: string = '') {
+  const normalizedItemId = String(requestedItemId ?? '').trim()
+  const normalizedSonPlanId = String(sonPlanId ?? '').trim()
+  const item = (detail?.checklistItems ?? []).find((row) => {
+    if (String(row?.sonPlanId ?? '').trim() !== normalizedSonPlanId) return false
+    const candidates = [row?.itemId, row?.id, row?.baseItemId, row?.standardItemId]
+      .map((value) => String(value ?? '').trim())
+      .filter((value) => value !== '')
+    return candidates.includes(normalizedItemId)
+  }) || null
+  const baseItemId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? normalizedItemId).split('__')[0]
+  const key = String(item?.itemId || makeChecklistDataKey(baseItemId, normalizedSonPlanId))
+  const sourceRow = (detail?.itemResults ?? []).find((row) => {
+    const rowSonPlanId = String(row?.sonPlanId ?? '').trim()
+    if (rowSonPlanId !== normalizedSonPlanId) return false
+    const candidates = [row?.id, row?.itemResultId, row?.standardItemId, row?.baseItemResultId]
+      .map((value) => String(value ?? '').trim())
+      .filter((value) => value !== '')
+    return candidates.includes(normalizedItemId) || candidates.includes(baseItemId)
+  }) ?? {}
+  return {
+    key,
+    item,
+    bizId: String(sourceRow?.id ?? sourceRow?.itemResultId ?? item?.itemResultId ?? baseItemId)
+  }
+}
+
+/**
+ * 为目标检查项克隆一张本地媒体记录；无服务端文件 ID 时重新进入图片上传队列。
+ */
+function cloneChecklistPhotoForTarget(photo, target, targetPlan, index, createPhotoId) {
+  const fileId = String(photo?.fileId ?? '').trim()
+  const generatedId = typeof createPhotoId === 'function'
+    ? createPhotoId(photo, target.key, index)
+    : `${(photo?.photoId || fileId) ?? 'photo'}-${target.key}-${Date.now()}-${index}`
+  return {
+    ...cloneSerializableValue(photo),
+    photoId: String(generatedId),
+    ownerType: 'checklist',
+    ownerId: target.key,
+    dataKey: target.key,
+    bizId: target.bizId,
+    bizType: photo?.bizType ?? 'checkResult',
+    subGoodsNo: String(targetPlan?.subGoodsNo ?? targetPlan?.goodsNo ?? photo?.subGoodsNo ?? ''),
+    sortNo: index + 1,
+    uploadStatus: fileId !== '' ? 'done' : 'pending',
+    uploadError: ''
+  }
+}
+
+/**
+ * 将 H5 支持的检查结果、规格、文本、条码、备注和图片字段复制到目标检查项数据。
+ */
+function applyCopiedChecklistFields(sourceData, targetData, target, targetPlan, payload, createPhotoId) {
+  const nextData = { ...(targetData ?? {}) }
+  if (payload?.copyPhotos === true) {
+    nextData.photos = (Array.isArray(sourceData?.photos) ? sourceData.photos : []).map((photo, index) => {
+      return cloneChecklistPhotoForTarget(photo, target, targetPlan, index, createPhotoId)
+    })
+  }
+  if (payload?.copyStatus === true) nextData.result = sourceData?.result ?? ''
+  if (payload?.copySpecs === true) nextData.measurements = cloneSerializableValue(sourceData?.measurements ?? [])
+  if (payload?.copyText === true) {
+    nextData.textData = cloneSerializableValue(sourceData?.textData ?? {})
+    nextData.textGroups = cloneSerializableValue(sourceData?.textGroups ?? [])
+  }
+  if (payload?.copyBarcode === true) {
+    nextData.barcode = sourceData?.barcode ?? ''
+    nextData.barcodeList = cloneSerializableValue(sourceData?.barcodeList ?? [])
+    nextData.barcodeItems = cloneSerializableValue(sourceData?.barcodeItems ?? [])
+  }
+  if (payload?.copyRemarks === true) nextData.comment = sourceData?.comment ?? ''
+  nextData.completed = String(nextData?.result ?? '') !== ''
+    || String(nextData?.comment ?? '').trim() !== ''
+    || (Array.isArray(nextData?.photos) && nextData.photos.length > 0)
+    || (Array.isArray(nextData?.measurements) && nextData.measurements.length > 0)
+    || (Array.isArray(nextData?.textGroups) && nextData.textGroups.length > 0)
+  return nextData
+}
+
+/**
+ * 将源详情中的检查项内容复制到目标本地详情，调用方随后持久化即可离线恢复和自动同步。
+ */
+export function copyChecklistItemToDetail(sourceDetail, targetDetail, payload: any = {}, options: any = {}) {
+  const source = normalizeInspectionDetail(sourceDetail, sourceDetail?.planId)
+  let targetDetailState = normalizeInspectionDetail(targetDetail, targetDetail?.planId)
+  const sourceTarget = resolveChecklistTarget(source, payload?.sourceItemId, payload?.sourceSonPlanId ?? '')
+  const sourceData = source?.checklistData?.[sourceTarget.key] ?? {}
+  const targetItemIds = (Array.isArray(payload?.targetItemIds) && payload.targetItemIds.length > 0)
+    ? payload.targetItemIds
+    : [payload?.sourceItemId]
+
+  targetItemIds.forEach((targetItemId) => {
+    const target = resolveChecklistTarget(targetDetailState, targetItemId, payload?.targetSonPlanId ?? '')
+    if (target.key === '') return
+    const targetData = targetDetailState?.checklistData?.[target.key] ?? {}
+    const nextData = applyCopiedChecklistFields(
+      sourceData,
+      targetData,
+      target,
+      targetDetailState?.plan ?? {},
+      payload,
+      options?.createPhotoId
+    )
+    targetDetailState = updateChecklistItem(targetDetailState, target.key, nextData)
+  })
+
+  return targetDetailState
+}
+
+/**
+ * 将一张已上传图片复制到目标本地检查项，并按服务端文件 ID 防止重复记录。
+ */
+export function copyChecklistPhotoToItem(detail, photo, targetItem, options: any = {}) {
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const target = resolveChecklistTarget(
+    normalized,
+    targetItem?.standardItemId || targetItem?.itemId || targetItem?.id,
+    targetItem?.sonPlanId ?? ''
+  )
+  if (target.key === '' || String(photo?.ownerId ?? photo?.dataKey ?? '') === target.key) return normalized
+  const current = normalized?.checklistData?.[target.key] ?? {}
+  const currentPhotos = Array.isArray(current?.photos) ? current.photos : []
+  const fileId = String(photo?.fileId ?? '').trim()
+  const duplicated = fileId !== '' && currentPhotos.some((item) => String(item?.fileId ?? '').trim() === fileId)
+  if (duplicated) return normalized
+  const copiedPhoto = cloneChecklistPhotoForTarget(
+    photo,
+    target,
+    normalized?.plan ?? {},
+    currentPhotos.length,
+    options?.createPhotoId
+  )
+  return updateChecklistItem(normalized, target.key, { ...current, photos: [...currentPhotos, copiedPhoto] })
+}
+
+/**
+ * 将备货或完工数量写入当前计划及合并验货计划行，供普通草稿队列统一同步。
+ */
+export function applyFinishQuantityRows(detail, rows) {
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const quantityByPlanId = new Map((Array.isArray(rows) ? rows : []).map((row) => [
+    String(row?.id ?? row?.planId ?? '').trim(),
+    Number(row?.finishQuantity ?? 0)
+  ]))
+  const currentPlanId = String(normalized?.plan?.id ?? normalized?.plan?.planId ?? normalized?.planId ?? '').trim()
+  const plan = quantityByPlanId.has(currentPlanId)
+    ? { ...(normalized?.plan ?? {}), finishQuantity: quantityByPlanId.get(currentPlanId) }
+    : normalized?.plan
+  const inspectionPlans = (Array.isArray(normalized?.inspectionPlans) ? normalized.inspectionPlans : []).map((row) => {
+    const rowId = String(row?.id ?? row?.planId ?? '').trim()
+    return quantityByPlanId.has(rowId) ? { ...row, finishQuantity: quantityByPlanId.get(rowId) } : row
+  })
+  return normalizeInspectionDetail({ ...normalized, plan, inspectionPlans }, normalized.planId)
+}
+
+/**
+ * 将当前计划抽样数量写入本地详情及对应合并验货计划行。
+ */
+export function applySampleQuantity(detail, value) {
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const quantity = Number(value ?? 0)
+  const currentPlanId = String(normalized?.plan?.id ?? normalized?.plan?.planId ?? normalized?.planId ?? '').trim()
+  const inspectionPlans = (Array.isArray(normalized?.inspectionPlans) ? normalized.inspectionPlans : []).map((row) => {
+    const rowId = String(row?.id ?? row?.planId ?? '').trim()
+    return rowId === currentPlanId ? { ...row, sampleQuantity: quantity } : row
+  })
+  return normalizeInspectionDetail({
+    ...normalized,
+    plan: { ...(normalized?.plan ?? {}), sampleQuantity: quantity },
+    inspectionPlans
+  }, normalized.planId)
+}
+
+/**
+ * 仅保留已经上传成功并可提交到服务端的文件字段。
+ */
+function buildUploadedFileList(photos) {
+  return (Array.isArray(photos) ? photos : []).filter((photo) => String(photo?.fileId ?? '').trim() !== '')
+    .map((photo) => ({
+      fileId: String(photo?.fileId ?? ''),
+      filePath: photo?.filePath ?? '',
+      thumbnailPath: photo?.thumbnailPath ?? '',
+      ...(photo?.bizType ? { bizType: photo.bizType } : {}),
+      ...(photo?.fileType ? { fileType: photo.fileType } : {}),
+      ...(photo?.fileExt ? { fileExt: photo.fileExt } : {}),
+      ...(photo?.fileName ? { fileName: photo.fileName } : {}),
+      ...(photo?.mediaType ? { mediaType: photo.mediaType } : {}),
+      ...(photo?.mimeType ? { mimeType: photo.mimeType } : {}),
+      ...(photo?.coverUrl ? { coverUrl: photo.coverUrl } : {}),
+      ...(photo?.duration ? { duration: photo.duration } : {})
+    }))
+}
+
+/**
+ * 将条码编辑数据转换为服务端 barcodeValue JSON 字符串。
+ */
+function buildBarcodeValue(data) {
+  const items = Array.isArray(data?.barcodeItems) ? data.barcodeItems : []
+  if (items.length > 0) return JSON.stringify(items)
+  const codes = Array.isArray(data?.barcodeList) ? data.barcodeList : []
+  if (codes.length > 0) return JSON.stringify(codes.map((code) => ({ name: '', code: String(code ?? ''), format: '' })))
+  const barcode = String(data?.barcode ?? '').trim()
+  return barcode === '' ? null : JSON.stringify([{ name: '', code: barcode, format: '' }])
+}
+
+/**
+ * 根据当前本地详情生成与 H5 一致的普通草稿同步 payload。
+ */
+export function buildGeneratePayload(detail) {
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const sourceRows = Array.isArray(normalized?.itemResults) ? normalized.itemResults : []
+  const sourceById = new Map()
+  sourceRows.forEach((row) => {
+    const rowId = String(row?.id ?? row?.itemResultId ?? '')
+    if (rowId === '') return
+    const sonPlanId = String(row?.sonPlanId ?? '').trim()
+    const baseItemId = row?.baseItemResultId
+      ? String(row.baseItemResultId)
+      : (sonPlanId && rowId.endsWith(`_${sonPlanId}`) ? rowId.slice(0, -(`_${sonPlanId}`.length)) : rowId)
+    const localKey = makeChecklistDataKey(baseItemId, sonPlanId)
+    sourceById.set(localKey, row)
+  })
+  const itemResults = normalized.checklistItems.filter((item) => {
+    const itemId = String(item?.itemId ?? item?.id ?? '')
+    const sonPlanId = String(item?.sonPlanId ?? '')
+    if (sonPlanId === '') return true
+    const data = normalized.checklistData?.[itemId] ?? {}
+    return String(data?.result ?? '').trim() !== ''
+      || String(data?.comment ?? '').trim() !== ''
+      || (Array.isArray(data?.photos) && data.photos.length > 0)
+      || (Array.isArray(data?.measurements) && data.measurements.length > 0)
+      || (Array.isArray(data?.textGroups) && data.textGroups.length > 0)
+      || (Array.isArray(data?.barcodeItems) && data.barcodeItems.some((row) => String(row?.code ?? '').trim() !== ''))
+      || (Array.isArray(data?.barcodeList) && data.barcodeList.length > 0)
+      || String(data?.barcode ?? '').trim() !== ''
+  }).map((item) => {
+    const itemId = String(item?.itemId ?? item?.id ?? '')
+    const baseItemId = String(item?.baseItemId ?? item?.id ?? itemId)
+    const sonPlanId = String(item?.sonPlanId ?? '')
+    const data = normalized.checklistData?.[itemId] ?? {}
+    const sourceRow = sourceById.get(itemId) ?? {}
+    const itemType = (item?.itemType || sourceRow?.itemType) ?? 'Standard'
+    const result = {
+      ...sourceRow,
+      id: sourceRow?.id || makeItemResultId(baseItemId, sonPlanId),
+      planId: normalized.planId,
+      standardItemId: (item?.standardItemId || sourceRow?.standardItemId) ?? '',
+      itemType,
+      resultStatus: mapResultStatus(data?.result),
+      remarks: data?.comment || null,
+      fileList: buildUploadedFileList(data?.photos),
+      sonPlanId: sonPlanId || null
+    }
+    if (itemType === 'Measurements') result.specResult = Array.isArray(data?.measurements) && data.measurements.length > 0 ? JSON.stringify(data.measurements) : null
+    if (itemType === 'Text') result.textContent = Array.isArray(data?.textGroups) && data.textGroups.length > 0 ? JSON.stringify(data.textGroups) : null
+    if (itemType === 'Barcodes') result.barcodeValue = buildBarcodeValue(data)
+    return result
+  })
+  const inspectorName = String(normalized?.plan?.inspectorName ?? '')
+  const defectRecords = normalized.defects.map((defect, index) => ({
+    id: defect?.id || defect?.defectId || `${normalized.planId}_defect_${index}`,
+    defectId: defect?.defectId || defect?.id || `${normalized.planId}_defect_${index}`,
+    planId: normalized.planId,
+    defectType: String(defect?.type ?? defect?.defectType ?? defect?.defectLevel ?? '').toLowerCase(),
+    defectCode: defect?.defectCode ?? '',
+    defectDesc: defect?.defectDesc ?? '',
+    itemResultId: (defect?.checkItemResultId || defect?.itemResultId) ?? '',
+    defectCount: Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1 ? null : Number(defect?.quantity ?? defect?.defectCount ?? 0),
+    commonFlag: Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)),
+    remark: (defect?.description || defect?.remark) ?? '',
+    findUser: inspectorName,
+    sonPlanId: defect?.sonPlanId || null
+  }))
+  return {
+    reportId: normalized.reportId,
+    planId: normalized.planId,
+    itemResults,
+    defectRecords,
+    finishQuantity: Number(normalized?.plan?.finishQuantity ?? normalized?.finishQuantity ?? 0),
+    sampleQuantity: Number(normalized?.plan?.sampleQuantity ?? normalized?.sampleQuantity ?? normalized?.plan?.sampleSize ?? 0),
+    overallResult: null,
+    overallRemarks: String(normalized?.overallRemarks ?? normalized?.plan?.overallRemarks ?? ''),
+    finishFlag: '0'
+  }
+}
+
+/**
+ * 校验最终提交必需的总结结果、检查项完成状态和失败项图片。
+ * 校验顺序与 H5 一致：先必填检查项、再必传图片、最后总结结果；返回 reason 供页面区分提示场景。
+ */
+export function validateFinalSubmission(detail, summary: any = {}) {
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const requiredItems = normalized.checklistItems.filter((item) => String(item?.sonPlanId ?? '') === '' && Boolean(item?.isRequired))
+  const incomplete = requiredItems.filter((item) => {
+    const data = normalized.checklistData?.[item.itemId] ?? {}
+    return String(data?.result ?? '') === ''
+  })
+  if (incomplete.length > 0) return { valid: false, reason: 'missing-results', message: `仍有 ${incomplete.length} 个必填检查项未完成` }
+  const requiredPhotoItems = normalized.checklistItems.filter((item) => String(item?.sonPlanId ?? '') === '' && Boolean(item?.isPhotoRequired))
+  const requiredWithoutPhoto = requiredPhotoItems.filter((item) => {
+    const data = normalized.checklistData?.[item.itemId] ?? {}
+    return data?.result !== 'na' && (!Array.isArray(data?.photos) || !data.photos.some((photo) => photo?.bizType !== 'checkPoint'))
+  })
+  if (requiredWithoutPhoto.length > 0) return { valid: false, reason: 'missing-photos', message: `仍有 ${requiredWithoutPhoto.length} 个检查项缺少必传图片` }
+  const overallResult = String(summary?.overallResult ?? '').trim()
+  if (overallResult === '') return { valid: false, reason: 'missing-result', message: '请选择总结结果后再提交' }
+  return { valid: true, reason: '', message: '' }
+}
+
+/**
+ * 将历史 PASS/FAIL 与 H5 的 APPROVED/REJECTED/PENDING 总结结果值统一为服务端值域，无法识别时返回空串。
+ */
+export function normalizeOverallResult(rawValue) {
+  const value = String(rawValue ?? '').trim().toUpperCase()
+  if (value === 'APPROVED' || value === 'PASS') return 'APPROVED'
+  if (value === 'REJECTED' || value === 'FAIL') return 'REJECTED'
+  if (value === 'PENDING') return 'PENDING'
+  return ''
+}
+
+/**
+ * 按 H5 normalizeSeverityValue 语义解析疵点严重等级为小写桶键；无法识别时返回空串（统计时跳过，不回退 MINOR）。
+ */
+function resolveFinishSeverityKey(rawValue, rawLabel: string = '') {
+  const text = `${String(rawValue ?? '').toLowerCase()} ${String(rawLabel ?? '').toLowerCase()}`
+  if (text.includes('critical') || text.includes('致命') || text.includes('极严重')) return 'critical'
+  if (text.includes('major') || text.includes('主要') || text.includes('严重') || text.includes('大')) return 'major'
+  if (text.includes('minor') || text.includes('次要') || text.includes('轻微') || text.includes('小')) return 'minor'
+  return ''
+}
+
+/**
+ * 构建总结弹窗所需的统计视图：AQL 疵点统计（实际发现 vs 计划 Ac 阈值）、失败检查点与截断后的总结评语。
+ * 与 H5 一致：疵点数量按归一化严重等级聚合（quantity 优先，未知等级跳过），超出 AQL 阈值仅作警示，不阻断提交。
+ */
+export function buildFinishSummary(detail, summary: any = {}) {
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const plan = normalized?.plan ?? {}
+  const totals = { critical: 0, major: 0, minor: 0 }
+  normalized.defects.forEach((defect) => {
+    const key = resolveFinishSeverityKey(defect?.type || defect?.defectType || defect?.defectLevel, defect?.typeLabel || defect?.defectLevel)
+    const quantity = Number(defect?.quantity ?? defect?.defectCount ?? 0)
+    if (key !== '' && Number.isFinite(quantity) && quantity > 0) {
+      totals[key] += quantity
+    }
+  })
+  const defectStats = [
+    { key: 'critical', label: '极严重', actual: totals.critical, max: Number(plan?.criticalAc ?? 0) },
+    { key: 'major', label: '大', actual: totals.major, max: Number(plan?.majorAc ?? 0) },
+    { key: 'minor', label: '小', actual: totals.minor, max: Number(plan?.minorAc ?? 0) }
+  ].map((row) => ({ ...row, exceed: row.actual > row.max }))
+  const exceedsAql = defectStats.some((row) => row.exceed)
+  const failedCheckpoints = normalized.checklistItems
+    .filter((item) => String(item?.sonPlanId ?? '') === '' && normalized.checklistData?.[item.itemId]?.result === 'fail')
+    .map((item) => ({ id: item.itemId, name: item?.itemName || item?.name || item.itemId }))
+  const remarks = String(summary?.overallRemarks ?? normalized?.overallRemarks ?? plan?.overallRemarks ?? '').slice(0, 3000)
+  return { defectStats, exceedsAql, failedCheckpoints, remarks }
+}

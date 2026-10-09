@@ -1,0 +1,45 @@
+/** 从服务端或本地疵点恢复编辑草稿，保留检查项和合并验货关联。 */
+export function createDefectDraft(defect) {
+  const commonFlag = Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1 ? 1 : 0
+  const quantity = Number(defect?.quantity === 'other' ? defect?.customQuantity : (defect?.quantity ?? defect?.defectCount ?? 1))
+  const usesOtherQuantity = defect?.quantity === 'other' || quantity > 19
+  return {
+    ...defect,
+    type: String(defect?.type ?? defect?.defectType ?? 'MINOR').toUpperCase(),
+    tier1Code: defect?.tier1Code ?? '', tier2Code: defect?.tier2Code ?? '', tier3Code: defect?.tier3Code ?? '',
+    defectCode: defect?.defectCode ?? '', defectDesc: defect?.defectDesc ?? '',
+    quantity: commonFlag === 1 ? null : (usesOtherQuantity ? 'other' : (quantity > 0 ? quantity : 1)),
+    customQuantity: commonFlag === 1 ? '' : (usesOtherQuantity ? String(defect?.customQuantity ?? quantity) : ''),
+    commonFlag,
+    description: defect?.description ?? defect?.remark ?? '',
+    checkItemId: defect?.checkItemId ?? '', checkItemName: defect?.checkItemName ?? '',
+    checkItemResultId: defect?.checkItemResultId ?? defect?.itemResultId ?? '',
+    sonPlanId: defect?.sonPlanId ?? null,
+    photos: Array.isArray(defect?.photos) ? [...defect.photos] : []
+  }
+}
+
+/** 选择 1–19 或其他数量；选择数量时退出普遍性疵点状态。 */
+export function selectDefectQuantity(draft, quantity) {
+  return { ...draft, quantity, customQuantity: quantity === 'other' ? draft.customQuantity ?? '' : '', commonFlag: 0 }
+}
+
+/** 切换普遍性疵点，开启时清空数量，关闭时恢复默认数量。 */
+export function setDefectCommon(draft, checked) {
+  return { ...draft, commonFlag: checked ? 1 : 0, quantity: checked ? null : (draft.quantity ?? 1), customQuantity: checked ? '' : draft.customQuantity }
+}
+
+/** 获取实际受影响数量，普遍性疵点返回 null。 */
+export function getDefectQuantity(draft) {
+  if (Number(draft?.commonFlag ?? 0) === 1) return null
+  return Number(draft?.quantity === 'other' ? draft?.customQuantity : draft?.quantity)
+}
+
+/** 校验必选疵点类别及受影响数量，返回空字符串表示可保存。 */
+export function validateDefectDraft(draft) {
+  if (!draft?.defectCode) return '请选择完整疵点类别（三级）'
+  if (!draft?.defectDesc) return '请选择完整疵点类别（三级）'
+  const quantity = getDefectQuantity(draft)
+  if (quantity !== null && (!Number.isFinite(quantity) || quantity < 1 || !Number.isInteger(quantity))) return '请输入有效的受影响数量'
+  return ''
+}

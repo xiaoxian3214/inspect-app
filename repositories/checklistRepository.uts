@@ -1,0 +1,78 @@
+/**
+ * 安全解析检查项数据库行中的完整 JSON 数据。
+ */
+function parseChecklistRow(row) {
+  try {
+    return JSON.parse(row?.jsonData ?? '{}')
+  } catch (_) {
+    return {}
+  }
+}
+
+/**
+ * 创建报告与检查项 ID 组合的稳定本地主键。
+ */
+function buildChecklistKey(reportId, itemId) {
+  return `${String(reportId ?? '').trim()}::${String(itemId ?? '').trim()}`
+}
+
+/**
+ * 创建离线检查项仓库。
+ */
+export function createChecklistRepository(database) {
+  /**
+   * 按报告 ID 读取并按原始顺序还原完整检查项。
+   */
+  async function listByReportId(reportId) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    return database.readTable('checklist')
+      .filter((row) => String(row?.reportId ?? '') === normalizedReportId)
+      .sort((left, right) => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+      .map(parseChecklistRow)
+  }
+
+  /**
+   * 完整替换指定报告的检查项快照，其他报告数据保持不变。
+   */
+  async function replaceByReportId(reportId, items) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    if (normalizedReportId === '') throw new Error('报告ID不能为空')
+    const source = Array.isArray(items) ? items : []
+    await database.transaction(async (transaction) => {
+      transaction.removeWhere('checklist', (row) => String(row?.reportId ?? '') === normalizedReportId)
+      source.forEach((item, index) => {
+        const sourceItemId = String(item?.itemId ?? item?.id ?? index)
+        transaction.upsert('checklist', 'itemId', {
+          itemId: buildChecklistKey(normalizedReportId, sourceItemId),
+          sourceItemId,
+          reportId: normalizedReportId,
+          skuNo: (item?.skuNo || item?.subGoodsNo) ?? '',
+          qty: Number(item?.qty ?? 0),
+          checkedQty: Number(item?.checkedQty ?? 0),
+          passQty: Number(item?.passQty ?? 0),
+          defectQty: Number(item?.defectQty ?? 0),
+          sortNo: index,
+          jsonData: JSON.stringify(item),
+          updatedAt: new Date().toISOString()
+        })
+      })
+    })
+    return source
+  }
+
+  /**
+   * 新增或更新指定报告中的单个检查项。
+   */
+  async function save(reportId, item) {
+    const existing = await listByReportId(reportId)
+    const sourceItemId = String(item?.itemId ?? item?.id ?? '').trim()
+    if (sourceItemId === '') throw new Error('检查项ID不能为空')
+    const index = existing.findIndex((current) => String(current?.itemId ?? current?.id ?? '') === sourceItemId)
+    if (index >= 0) existing[index] = { ...existing[index], ...item }
+    else existing.push(item)
+    await replaceByReportId(reportId, existing)
+    return item
+  }
+
+  return { listByReportId, replaceByReportId, save }
+}

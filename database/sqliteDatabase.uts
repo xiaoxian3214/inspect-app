@@ -1,0 +1,196 @@
+const TABLE_KEYS = {
+  user: 'userId',
+  report: 'reportId',
+  checklist: 'itemId',
+  defect: 'defectId',
+  photo: 'photoId',
+  sync_log: 'id',
+  request_queue: 'id',
+  schema_migration: 'version',
+  app_setting: 'key'
+}
+
+const TABLE_COLUMNS = {
+  user: ['userId', 'userName', 'token', 'refreshToken', 'role', 'expireAt', 'encryptedPassword', 'autoLogin', 'rememberPwd', 'updatedAt', 'jsonData'],
+  report: ['reportId', 'orderNo', 'productName', 'jsonData', 'downloadAt', 'lockExpireAt', 'status', 'lockStatus', 'lockerId', 'syncRetry'],
+  checklist: ['itemId', 'sourceItemId', 'reportId', 'skuNo', 'qty', 'checkedQty', 'passQty', 'defectQty', 'sortNo', 'jsonData', 'updatedAt'],
+  defect: ['defectId', 'sourceDefectId', 'reportId', 'itemId', 'defectType', 'desc', 'photoPaths', 'sortNo', 'jsonData', 'createAt'],
+  photo: ['photoId', 'sourcePhotoId', 'defectId', 'reportId', 'localPath', 'uploadStatus', 'fileId', 'ownerType', 'ownerId', 'sortNo', 'jsonData', 'md5'],
+  sync_log: ['id', 'reportId', 'action', 'errorMessage', 'retryCount', 'createdAt'],
+  request_queue: ['id', 'taskType', 'method', 'url', 'payload', 'headers', 'priority', 'dedupeKey', 'status', 'retryCount', 'maxRetries', 'nextRunAt', 'lastError', 'createdAt', 'updatedAt'],
+  schema_migration: ['version', 'appliedAt'],
+  app_setting: ['key', 'jsonData', 'updatedAt']
+}
+
+/** 深拷贝可序列化的数据库行，使页面不能直接修改事务外的数据。 */
+function clone(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
+/** 将标量转为 SQLite 字面量，字符串中的单引号必须转义。 */
+function sqlValue(value) {
+  if (value == null) return 'NULL'
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL'
+  if (typeof value === 'boolean') return value ? '1' : '0'
+  return `'${String(value).replace(/'/g, "''")}'`
+}
+
+/** 为白名单表的完整行生成 upsert，禁止未知列进入 SQL。 */
+function upsertSql(tableName, row) {
+  const allowed = TABLE_COLUMNS[tableName]
+  let source = row
+  if (tableName === 'user' && Object.keys(row).some((column) => !allowed.includes(column))) {
+    source = {}
+    allowed.forEach((column) => { if (row[column] !== undefined) source[column] = row[column] })
+    source.jsonData = JSON.stringify(row)
+  }
+  const columns = Object.keys(source).filter((column) => allowed.includes(column))
+  if (columns.length !== Object.keys(source).length) throw new Error(`${tableName} 存在未知列`)
+  if (!columns.includes(TABLE_KEYS[tableName])) throw new Error(`${tableName} 缺少主键`)
+  return `INSERT OR REPLACE INTO ${tableName} (${columns.join(', ')}) VALUES (${columns.map((column) => sqlValue(source[column])).join(', ')})`
+}
+
+/** 对比事务前后行的主键与内容，仅写入实际变化的 SQLite 行。 */
+function diffTable(tableName, previous, next) {
+  const primaryKey = TABLE_KEYS[tableName]
+  const before = new Map(previous.map((row) => [String(row[primaryKey]), row]))
+  const after = new Map(next.map((row) => [String(row[primaryKey]), row]))
+  const statements = []
+  before.forEach((_row, key) => {
+    if (!after.has(key)) statements.push(`DELETE FROM ${tableName} WHERE ${primaryKey} = ${sqlValue(key)}`)
+  })
+  next.forEach((row) => {
+    const existing = before.get(String(row[primaryKey]))
+    if (existing == null || JSON.stringify(existing) !== JSON.stringify(row)) statements.push(upsertSql(tableName, row))
+  })
+  return statements
+}
+
+/** 提供与现有 Repository 一致的同步读取和串行事务接口，持久层只使用 SQLite。 */
+export function createSqliteDatabase(driver, schemaSqlList, legacyStorage: any | null = null) {
+  let state = null
+  let opening = null
+  let writeTail = Promise.resolve()
+
+  /** 从原生 SQLite 读取所有业务表，启动时仅加载一次。 */
+  async function loadState() {
+    const loaded = {}
+    for (const tableName of Object.keys(TABLE_KEYS)) loaded[tableName] = await driver.query(`SELECT * FROM ${tableName}`)
+    return loaded
+  }
+
+  /** 将旧版 uniStorage 行一次性导入 SQLite，已有的较新 SQLite 行绝不覆盖。 */
+  async function migrateLegacy(loaded) {
+    const legacy = legacyStorage?.read()
+    if (legacy == null || typeof legacy !== 'object') return loaded
+    const statements = []
+    for (const tableName of Object.keys(TABLE_KEYS)) {
+      const existing = new Set(loaded[tableName].map((row) => String(row[TABLE_KEYS[tableName]])))
+      for (const row of (Array.isArray(legacy[tableName]) ? legacy[tableName] : [])) {
+        const key = String(row?.[TABLE_KEYS[tableName]] ?? '')
+        if (key === '' || existing.has(key)) continue
+        let migratedRow = row
+        if (tableName === 'photo' && row?.localPath && legacyStorage?.migratePhoto != null) {
+          const durablePath = await legacyStorage.migratePhoto(row.localPath)
+          if (durablePath && durablePath !== row.localPath) {
+            let media = {}
+            try { media = JSON.parse(row.jsonData ?? '{}') } catch (_) {}
+            migratedRow = { ...row, localPath: durablePath, jsonData: JSON.stringify({ ...media, localPath: durablePath }) }
+          }
+        }
+        statements.push(upsertSql(tableName, migratedRow))
+        existing.add(key)
+      }
+    }
+    if (statements.length > 0) await driver.executeBatch(statements)
+    legacyStorage.remove()
+    return statements.length > 0 ? loadState() : loaded
+  }
+
+  /** 创建原生数据库及 schema，成功完成旧数据迁移后才开放读取。 */
+  async function open() {
+    if (state != null) return
+    if (opening != null) return opening
+    opening = (async () => {
+      await driver.open()
+      await driver.executeBatch(schemaSqlList)
+      state = await migrateLegacy(await loadState())
+    })().finally(() => { opening = null })
+    return opening
+  }
+
+  /** 构造仅在本事务内可写的表上下文，未改动的表不会写回磁盘。 */
+  function createTransactionContext(working, changed) {
+    /** 首次写入时复制对应表，避免事务失败污染已提交镜像。 */
+    function writable(tableName) {
+      if (!(tableName in TABLE_KEYS)) throw new Error(`未知数据表: ${tableName}`)
+      if (!changed.has(tableName)) {
+        working[tableName] = clone(working[tableName])
+        changed.add(tableName)
+      }
+      return working[tableName]
+    }
+    return {
+      read(tableName) {
+        if (!(tableName in TABLE_KEYS)) throw new Error(`未知数据表: ${tableName}`)
+        return clone(working[tableName])
+      },
+      upsert(tableName, primaryKey, row) {
+        if (TABLE_KEYS[tableName] !== primaryKey) throw new Error(`${tableName}.${primaryKey} 不是主键`)
+        const table = writable(tableName)
+        const value = row?.[primaryKey]
+        if (value == null || String(value) === '') throw new Error(`${tableName}.${primaryKey} 不能为空`)
+        const index = table.findIndex((item) => item?.[primaryKey] === value)
+        if (index >= 0) table[index] = { ...table[index], ...clone(row) }
+        else table.push(clone(row))
+      },
+      removeWhere(tableName, predicate) {
+        writable(tableName)
+        working[tableName] = working[tableName].filter((row) => !predicate(row))
+      },
+      replace(tableName, rows) {
+        writable(tableName)
+        working[tableName] = clone(Array.isArray(rows) ? rows : [])
+      }
+    }
+  }
+
+  /** 逐笔串行执行仓库事务，原生提交成功后才更新可见内存镜像。 */
+  async function transaction(executor) {
+    await open()
+    const task = writeTail.then(async () => {
+      const working = { ...state }
+      const changed = new Set()
+      const result = await executor(createTransactionContext(working, changed))
+      const statements = []
+      changed.forEach((tableName) => statements.push(...diffTable(tableName, state[tableName], working[tableName])))
+      if (statements.length > 0) await driver.executeBatch(statements)
+      state = working
+      return result
+    })
+    writeTail = task.then(() => {}, () => {})
+    return task
+  }
+
+  /** 返回内存镜像的只读副本；镜像仅反映已成功写入 SQLite 的行。 */
+  function readTable(tableName) {
+    if (state == null) throw new Error('SQLite 尚未初始化')
+    if (!(tableName in TABLE_KEYS)) throw new Error(`未知数据表: ${tableName}`)
+    return clone(state[tableName])
+  }
+
+  /** 返回调试页所需的当前已提交数据表快照。 */
+  function snapshot() {
+    if (state == null) throw new Error('SQLite 尚未初始化')
+    return clone(state)
+  }
+
+  /** 关闭原生连接，并防止旧镜像在下次打开时遮蔽数据库。 */
+  async function close() {
+    await writeTail
+    if (driver.close != null) await driver.close()
+    state = null
+  }
+
+  return { open, close, transaction, readTable, snapshot }
+}

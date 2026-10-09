@@ -1,0 +1,119 @@
+/**
+ * 创建本地优先的验货详情加载与草稿保存服务。
+ */
+export function createInspectionDetailService(options) {
+  const reportRepository = options.reportRepository
+  const planApi = options.planApi
+  const isOnline = options.isOnline
+  const viewModel = options.viewModel
+  const listPhotos = typeof options.listPhotos === 'function' ? options.listPhotos : async () => []
+
+  /**
+   * 将独立照片表中的最新媒体记录合并回报告详情，不产生保存或同步副作用。
+   */
+  async function mergeStoredPhotos(detail, planId) {
+    const photos = await listPhotos(planId)
+    if (!Array.isArray(photos) || photos.length === 0) return detail
+    if (typeof viewModel?.mergeDetailPhotos === 'function') return viewModel.mergeDetailPhotos(detail, photos)
+    return { ...(detail ?? {}), photos }
+  }
+
+  /**
+   * 判断本地记录是否包含可渲染的检查项定义或已有检查结果，而不是仅有列表摘要。
+   */
+  function hasCompleteDetail(detail) {
+    if (detail == null || typeof detail !== 'object') return false
+    const rebuiltStandardItems = typeof viewModel?.buildStandardItemsFromItemResults === 'function'
+      ? viewModel.buildStandardItemsFromItemResults(detail?.itemResults ?? [])
+      : []
+    const hasRebuiltChecklist = rebuiltStandardItems.some((section) => Array.isArray(section?.children) && section.children.length > 0)
+    const hasChecklistDefinitions = (Array.isArray(detail?.standardItems) && detail.standardItems.length > 0)
+      || (Array.isArray(detail?.checklistItems) && detail.checklistItems.length > 0)
+      || hasRebuiltChecklist
+    if (!hasChecklistDefinitions) return false
+    const plan = detail?.plan != null && typeof detail.plan === 'object' ? detail.plan : detail
+    return Boolean(plan?.goodsName || plan?.goodsCname || plan?.subGoodsNo || plan?.planNo || plan?.clientOrderNo)
+  }
+
+  /**
+   * 使用本地非空字段补充远程计划，避免旧空壳记录覆盖产品名称等完整字段。
+   */
+  function mergeNonEmptyFields(base, overlay) {
+    const result = { ...(base ?? {}) }
+    Object.keys(overlay ?? {}).forEach((key) => {
+      const value = overlay[key]
+      if (value !== undefined && value !== null && value !== '') result[key] = value
+    })
+    return result
+  }
+
+  /**
+   * 将远程完整详情与已有本地状态合并；本地脏草稿优先保留用户编辑内容。
+   */
+  function mergeRemoteDetail(remote, local) {
+    if (local == null || typeof local !== 'object') return remote
+    const hasLocalDraft = local?.syncStatus === 'DIRTY' || local?.pendingSyncPayload != null
+    const merged = {
+      ...(remote ?? {}),
+      ...local,
+      plan: mergeNonEmptyFields(remote?.plan, local?.plan),
+      inspectionPlans: Array.isArray(remote?.inspectionPlans) && remote.inspectionPlans.length > 0 ? remote.inspectionPlans : local?.inspectionPlans,
+      standardItems: Array.isArray(remote?.standardItems) && remote.standardItems.length > 0 ? remote.standardItems : local?.standardItems
+    }
+    if (!hasLocalDraft) {
+      merged.itemResults = remote?.itemResults ?? local?.itemResults
+      merged.checklistData = remote?.checklistData ?? local?.checklistData
+      merged.defects = remote?.defects ?? remote?.defectRecords ?? local?.defects
+      merged.photos = remote?.photos ?? local?.photos
+    }
+    return merged
+  }
+
+  /**
+   * 本地存在时直接读取详情；本地缺失且联网时才请求服务器并落库。
+   */
+  async function loadDetail(planId) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法加载详情')
+    const local = await reportRepository.getPlanById(normalizedPlanId)
+    if (hasCompleteDetail(local)) {
+      const normalizedLocal = viewModel.normalizeInspectionDetail(local, normalizedPlanId)
+      return mergeStoredPhotos(normalizedLocal, normalizedPlanId)
+    }
+    if (!(await isOnline())) {
+      if (local != null) throw new Error('本地详情数据不完整，请联网后重新加载')
+      throw new Error('本地验货数据不存在，请联网后重新下载')
+    }
+    const remote = await planApi.getPlanDetail(normalizedPlanId)
+    const normalizedRemote = viewModel.normalizeInspectionDetail(mergeRemoteDetail(remote, local), normalizedPlanId)
+    const normalized = await mergeStoredPhotos(normalizedRemote, normalizedPlanId)
+    await reportRepository.saveDetailSnapshot(normalizedPlanId, normalized)
+    return normalized
+  }
+
+  /**
+   * 将当前编辑数据保存为可离线恢复的进行中草稿和普通同步 payload。
+   */
+  async function saveDraft(planId, detail, saveOptions: any = {}) {
+    const normalizedPlanId = String(planId ?? detail?.planId ?? '').trim()
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法保存草稿')
+    const normalized = viewModel.normalizeInspectionDetail(detail, normalizedPlanId)
+    const markDirty = saveOptions?.markDirty !== false
+    const currentStatus = Number(normalized?.status ?? normalized?.plan?.status ?? 0)
+    const nextStatus = markDirty && currentStatus === 0 ? 1 : (currentStatus === 2 ? 1 : currentStatus)
+    const now = new Date().toISOString()
+    const saved = {
+      ...normalized,
+      status: nextStatus,
+      plan: { ...(normalized?.plan ?? {}), status: markDirty ? Math.max(Number(normalized?.plan?.status ?? 0), 1) : normalized?.plan?.status },
+      progress: normalized.progress,
+      pendingSyncPayload: markDirty ? viewModel.buildGeneratePayload(normalized) : normalized?.pendingSyncPayload,
+      syncStatus: markDirty ? 'DIRTY' : (normalized?.syncStatus ?? 'SYNCED'),
+      updatedAt: now
+    }
+    await reportRepository.saveDetailSnapshot(normalizedPlanId, saved)
+    return saved
+  }
+
+  return { loadDetail, saveDraft }
+}

@@ -1,0 +1,22 @@
+/**
+ * 去除首尾空白后返回字符串，避免 null/undefined 参与拼接。
+ */
+function asTrimmedText(value) {
+  return String(value == null ? '' : value).trim()
+}
+
+/**
+ * 解析可用于下载 PDF 的服务端报告 ID，语义与 H5 downloadReportId 保持一致。
+ * App 的 normalizeInspectionDetail 会把 planId 兜底写入顶层 reportId，因此顶层 reportId
+ * 只有在与 planId 不同时才视为真实报告 ID，防止把计划 ID 当作报告 ID 请求下载。
+ */
+export function resolveReportPdfDownloadId(detail, planId) {
+  const normalizedPlanId = asTrimmedText(planId)
+  const fromReport = asTrimmedText(detail?.report?.id)
+  if (fromReport !== '') return fromReport
+  const fromPlan = asTrimmedText(detail?.plan?.reportId)
+  if (fromPlan !== '' && fromPlan !== normalizedPlanId) return fromPlan
+  const topLevel = asTrimmedText(detail?.reportId)
+  if (topLevel !== '' && topLevel !== normalizedPlanId) return topLevel
+  return ''
+}

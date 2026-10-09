@@ -1,0 +1,813 @@
+<template>
+	<view>
+			<view class="inspection-card" @click="handleCardClick">
+				<view class="card-left">
+					<view class="download-icon-wrapper" :class="downloadStateClass">
+						<AppIcon :type="downloadStateClass === 'locked' ? 'locked' : 'downloadFilled'" :size="18" color="#ffffff" />
+					</view>
+				<view class="product-image">
+					<text class="image-placeholder">📦</text>
+				</view>
+			</view>
+
+			<view class="card-middle">
+				<view class="product-name">{{ productName }}</view>
+				<view class="status-row">
+					<text class="status-badge">{{ inspectTypeShort }}</text>
+					<text class="goods-no">{{ goodsNoWithBatch }}</text>
+					<view class="status-right">
+						<text class="progress-status" :class="statusClass">{{ statusText }}</text>
+					</view>
+				</view>
+				<view v-if="goodsFlagType === 'raw'" class="goods-extra-line">
+					<view class="goods-extra-item">
+						<text class="goods-extra-label">{{ t('制造令：') }}</text>
+						<text class="goods-extra-value">{{ produceNo }}</text>
+					</view>
+					<view class="goods-extra-item goods-extra-spacer">
+						<text class="goods-extra-label">{{ t('模具色卡号：') }}</text>
+						<text class="goods-extra-value">{{ modelNo }}</text>
+					</view>
+				</view>
+				<view v-else class="goods-extra-line">
+					<view class="goods-extra-item">
+						<text class="goods-extra-label">{{ t('采购合同号：') }}</text>
+						<text class="goods-extra-value">{{ domeNo }}</text>
+					</view>
+				</view>
+			</view>
+
+					<view class="card-right">
+						<view v-if="selectionMode" class="selection-control" :class="{ selected: selectionChecked, disabled: selectionDisabled }" @click.stop="toggleMergeSelection">
+							<text class="selection-mark">{{ selectionChecked ? '✓' : '' }}</text>
+						</view>
+						<view v-else-if="isMerged" class="merge-flag">
+							<AppIcon type="merge" :size="18" color="#059669" />
+						</view>
+						<view v-if="!selectionMode" class="card-more-btn" @click.stop="openActionSheet">
+						<AppIcon type="more" :size="20" color="#64748b" />
+					</view>
+				</view>
+			</view>
+
+			<BottomActionSheet
+				:visible="showActionSheet"
+				title="操作"
+				:actions="cardActions"
+				@select="handleCardAction"
+				@cancel="closeActionSheet"
+			/>
+
+		<view v-if="showDownloadModal" class="menu-overlay" @click="closeDownloadModal">
+			<view class="copy-modal download-modal" @click.stop>
+				<text class="copy-modal-title">{{ t('下载验货') }}</text>
+				<PlanDownloadDetails :item="props.item" :template-names="downloadTemplateNames" :template-index="downloadTemplateIndex" :template-name="downloadTemplateDisplayName" :merged-items="downloadMergedItems" :merged-loading="downloadPreviewLoading" @select-template="changeDownloadTemplate" />
+					<view class="copy-actions">
+						<button class="copy-btn close" :disabled="submitting" @click="closeDownloadModal">{{ t('取消') }}</button>
+						<button class="copy-btn create" :disabled="submitting || downloadTemplateId === '' || (isMerged && (downloadPreviewLoading || downloadMergedItems.length < 2))" @click="confirmDownload">
+						{{ t(submitting ? '下载中...' : '下载') }}
+					</button>
+				</view>
+			</view>
+
+			<view v-if="showUnlockModal" class="menu-overlay" @click="closeUnlockModal">
+				<view class="confirm-modal" @click.stop>
+					<text class="confirm-title">{{ t('解锁验货任务') }}</text>
+					<text class="confirm-message">{{ t('当前验货会恢复到已定计划状态。请确认您需要解锁该验货任务？') }}</text>
+					<view class="confirm-actions">
+						<button class="confirm-btn cancel" :disabled="submitting" @click="closeUnlockModal">{{ t('取消') }}</button>
+						<button class="confirm-btn agree" :disabled="submitting" @click="confirmUnlock">{{ t(submitting ? '处理中...' : '同意') }}</button>
+					</view>
+				</view>
+			</view>
+
+			<view v-if="showResetModal" class="menu-overlay" @click="closeResetModal">
+				<view class="copy-modal" @click.stop>
+					<text class="copy-modal-title">{{ t('重置验货任务') }}</text>
+					<view class="copy-info-card">
+						<view class="copy-info-row"><text class="copy-label">{{ t('订单号') }}</text><text class="copy-value">{{ orderNo }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ t('款号#批次') }}</text><text class="copy-value">{{ goodsNoWithBatch }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ t('产品名称') }}</text><text class="copy-value">{{ productName }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ t('供应商') }}</text><text class="copy-value">{{ supplierName }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ t('计划日期') }}</text><text class="copy-value">{{ detailDate }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ t('检查类型') }}</text><text class="copy-value">{{ inspectType }}</text></view>
+					</view>
+					<text class="reset-tip">{{ t('您确定需要重置该验货任务？') }}</text>
+					<view class="copy-actions">
+						<button class="copy-btn close" :disabled="submitting" @click="closeResetModal">{{ t('取消') }}</button>
+						<button class="copy-btn create" :disabled="submitting" @click="confirmReset">{{ t(submitting ? '处理中...' : '重置') }}</button>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<view v-if="showInspectorModal" class="menu-overlay" @click="closeInspectorModal">
+			<view class="confirm-modal" @click.stop>
+				<text class="confirm-title">{{ t('当前验货员') }}</text>
+				<view class="confirm-content">
+					<view class="copy-info-row"><text class="copy-label">{{ t('姓名') }}</text><text class="copy-value">{{ inspectorName }}</text></view>
+					<view class="copy-info-row"><text class="copy-label">{{ t('工号') }}</text><text class="copy-value">{{ inspectorId }}</text></view>
+				</view>
+				<view class="confirm-actions single-row">
+					<button class="confirm-btn agree full" @click="closeInspectorModal">{{ t('关闭') }}</button>
+				</view>
+			</view>
+		</view>
+
+			<CopyPlanSheet
+				:visible="showCopySheet"
+				:mode="copyMode"
+				:item="item"
+				:inspect-type-options="copyInspectTypeOptions"
+				:templates="copyTemplateOptions"
+				:selected-inspect-type="copyInspectType"
+				:selected-template-id="copyTemplateId"
+				:created="copyCreated"
+				:submitting="submitting"
+				@close="closeCopySheet"
+				@update-inspect-type="setCopyInspectType"
+				@update-template="setCopyTemplate"
+				@confirm="confirmCopy"
+				@download="downloadCopiedPlan"
+			/>
+			<ReadyQuantitySheet :visible="showReadyQuantitySheet" :rows="readyQuantityRows" :submitting="submitting" @close="closeReadyQuantitySheet" @update-quantity="updateReadyQuantity" @save="saveReadyQuantities" />
+		</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+		import { computed, ref } from 'vue'
+		import BottomActionSheet from '../common/BottomActionSheet.uvue'
+		import CopyPlanSheet from '../search/CopyPlanSheet.uvue'
+		import PlanDownloadDetails from './PlanDownloadDetails.uvue'
+		import ReadyQuantitySheet from './ReadyQuantitySheet.uvue'
+		import AppIcon from '../icons/AppIcon.uvue'
+		import { buildCardActions, resolveCardClickAction, resolveDownloadState } from '../../domain/listActionViewModel.uts'
+		import { normalizePlanStatus } from '../../domain/planViewModel.uts'
+		import { extractCopiedPlanId, getItemInspectType, getItemParentPlanId, getPlanOperationId } from '../../domain/searchViewModel.uts'
+	import { initializeRuntime, inspectionDetailService, planApi, planDownloadService, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
+
+	const props = defineProps({
+		item: { type: Object, required: true },
+		showDownload: { type: Boolean, default: false },
+		currentUserId: { type: [String, Number], default: '' },
+		statusKey: { type: String, default: '' },
+		isLocalDownloaded: { type: Boolean, default: false },
+			useInternalActions: { type: Boolean, default: false },
+			manageActionsInCard: { type: Boolean, default: false },
+			useInternalCardClick: { type: Boolean, default: false },
+			showActionSplit: { type: Boolean, default: false },
+			delegateRemoteActions: { type: Boolean, default: false },
+			selectionMode: { type: Boolean, default: false },
+			selectionChecked: { type: Boolean, default: false },
+			selectionDisabled: { type: Boolean, default: false }
+		})
+		const emit = defineEmits([
+			'open',
+			'download',
+			'request-refresh',
+			'action-unlock',
+			'action-copy',
+			'action-copy-merged',
+			'action-split',
+			'merge-toggle'
+		])
+
+	const showActionSheet = ref(false)
+	const showDownloadModal = ref(false)
+	const showInspectorModal = ref(false)
+	const showUnlockModal = ref(false)
+	const showResetModal = ref(false)
+	const downloadTemplates = ref([])
+	const downloadMergedItems = ref([])
+	const downloadPreviewLoading = ref(false)
+	const downloadTemplateId = ref('')
+	const downloadTemplateName = ref('')
+	const showCopySheet = ref(false)
+	const copyMode = ref(1)
+	const copyInspectTypeOptions = ref([])
+	const copyTemplateOptions = ref([])
+	const copyInspectType = ref('')
+	const copyTemplateId = ref('')
+	const copyTemplateName = ref('')
+	const copyCreated = ref(false)
+	const copiedPlanId = ref('')
+	const showReadyQuantitySheet = ref(false)
+	const readyQuantityRows = ref([])
+	const submitting = ref(false)
+
+	/** 返回卡片使用的计划主体，兼容嵌套与平铺记录。 */
+	const plan = computed(() => (props.item?.plan || props.item) ?? {})
+	const status = computed(() => normalizePlanStatus(props.item))
+	/** 选择卡片展示的产品名称。 */
+	const productName = computed(() => (plan.value?.goodsName || plan.value?.goodsCname || props.item?.productName) ?? '未命名产品')
+	/** 选择卡片展示的货号。 */
+	const goodsNo = computed(() => (plan.value?.subGoodsNo || plan.value?.goodsNo || props.item?.subGoodsNo) ?? '-')
+	/** 选择卡片展示的批次号。 */
+	const batchNo = computed(() => (plan.value?.batchNo || props.item?.batchNo) ?? '')
+	const goodsNoWithBatch = computed(() => batchNo.value !== '' ? `${goodsNo.value}#${batchNo.value}` : goodsNo.value)
+	/** 选择卡片展示的供应商。 */
+	const supplierName = computed(() => (plan.value?.factoryName || props.item?.supplierName || props.item?.factoryName) ?? '-')
+	/** 选择卡片分组使用的订单号。 */
+	const orderNo = computed(() => (plan.value?.clientOrderNo || plan.value?.domeNo || props.item?.clientOrderNo || props.item?.orderNo) ?? '未分组')
+	const inspectType = computed(() => String(plan.value?.inspectTypeName ?? plan.value?.inspectType ?? '验货'))
+	const inspectTypeShort = computed(() => inspectType.value.length > 2 ? inspectType.value.substring(0, 2) : inspectType.value)
+	const goodsFlagType = computed(() => Number(plan.value?.goodsFlag ?? props.item?.goodsFlag ?? props.item?.raw?.goodsFlag ?? 1) === 0 ? 'raw' : 'finished')
+	const produceNo = computed(() => String(plan.value?.produceNo ?? props.item?.produceNo ?? '-'))
+	const modelNo = computed(() => String(plan.value?.modelNo ?? props.item?.modelNo ?? '-'))
+	const domeNo = computed(() => String(plan.value?.domeNo ?? props.item?.domeNo ?? '-'))
+	/** 格式化卡片展示的交货或创建日期。 */
+	const detailDate = computed(() => formatDate((plan.value?.deliveryDate || plan.value?.createDate || props.item?.deliveryDate || props.item?.createDate) ?? ''))
+	const inspectorId = computed(() => String(plan.value?.inspectorId ?? props.item?.inspectorId ?? props.item?.lockerId ?? '').trim())
+	const inspectorName = computed(() => String(plan.value?.inspectorName ?? props.item?.inspectorName ?? '验货员').trim() ?? '验货员')
+	const lockFlag = computed(() => Number(plan.value?.lockFlag ?? props.item?.lockFlag ?? 0))
+	const isMerged = computed(() => Number(plan.value?.mergeType ?? props.item?.mergeType ?? 0) === 2)
+		const resolvedDownloadState = computed(() => resolveDownloadState({
+			isLocalDownloaded: props.isLocalDownloaded,
+			downloadedAt: props.item?.downloadedAt ?? '',
+			lockFlag: lockFlag.value,
+			inspectorId: inspectorId.value,
+			currentUserId: props.currentUserId
+		}))
+	const isDownloaded = computed(() => resolvedDownloadState.value === 'downloaded')
+	const isLockedByOther = computed(() => resolvedDownloadState.value === 'locked')
+	const downloadStateClass = computed(() => resolvedDownloadState.value)
+	const statusText = computed(() => status.value === 3 ? '已完成' : (status.value === 1 ? '进行中' : '已定计划'))
+	const statusClass = computed(() => status.value === 3 ? 'completed' : (status.value === 1 ? 'in-progress' : 'planned'))
+	const canDownload = computed(() => props.showDownload && !isLockedByOther.value && !isDownloaded.value)
+	/** 返回下载清单名称数组供原生 picker 使用。 */
+	const downloadTemplateNames = computed(() => downloadTemplates.value.map((item) => String(item?.name ?? '')))
+	/** 返回当前下载清单在 picker 中的索引。 */
+	const downloadTemplateIndex = computed(() => Math.max(0, downloadTemplates.value.findIndex((item) => String(item?.id ?? '') === downloadTemplateId.value)))
+	/** 返回下载弹层当前清单显示名称。 */
+	const downloadTemplateDisplayName = computed(() => downloadTemplateName.value !== '' ? downloadTemplateName.value : '请选择清单')
+		const cardActions = computed(() => buildCardActions({
+			downloadState: resolvedDownloadState.value,
+			statusKey: props.statusKey || (status.value === 3 ? 'report' : (status.value === 1 ? 'progress' : 'planned')),
+			manageActionsInCard: props.manageActionsInCard,
+			isMerged: isMerged.value,
+			showSplit: props.showActionSplit
+		}).map((action) => ({
+			...action,
+			disabled: submitting.value
+		})))
+
+		/**
+		 * 将计划日期格式化为年月日文本。
+		 */
+		function formatDate(value) {
+		const text = String(value ?? '')
+		if (text.length >= 10) return text.substring(0, 10)
+		return text === '' ? '-' : text
+	}
+
+		/**
+		 * 关闭卡片右侧“更多”操作菜单。
+		 */
+		function closeActionSheet() {
+		showActionSheet.value = false
+	}
+
+		/**
+		 * 打开与 H5 可见性规则一致的卡片操作菜单。
+		 */
+		function openActionSheet() {
+			if (props.selectionMode) {
+				toggleMergeSelection()
+				return
+			}
+			if (!props.useInternalActions) return
+			showActionSheet.value = true
+		}
+
+		/**
+		 * 在合并多选模式下通知页面切换当前计划的选中状态。
+		 */
+		function toggleMergeSelection() {
+			if (!props.selectionMode || props.selectionDisabled) return
+			emit('merge-toggle', props.item)
+		}
+
+		/**
+		 * 关闭计划下载确认弹窗。
+		 */
+	function closeDownloadModal() {
+		showDownloadModal.value = false
+		downloadMergedItems.value = []
+	}
+
+	/** 按旧版合并弹框查询同组成员，下载前展示并校验整组计划。 */
+	async function loadDownloadMergedItems() {
+		downloadMergedItems.value = []
+		if (!isMerged.value) return
+		const parentPlanId = getItemParentPlanId(props.item) || getPlanOperationId(props.item)
+		if (parentPlanId === '') return
+		downloadPreviewLoading.value = true
+		try {
+			const response = await planApi.searchPlans({ parentPlanId }, 1, 100)
+			const seen = new Set()
+			downloadMergedItems.value = (response?.records ?? []).filter((member) => {
+				const memberId = getPlanOperationId(member)
+				if (memberId === '' || seen.has(memberId) || getItemParentPlanId(member) !== parentPlanId) return false
+				seen.add(memberId)
+				return true
+			})
+		} catch (error) { uni.showToast({ title: error?.message ?? '加载合并验货成员失败', icon: 'none' }) }
+		finally { downloadPreviewLoading.value = false }
+	}
+
+		/**
+		 * 加载 H5 同源清单模板并打开下载确认弹层。
+		 */
+		async function openDownloadModal() {
+			downloadTemplateId.value = String(plan.value?.templateId ?? props.item?.templateId ?? '')
+			downloadTemplateName.value = String(plan.value?.templateName ?? props.item?.templateName ?? '')
+			showDownloadModal.value = true
+			loadDownloadMergedItems()
+			try {
+				downloadTemplates.value = await planApi.getPlanTemplates()
+				if (downloadTemplateId.value === '' && downloadTemplates.value.length > 0) {
+					downloadTemplateId.value = String(downloadTemplates.value[0]?.id ?? '')
+					downloadTemplateName.value = String(downloadTemplates.value[0]?.name ?? '')
+				}
+			} catch (error) {
+				uni.showToast({ title: error?.message ?? '加载清单失败', icon: 'none' })
+			}
+		}
+
+		/**
+		 * 根据详情组件传入的 picker 索引更新下载清单 ID 与名称。
+		 */
+		function changeDownloadTemplate(index) {
+			const option = downloadTemplates.value[Number(index)]
+			if (option == null) return
+			downloadTemplateId.value = String(option?.id ?? '')
+			downloadTemplateName.value = String(option?.name ?? '')
+		}
+
+		/**
+		 * 关闭解锁二次确认弹层。
+		 */
+		function closeUnlockModal() {
+			showUnlockModal.value = false
+		}
+
+		/**
+		 * 关闭重置二次确认弹层。
+		 */
+		function closeResetModal() {
+			showResetModal.value = false
+		}
+
+		/**
+		 * 加载检查类型和清单模板并打开内部复制弹层。
+		 */
+		async function openCopySheet(mode) {
+			try {
+				const options = await Promise.all([planApi.getInspectTypeDict(), planApi.getPlanTemplates()])
+				copyInspectTypeOptions.value = options[0] ?? []
+				copyTemplateOptions.value = options[1] ?? []
+				copyMode.value = Number(mode) === 2 ? 2 : 1
+				copyCreated.value = false
+				copiedPlanId.value = ''
+				const currentType = getItemInspectType(props.item)
+				copyInspectType.value = copyInspectTypeOptions.value.some((option) => String(option?.value ?? '') === currentType)
+					? currentType
+					: String(copyInspectTypeOptions.value[0]?.value ?? '')
+				setCopyTemplate(copyTemplateOptions.value[0] ?? {})
+				showCopySheet.value = true
+			} catch (error) {
+				uni.showToast({ title: error?.message ?? '加载复制选项失败', icon: 'none' })
+			}
+		}
+
+		/**
+		 * 关闭内部复制弹层并清理复制结果状态。
+		 */
+		function closeCopySheet() {
+			showCopySheet.value = false
+			copyCreated.value = false
+			copiedPlanId.value = ''
+		}
+
+		/**
+		 * 从计划字段中读取 H5 备货数量弹层所需的原始订单数量。
+		 */
+		function getOrderQuantity(item) {
+			const source = (item?.plan || item) ?? {}
+			return Number(source?.requiredQuantity ?? source?.quantity ?? source?.orderQuantity ?? source?.totalQuantity ?? 0)
+		}
+
+		/**
+		 * 加载当前计划或合并组计划并打开备货数量弹层。
+		 */
+		async function openReadyQuantitySheet() {
+			try {
+				let items = [props.item]
+				if (isMerged.value) {
+					const candidateParentId = getItemParentPlanId(props.item)
+					const parentPlanId = candidateParentId !== '' ? candidateParentId : getPlanOperationId(props.item)
+					const response = await planApi.searchPlans({ parentPlanId }, 1, 100)
+					if (Array.isArray(response?.records) && response.records.length > 0) items = response.records
+				}
+				readyQuantityRows.value = items.map((item) => {
+					const source = (item?.plan || item) ?? {}
+					const orderQuantity = getOrderQuantity(item)
+					return {
+						planId: getPlanOperationId(item),
+						productName: (source?.goodsName || source?.goodsCname) ?? '',
+						orderNo: (source?.clientOrderNo || source?.domeNo) ?? '',
+						goodsNo: (source?.subGoodsNo || source?.goodsNo) ?? '',
+						orderQuantity,
+						finishQuantity: String(source?.finishQuantity ?? source?.readyQuantity ?? orderQuantity)
+					}
+				}).filter((row) => row.planId !== '')
+				showReadyQuantitySheet.value = true
+			} catch (error) {
+				uni.showToast({ title: error?.message ?? '加载备货数量失败', icon: 'none' })
+			}
+		}
+
+		/**
+		 * 关闭备货数量弹层。
+		 */
+		function closeReadyQuantitySheet() {
+			showReadyQuantitySheet.value = false
+		}
+
+		/**
+		 * 更新备货数量弹层指定行的输入值。
+		 */
+		function updateReadyQuantity(payload) {
+			const index = Number(payload?.index ?? -1)
+			if (index < 0 || index >= readyQuantityRows.value.length) return
+			readyQuantityRows.value = readyQuantityRows.value.map((row, rowIndex) => rowIndex === index ? { ...row, finishQuantity: String(payload?.value ?? '') } : row)
+		}
+
+		/**
+		 * 保存全部备货数量并同步更新已下载的本地计划。
+		 */
+		async function saveReadyQuantities() {
+			if (submitting.value) return
+			submitting.value = true
+			try {
+				for (const row of readyQuantityRows.value) await planApi.updateFinishQuantity(row.planId, row.finishQuantity)
+				const localPlans = await reportRepository.listPlans()
+				for (const row of readyQuantityRows.value) {
+					const localPlan = localPlans.find((item) => getPlanOperationId(item) === row.planId)
+					if (localPlan == null) continue
+					await reportRepository.savePlan({ ...localPlan, plan: { ...(localPlan?.plan ?? {}), finishQuantity: Number(row.finishQuantity) } })
+				}
+				showReadyQuantitySheet.value = false
+				emit('request-refresh')
+				uni.showToast({ title: t('备货数量已更新'), icon: 'success' })
+			} catch (error) {
+				uni.showToast({ title: error?.message ?? '修改备货数量失败', icon: 'none' })
+			} finally {
+				submitting.value = false
+			}
+		}
+
+		/**
+		 * 更新内部复制流程选择的检查类型。
+		 */
+		function setCopyInspectType(option) {
+			copyInspectType.value = String(option?.value ?? option ?? '')
+		}
+
+		/**
+		 * 更新内部复制流程选择的清单模板。
+		 */
+		function setCopyTemplate(option) {
+			copyTemplateId.value = String(option?.id ?? '')
+			copyTemplateName.value = String(option?.name ?? '')
+		}
+
+		/**
+		 * 创建当前验货或整个合并验货的副本。
+		 */
+		async function confirmCopy() {
+			if (submitting.value) return
+			const parentPlanId = getItemParentPlanId(props.item)
+			const sourcePlanId = copyMode.value === 2 && parentPlanId !== '' ? parentPlanId : getPlanOperationId(props.item)
+			if (sourcePlanId === '' || copyInspectType.value === '' || copyTemplateId.value === '') return
+			submitting.value = true
+			try {
+				const response = await planOperationService.copyPlan(sourcePlanId, {
+					inspectType: copyInspectType.value,
+					copyFlag: copyMode.value,
+					templateId: copyTemplateId.value,
+					templateName: copyTemplateName.value
+				})
+				copiedPlanId.value = extractCopiedPlanId(response)
+				if (copyMode.value === 2 && copiedPlanId.value === '') {
+					const parentPlanId = String(response?.parentPlanId ?? '')
+					if (parentPlanId !== '') {
+						const rows = await planApi.searchPlans({ parentPlanId }, 1, 100)
+						copiedPlanId.value = getPlanOperationId(rows?.records?.[0] ?? {})
+					}
+				}
+				if (copiedPlanId.value === '') throw new Error('复制成功但未返回新计划ID')
+				copyCreated.value = true
+				uni.showToast({ title: t('复制验货成功'), icon: 'success' })
+			} catch (error) {
+				uni.showToast({ title: error?.message ?? '复制验货失败', icon: 'none' })
+			} finally {
+				submitting.value = false
+			}
+		}
+
+		/**
+		 * 下载复制成功的新计划并刷新本地列表状态。
+		 */
+		async function downloadCopiedPlan() {
+			if (copiedPlanId.value === '' || submitting.value) return
+			submitting.value = true
+			try {
+				await planOperationService.downloadToLocal(copiedPlanId.value, { templateId: copyTemplateId.value, templateName: copyTemplateName.value })
+				closeCopySheet()
+				emit('request-refresh')
+				uni.showToast({ title: t('已下载到本地'), icon: 'success' })
+			} catch (error) {
+				uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' })
+			} finally {
+				submitting.value = false
+			}
+		}
+
+		/**
+		 * 关闭当前验货员信息弹窗。
+		 */
+		function closeInspectorModal() {
+		showInspectorModal.value = false
+	}
+
+		/**
+		 * 从卡片操作菜单进入下载确认流程。
+		 */
+		async function openDownloadModalFromMenu() {
+		closeActionSheet()
+		await openDownloadModal()
+	}
+
+		/**
+		 * 从卡片操作菜单查看锁定计划的当前验货员。
+		 */
+		function openInspectorModalFromMenu() {
+		closeActionSheet()
+		showInspectorModal.value = true
+	}
+
+		/**
+		 * 从卡片操作菜单打开本地详情或报告摘要。
+		 */
+		function openDetailPageFromMenu() {
+			closeActionSheet()
+			openDetailPage()
+		}
+
+		/**
+		 * 分发 H5 卡片菜单操作，已具备的离线操作直接执行，其余入口明确提示待接入。
+		 */
+		function handleCardAction(action) {
+			const actionKey = String(action?.key ?? '')
+			if (actionKey === 'download') {
+				openDownloadModalFromMenu()
+				return
+			}
+			if (actionKey === 'view-inspector') {
+				openInspectorModalFromMenu()
+				return
+			}
+			if (actionKey === 'reset') {
+				closeActionSheet()
+				showResetModal.value = true
+				return
+			}
+			if (actionKey === 'report') {
+				openDetailPageFromMenu()
+				return
+			}
+			closeActionSheet()
+			if (actionKey === 'unlock') {
+				if (props.delegateRemoteActions) {
+					emit('action-unlock', props.item)
+					return
+				}
+				showUnlockModal.value = true
+				return
+			}
+			if (actionKey === 'copy') {
+				if (props.delegateRemoteActions) {
+					emit('action-copy', props.item)
+					return
+				}
+				openCopySheet(1)
+				return
+			}
+			if (actionKey === 'copy-merged') {
+				if (props.delegateRemoteActions) {
+					emit('action-copy-merged', props.item)
+					return
+				}
+				openCopySheet(2)
+				return
+			}
+			if (actionKey === 'ready-quantity') {
+				openReadyQuantitySheet()
+				return
+			}
+			if (actionKey === 'split') {
+				if (props.delegateRemoteActions) {
+					emit('action-split', props.item)
+					return
+				}
+				uni.showToast({ title: t('拆分验货功能待接入'), icon: 'none' })
+			}
+		}
+
+		/**
+		 * 下载计划完整数据并事务性保存到本地数据库。
+		 */
+		async function confirmDownload() {
+		const planId = String(plan.value?.planId ?? plan.value?.id ?? props.item?.planId ?? props.item?.id ?? '').trim()
+		if (planId === '') {
+			uni.showToast({ title: t('计划ID缺失'), icon: 'none' })
+			return
+		}
+		if (isMerged.value && (downloadPreviewLoading.value || downloadMergedItems.value.length < 2)) { uni.showToast({ title: t('合并验货成员未加载完整，请重试'), icon: 'none' }); return }
+		const parentPlanId = getItemParentPlanId(props.item)
+		const downloadPlanId = isMerged.value && parentPlanId !== '' ? parentPlanId : planId
+		submitting.value = true
+		try {
+			await initializeRuntime()
+			await planDownloadService.downloadToLocal(downloadPlanId, {
+			templateId: downloadTemplateId.value,
+			templateName: downloadTemplateName.value
+			}, isMerged.value ? downloadMergedItems.value.map((member) => getPlanOperationId(member)) : [])
+			showDownloadModal.value = false
+			emit('download', props.item)
+			emit('request-refresh')
+			uni.showToast({ title: t('下载成功'), icon: 'success' })
+		} catch (error) {
+			uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' })
+		} finally {
+			submitting.value = false
+		}
+	}
+
+		/**
+		 * 二次确认后调用 H5 同源释放接口解锁当前任务。
+		 */
+		async function confirmUnlock() {
+		submitting.value = true
+		try {
+			await initializeRuntime()
+			await planOperationService.unlockPlan(props.item)
+			showUnlockModal.value = false
+			emit('request-refresh')
+			uni.showToast({ title: t('解锁成功'), icon: 'success' })
+		} catch (error) {
+			uni.showToast({ title: error?.message ?? '解锁失败', icon: 'none' })
+		} finally {
+			submitting.value = false
+		}
+	}
+
+		/**
+		 * 二次确认后调用 H5 同源释放接口重置并删除云端报告。
+		 */
+		async function confirmReset() {
+			submitting.value = true
+			try {
+				await initializeRuntime()
+				await planOperationService.resetPlan(props.item)
+				showResetModal.value = false
+				emit('request-refresh')
+				uni.showToast({ title: t('重置成功'), icon: 'success' })
+			} catch (error) {
+				uni.showToast({ title: error?.message ?? '重置失败', icon: 'none' })
+			} finally {
+				submitting.value = false
+			}
+		}
+
+		/**
+		 * 提取当前卡片用于详情页导航和远端恢复的计划 ID。
+		 */
+		function getDetailPlanId() {
+			return String(getPlanOperationId(props.item) ?? '').trim()
+		}
+
+		/**
+		 * 跳转移动端离线验货详情页，并保留当前计划 ID。
+		 */
+		function openDetailPage() {
+			const planId = getDetailPlanId()
+			if (planId === '') {
+				uni.showToast({ title: t('计划ID缺失，无法进入详情'), icon: 'none' })
+				return
+			}
+			uni.navigateTo({ url: `/pages/report/detail?planId=${encodeURIComponent(planId)}` })
+		}
+
+		/**
+		 * 未缓存的线上计划经详情服务拉取并持久化到 SQLite 后再进入详情页。
+		 */
+		async function recoverLocalDetailAndOpen() {
+			if (submitting.value) return
+			const planId = getDetailPlanId()
+			if (planId === '') {
+				uni.showToast({ title: t('计划ID缺失，无法恢复详情'), icon: 'none' })
+				return
+			}
+			submitting.value = true
+			try {
+				await initializeRuntime()
+				await inspectionDetailService.loadDetail(planId)
+				emit('request-refresh')
+				openDetailPage()
+			} catch (error) {
+				uni.showToast({ title: error?.message ?? '恢复本地详情失败', icon: 'none' })
+			} finally {
+				submitting.value = false
+			}
+		}
+
+		/**
+		 * 本地计划直接打开，未缓存的线上计划先入库，锁定计划保留操作菜单。
+		 */
+		function handleCardClick() {
+			if (!props.useInternalCardClick) {
+				emit('open', props.item)
+				return
+			}
+			const action = resolveCardClickAction({
+				selectionMode: props.selectionMode,
+				status: status.value,
+				downloadState: resolvedDownloadState.value,
+				isLocalDownloaded: props.isLocalDownloaded
+			})
+			if (action === 'toggle-merge') return toggleMergeSelection()
+			if (action === 'open-actions') return openActionSheet()
+			if (action === 'recover-detail') return recoverLocalDetailAndOpen()
+			openDetailPage()
+	}
+</script>
+
+<style>
+	.inspection-card { background-color: #ffffff; padding: 24rpx 8rpx 24rpx 24rpx; flex-direction: row; box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.06); position: relative; min-height: 160rpx; }
+		.card-left { position: relative; flex-shrink: 0; overflow: visible; }
+		.download-icon-wrapper { position: absolute; top: -8rpx; left: 0; width: 56rpx; height: 56rpx; border-radius: 16rpx; align-items: center; justify-content: center; box-shadow: 0 4rpx 8rpx rgba(0, 0, 0, 0.2); z-index: 1; }
+		.download-icon-wrapper.available { background-color: #94a3b8; }
+		.download-icon-wrapper.downloaded { background-color: #16a34a; }
+		.download-icon-wrapper.locked { background-color: #6b7280; }
+		.product-image { width: 140rpx; height: 140rpx; border-radius: 16rpx; background-color: #f1f5f9; align-items: center; justify-content: center; border-width: 2rpx; border-color: #e2e8f0; }
+	.image-placeholder { font-size: 64rpx; }
+	.card-middle { flex: 1; min-width: 0; margin-left: 24rpx; }
+	.product-name { font-size: 26rpx; font-weight: 600; color: #1e293b; line-height: 1.5; padding-right: 88rpx; }
+	.status-row { flex-direction: row; align-items: center; margin-top: 10rpx; }
+	.status-badge { background-color: #dbeafe; color: #1e40af; font-size: 22rpx; padding: 6rpx 16rpx; border-radius: 20rpx; font-weight: 600; }
+	.goods-no { flex: 1; min-width: 0; margin-left: 12rpx; font-size: 24rpx; color: #64748b; }
+	.status-right { margin-left: auto; }
+	.progress-status { font-size: 24rpx; font-weight: 600; padding: 4rpx 16rpx; border-radius: 20rpx; }
+	.progress-status.planned { background-color: #fef3c7; color: #92400e; }
+	.progress-status.in-progress { background-color: #fef3c7; color: #f59e0b; }
+	.progress-status.completed { background-color: #d1fae5; color: #065f46; }
+	.goods-extra-line { flex-direction: row; align-items: center; margin-top: 10rpx; }
+	.goods-extra-item { flex-direction: row; align-items: baseline; }
+	.goods-extra-spacer { margin-left: 12rpx; }
+	.goods-extra-label { color: #94a3b8; font-size: 20rpx; }
+	.goods-extra-value { color: #64748b; font-size: 20rpx; }
+		.card-right { position: absolute; top: 20rpx; right: 24rpx; z-index: 1; flex-direction: row; align-items: center; }
+		.merge-flag { width: 46rpx; height: 46rpx; margin-right: 10rpx; border-radius: 12rpx; background-color: #ecfdf5; border-width: 2rpx; border-color: #a7f3d0; align-items: center; justify-content: center; box-shadow: 0 2rpx 4rpx rgba(5, 150, 105, 0.12); }
+		.selection-control { width: 46rpx; height: 46rpx; border-radius: 24rpx; border-width: 3rpx; border-color: #94a3b8; background-color: #ffffff; align-items: center; justify-content: center; }
+		.selection-control.selected { border-color: #16a34a; background-color: #16a34a; }
+		.selection-control.disabled { opacity: 0.35; }
+		.selection-mark { color: #ffffff; font-size: 28rpx; font-weight: 700; }
+		.card-more-btn { width: 46rpx; height: 46rpx; background-color: #f8fafc; border-width: 2rpx; border-color: #e2e8f0; border-radius: 12rpx; flex-direction: row; align-items: center; justify-content: center; box-shadow: 0 2rpx 4rpx rgba(15, 23, 42, 0.08); }
+		.menu-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); z-index: 2000; justify-content: flex-end; }
+	.confirm-modal { width: 100%; background-color: #ffffff; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; overflow: hidden; }
+	.confirm-title { padding: 40rpx; font-size: 48rpx; font-weight: 700; color: #111827; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.confirm-content { padding: 20rpx 40rpx 10rpx; }
+	.confirm-message { padding: 32rpx 40rpx; color: #475569; font-size: 28rpx; line-height: 44rpx; }
+	.confirm-actions { flex-direction: row; padding: 0 40rpx 40rpx; }
+	.confirm-actions.single-row { padding-top: 20rpx; }
+	.confirm-btn { height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.confirm-btn.cancel { flex: 1; margin-right: 20rpx; color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
+	.confirm-btn.agree { flex: 1; background-color: #03ae4f; color: #ffffff; }
+	.confirm-btn.full { width: 100%; }
+	.copy-modal { width: 100%; background-color: #ffffff; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; padding: 32rpx; max-height: 90vh; }
+	.download-modal { height: 85%; }
+	.copy-modal-title { font-size: 40rpx; font-weight: 700; color: #111827; margin-bottom: 24rpx; }
+	.copy-info-card { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; border-radius: 24rpx; padding: 16rpx 24rpx; }
+	.copy-info-row { flex-direction: row; justify-content: space-between; align-items: flex-start; padding: 20rpx 0; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.copy-info-row.selectable { background-color: #f8fafc; }
+	.copy-label { color: #64748b; font-size: 28rpx; }
+	.copy-value { max-width: 420rpx; color: #111827; font-size: 28rpx; text-align: right; }
+	.copy-actions { flex-direction: row; margin-top: 36rpx; }
+	.copy-btn { flex: 1; height: 88rpx; margin: 0 12rpx; border-radius: 20rpx; font-size: 32rpx; font-weight: 600; }
+	.copy-btn.close { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; color: #334155; }
+	.copy-btn.create { background-color: #03ae4f; color: #ffffff; }
+	.reset-tip { display: block; margin-top: 28rpx; color: #b45309; font-size: 28rpx; text-align: center; }
+</style>

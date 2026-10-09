@@ -1,0 +1,61 @@
+<template>
+	<scroll-view class="download-info-scroll" scroll-y="true">
+		<view v-if="mergedLoading || mergedItems.length" class="merged-info-card">
+			<text class="merged-title">{{ t('此合并验货包含以下验货：') }}</text>
+			<text v-if="mergedLoading" class="merged-loading">{{ t('加载中...') }}</text>
+			<view v-for="member in mergedItems" :key="member.plan?.id ?? member.id" class="merged-member">
+				<text class="merged-order">{{ member.plan?.clientOrderNo ?? member.clientOrderNo ?? '-' }}</text>
+				<text class="merged-sku">{{ member.plan?.subGoodsNo ?? member.subGoodsNo ?? '-' }}</text>
+				<text class="merged-name">{{ member.plan?.goodsName ?? member.goodsName ?? '-' }}</text>
+			</view>
+		</view>
+		<view class="copy-info-card">
+			<view v-for="field in fields" :key="field.label" class="copy-info-row">
+				<text class="copy-label">{{ field.label }}</text>
+				<text class="copy-value">{{ field.value }}</text>
+			</view>
+			<picker :range="templateNames" :value="templateIndex" @change="selectTemplate">
+				<view class="copy-info-row selectable">
+					<text class="copy-label">{{ t('清单') }}</text>
+					<text class="copy-value">{{ templateName }} ›</text>
+				</view>
+			</picker>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+	import { buildDownloadPlanFields } from '../../domain/planDownloadPreview.uts'
+
+	const props = defineProps({
+		item: { type: Object, default: () => ({}) },
+		templateNames: { type: Array, default: () => [] },
+		templateIndex: { type: Number, default: 0 },
+		templateName: { type: String, default: '请选择清单' },
+		mergedItems: { type: Array, default: () => [] },
+		mergedLoading: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['select-template'])
+
+	/** 根据当前卡片计划生成与 H5 下载确认弹框一致的展示行。 */
+	const fields = computed(() => buildDownloadPlanFields(props.item))
+
+	/** 把原生 picker 选中的清单序号交给卡片更新下载参数。 */
+	function selectTemplate(event) { emit('select-template', Number(event?.detail?.value ?? 0)) }
+</script>
+
+<style>
+	.download-info-scroll { flex: 1; }
+	.merged-info-card { margin-bottom: 20rpx; padding: 20rpx 24rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; background-color: #ffffff; }
+	.merged-title { margin-bottom: 14rpx; color: #334155; font-size: 26rpx; font-weight: 600; }
+	.merged-loading { padding: 16rpx 0; color: #64748b; font-size: 24rpx; }
+	.merged-member { min-height: 64rpx; flex-direction: row; align-items: center; border-bottom-width: 1rpx; border-bottom-color: #f1f5f9; }
+	.merged-order, .merged-sku, .merged-name { flex: 1; padding: 12rpx 8rpx; color: #475569; font-size: 22rpx; }
+	.copy-info-card { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; border-radius: 24rpx; padding: 16rpx 24rpx; }
+	.copy-info-row { flex-direction: row; justify-content: space-between; align-items: flex-start; padding: 20rpx 0; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.copy-info-row.selectable { background-color: #f8fafc; }
+	.copy-label { color: #64748b; font-size: 28rpx; }
+	.copy-value { max-width: 420rpx; color: #111827; font-size: 28rpx; text-align: right; }
+</style>

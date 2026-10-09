@@ -1,0 +1,49 @@
+const AUTH_API_MARKER = '/api/auth/'
+const AUTH_API_ACTIONS = ['login', 'dingtalk-login', 'refresh']
+
+/**
+ * 判断给定 URL 是否为登录鉴权接口（登录、钉钉登录、刷新令牌）。
+ * 鉴权接口自身失败时仅向上抛错，不清理会话也不跳转登录页，避免登录流程被重定向打断。
+ */
+export function isAuthApiPath(url) {
+  const path = String(url ?? '').split('?')[0]
+  const index = path.indexOf(AUTH_API_MARKER)
+  if (index < 0) return false
+  const action = path.slice(index + AUTH_API_MARKER.length)
+  return AUTH_API_ACTIONS.includes(action)
+}
+
+/**
+ * 创建统一鉴权失败守卫：清除本地会话并跳转登录页。
+ * 鉴权接口（登录、钉钉登录、刷新令牌）失败时零副作用，仅向上抛错；
+ * 跳转带冷却窗口（默认 800ms），并发 401 只触发一次跳转；清除会话失败不影响跳转。
+ */
+export function createAuthSessionGuard(options) {
+  const userRepository = options?.userRepository
+  const redirectToLoginPage = typeof options?.redirectToLoginPage === 'function' ? options.redirectToLoginPage : () => {}
+  const now = typeof options?.now === 'function' ? options.now : () => Date.now()
+  const redirectCooldownMs = Number(options?.redirectCooldownMs ?? 800)
+  let lastRedirectAt = 0
+
+  /**
+   * 处理一次鉴权失败：非鉴权接口清除会话并在冷却窗口外跳转登录页，最终抛出失败提示。
+   * 始终返回 rejected Promise，使上游请求以错误结束；副作用失败不中断流程。
+   */
+  async function handleAuthFailure(failure) {
+    const fallbackMessage = String(failure?.fallbackMessage ?? '登录已失效，请重新登录')
+    if (!isAuthApiPath(failure?.url)) {
+      try {
+        await userRepository?.clearSession()
+      } catch (_) {}
+      if (now() - lastRedirectAt >= redirectCooldownMs) {
+        lastRedirectAt = now()
+        try {
+          redirectToLoginPage()
+        } catch (_) {}
+      }
+    }
+    throw new Error(fallbackMessage)
+  }
+
+  return { handleAuthFailure }
+}

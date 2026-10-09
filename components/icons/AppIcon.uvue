@@ -1,0 +1,63 @@
+<template>
+	<text class="app-icon" :style="iconStyle">{{ glyph }}</text>
+</template>
+
+<script setup lang="uts">
+	import { computed } from 'vue'
+
+	const props = defineProps({
+		type: { type: String, default: '' },
+		size: { type: Number, default: 20 },
+		color: { type: String, default: '#333333' }
+	})
+
+	/**
+	 * 根据业务图标类型返回 Uni Icons 字体中的字符编码。
+	 */
+	const glyph = computed(() => {
+		if (props.type === 'bars') return '\ue627'
+		if (props.type === 'close') return '\ue66c'
+		if (props.type === 'cloudUpload') return '\ue645'
+		if (props.type === 'download') return '\ue68d'
+		if (props.type === 'downloadFilled') return '\ue681'
+		if (props.type === 'locked') return '\ue66b'
+		if (props.type === 'more') return '\ue64d'
+		if (props.type === 'plus') return '\ue676'
+		if (props.type === 'merge') return '\ue633'
+		if (props.type === 'scan') return '\ue62a'
+		if (props.type === 'search') return '\ue654'
+		if (props.type === 'back') return '\ue6b9'
+		if (props.type === 'arrowRight') return '\ue6b5'
+		if (props.type === 'arrowDown') return '\ue6b8'
+		if (props.type === 'camera') return '\ue65a'
+		if (props.type === 'chat') return '\ue656'
+		if (props.type === 'star') return '\ue688'
+		if (props.type === 'check') return '\ue62c'
+		if (props.type === 'warning') return '\ue649'
+		if (props.type === 'help') return '\ue674'
+		if (props.type === 'clear') return '\ue66d'
+		return ''
+	})
+
+	/**
+	 * 生成原生 App 可识别的图标字号与颜色样式。
+	 */
+	const iconStyle = computed(() => ({
+		fontSize: `${props.size}px`,
+		lineHeight: `${props.size}px`,
+		color: props.color
+	}))
+</script>
+
+<style>
+	@font-face {
+		font-family: QcmUniIcons;
+		src: url('/static/fonts/uniicons.ttf');
+	}
+
+	.app-icon {
+		font-family: QcmUniIcons;
+		font-style: normal;
+		text-align: center;
+	}
+</style>

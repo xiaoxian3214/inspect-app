@@ -1,0 +1,155 @@
+<template>
+	<view>
+
+	</view>
+</template>
+
+<script setup lang="uts">
+	import {getDatabasePath,  openDatabase, isOpenDatabase, closeDatabase, selectSql, executeSql, transaction, SqlTransactionOptions, DatabaseOptions, SqlOperationOptions } from '@/uni_modules/lime-sqlite'
+	openDatabase({
+		// name: 'static/db/a.db',
+		name: 'text',
+		success(res) {
+			console.log('openDatabase', res)
+			
+			console.log('getDatabasePath:::', getDatabasePath('static/db/a.db'))
+		},
+		fail(err) {
+			console.log('openDatabase', err)
+		}
+	} as DatabaseOptions)
+
+
+	// setTimeout(()=>{
+	// 	isOpenDatabase({
+	// 		name: 'text',
+	// 		success(res) {
+	// 			console.log('isOpenDatabase', res)
+	// 		},
+	// 		fail(err) {
+	// 			console.log('isOpenDatabase', err)
+	// 		}
+	// 	})
+	// },1000)
+
+	// 关闭
+	// closeDatabase({
+	// 	name: 'text',
+	// 	success(res) {
+	// 		console.log('closeDatabase', res)
+	// 	},
+	// 	fail(err) {
+	// 		console.log('closeDatabase', err)
+	// 	}
+	// } as DatabaseOptions)
+
+	// 增删改
+	setTimeout(()=>{
+		executeSql({
+			name: 'text',
+			// name: 'static/db/a.db',
+			// sql: ['insert into test values(1, "test")'],
+			sql: [
+				"CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, age INTEGER)",
+				"INSERT INTO test (name, age) VALUES ('Alice', 30)",
+				"INSERT INTO test (name, age) VALUES ('Bob', 25)",
+				"INSERT INTO test (name, age) VALUES ('Charlie', 35)"
+			],
+			success(res) {
+				console.log('executeSql', res)
+			},
+			fail(err) {
+				console.log('executeSql', err)
+			}
+		} as SqlOperationOptions)
+	},2000)
+	
+	// 查询
+	setTimeout(() => {
+		selectSql({
+			name: 'text',
+			// name: 'static/db/a.db',
+			sql: ['select * from test'],
+			// sql: ['SELECT last_insert_rowid() AS id'],
+			success(res) {
+				console.log('selectSql', res)
+			},
+			fail(err) {
+				console.log('selectSql', err)
+			}
+		} as SqlOperationOptions)
+	},3000)
+
+	// 测试列类型：验证 INTEGER/TEXT/REAL 返回值类型是否正确
+	setTimeout(() => {
+		executeSql({
+			name: 'text',
+			sql: [
+				"CREATE TABLE IF NOT EXISTS _test (id INTEGER, val TEXT, score REAL)",
+				"DELETE FROM _test",
+				`INSERT INTO _test VALUES (1, 'hello', ${Date.now()})`,
+				"INSERT INTO _test VALUES (2, 'world', 88.0)"
+			],
+			success(res) {
+				console.log('[test] 建表插数据成功', res)
+				selectSql({
+					name: 'text',
+					sql: ['SELECT * FROM _test'],
+					success(res) {
+						console.log('[test] 查询结果', res)
+						// 验证返回类型
+						if (res.result.length > 0) {
+							const row = res.result[0]
+							console.log('[test] id type:', typeof row['id'], 'value:', row['id'])
+							console.log('[test] val type:', typeof row['val'], 'value:', row['val'])
+							console.log('[test] score type:', typeof row['score'], 'value:', row['score'])
+							// id 应该是 number，val 应该是 string，score 应该是 number
+							if (typeof row['id'] == 'number') {
+								console.log('[test] id 类型正确 ✓ 是 number')
+							} else {
+								console.log('[test] id 类型错误 ✗ 期望 number 实际', typeof row['id'])
+							}
+							if (typeof row['val'] == 'string') {
+								console.log('[test] val 类型正确 ✓ 是 string')
+							} else {
+								console.log('[test] val 类型错误 ✗ 期望 string 实际', typeof row['val'])
+							}
+							if (typeof row['score'] == 'number') {
+								console.log('[test] score 类型正确 ✓ 是 number')
+							} else {
+								console.log('[test] score 类型错误 ✗ 期望 number 实际', typeof row['score'])
+							}
+						}
+						// 验证 data 数组
+						if (res.data.length > 0) {
+							console.log('[test] data[0]:', res.data[0])
+						}
+					},
+					fail(err) {
+						console.log('[test] 查询失败', err)
+					}
+				} as SqlOperationOptions)
+			},
+			fail(err) {
+				console.log('[test] 建表失败', err)
+			}
+		} as SqlOperationOptions)
+	}, 4000)
+
+	// setTimeout(()=>{
+	// 	transaction({
+	// 		name: 'text',
+	// 		operation: 'begin',
+	// 		success(res) {
+	// 			console.log('transaction', res)
+	// 		},
+	// 		fail(err) {
+	// 			console.log('transaction', err)
+	// 		}
+	// 	} as SqlTransactionOptions)
+	// },1000)
+</script>
+
+<style>
+
+</style>

@@ -1,0 +1,52 @@
+export function createUserRepository(database) {
+  let sessionCache = null
+
+  /** 将完整登录会话写入 SQLite 的 JSON 列，同时保留供离线查询的常用列。 */
+  async function saveSession(session) {
+    await database.transaction(async (transaction) => {
+      transaction.replace('user', [{
+        userId: session.userId,
+        userName: session.userName ?? '',
+        token: session.token ?? '',
+        refreshToken: session.refreshToken ?? '',
+        role: session.role ?? '',
+        expireAt: session.expireAt ?? '',
+        autoLogin: session.autoLogin === true ? 1 : 0,
+        rememberPwd: session.rememberPwd === true ? 1 : 0,
+        updatedAt: session.updatedAt ?? '',
+        jsonData: JSON.stringify(session)
+      }])
+    })
+    sessionCache = session
+    return session
+  }
+
+  /** 从持久 JSON 列还原权限等完整会话字段，兼容早期只有普通列的用户记录。 */
+  async function getLastSession() {
+    if (sessionCache != null) return sessionCache
+    const rows = database.readTable('user')
+    if (rows.length === 0) return null
+    const row = rows[0]
+    try { sessionCache = row.jsonData ? { ...row, ...JSON.parse(row.jsonData) } : row }
+    catch (_) { sessionCache = row }
+    return sessionCache
+  }
+
+  async function clearSession() {
+    await database.transaction(async (transaction) => {
+      transaction.replace('user', [])
+    })
+    sessionCache = null
+  }
+
+  function getCachedSession() {
+    return sessionCache
+  }
+
+  return {
+    saveSession,
+    getLastSession,
+    clearSession,
+    getCachedSession
+  }
+}

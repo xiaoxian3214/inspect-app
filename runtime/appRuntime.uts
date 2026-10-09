@@ -1,0 +1,283 @@
+import { createApiRequestQueue } from '../core/queue/apiRequestQueue.uts'
+import { createSqliteDatabase } from '../database/sqliteDatabase.uts'
+import { createLimeSqliteDriver } from '../database/limeSqliteDriver.uts'
+import { schemaSqlList } from '../database/schema.uts'
+import { createAppSettingsRepository } from '../repositories/appSettingsRepository.uts'
+import { createUserRepository } from '../repositories/userRepository.uts'
+import { createReportRepository } from '../repositories/reportRepository.uts'
+import { createChecklistRepository } from '../repositories/checklistRepository.uts'
+import { createDefectRepository } from '../repositories/defectRepository.uts'
+import { createPhotoRepository } from '../repositories/photoRepository.uts'
+import { createRequestQueueRepository } from '../repositories/requestQueueRepository.uts'
+import { createApiClient } from '../api/apiClient.uts'
+import { createAuthApi } from '../api/authApi.uts'
+import { createPlanApi } from '../api/planApi.uts'
+import { createReportFileApi } from '../api/reportFileApi.uts'
+import { createDefectApi } from '../api/defectApi.uts'
+import { createInviteApi } from '../api/inviteApi.uts'
+import { createReportCommentsApi } from '../api/reportCommentsApi.uts'
+import { createAuthService } from '../services/authService.uts'
+import { createAuthSessionGuard } from '../services/authSessionGuard.uts'
+import { createPlanListService } from '../services/planListService.uts'
+import { createPlanDownloadService } from '../services/planDownloadService.uts'
+import { createPlanOperationService } from '../services/planOperationService.uts'
+import { createOfflineSyncService, isPlanPendingSync } from '../services/offlineSyncService.uts'
+import { createInspectionDetailService } from '../services/inspectionDetailService.uts'
+import { createInspectionMediaService } from '../services/inspectionMediaService.uts'
+import { createDefectCatalogService } from '../services/defectCatalogService.uts'
+import { createInspectionSubmissionService } from '../services/inspectionSubmissionService.uts'
+import { createPersistentOperationService } from '../services/persistentOperationService.uts'
+import { createAutomaticSyncService } from '../services/automaticSyncService.uts'
+import { createSyncQueueOverviewService } from '../services/syncQueueOverviewService.uts'
+import { evaluateFinalSubmissionPhotos } from '../domain/finalSubmissionPolicy.uts'
+import * as photoUploadPolicy from '../domain/photoUploadPolicy.uts'
+import * as planViewModel from '../domain/planViewModel.uts'
+import * as searchViewModel from '../domain/searchViewModel.uts'
+import * as detailViewModel from '../domain/detailViewModel.uts'
+import { API_BASE_URL } from '../config/appConfig.uts'
+
+const LEGACY_DATABASE_KEY = '__QCM_APP_DATABASE__'
+const LEGACY_SETTING_KEYS = ['qcm_language', 'qcm_defect_catalog', 'qcm_recent_defect_categories', 'login_prefs_v1']
+const sqliteDriver = createLimeSqliteDriver()
+const database = createSqliteDatabase(sqliteDriver, schemaSqlList, {
+  read: () => {
+    const legacyDatabase = uni.getStorageSync(LEGACY_DATABASE_KEY)
+    const settingRows = LEGACY_SETTING_KEYS.map((key) => ({ key, value: uni.getStorageSync(key) }))
+      .filter((item) => item.value !== '' && item.value !== null && item.value !== undefined)
+      .map((item) => ({ key: item.key, jsonData: JSON.stringify(item.value), updatedAt: new Date().toISOString() }))
+    return { ...(legacyDatabase != null && typeof legacyDatabase === 'object' ? legacyDatabase : {}), app_setting: settingRows }
+  },
+  remove: () => {
+    uni.removeStorageSync(LEGACY_DATABASE_KEY)
+    LEGACY_SETTING_KEYS.forEach((key) => uni.removeStorageSync(key))
+  },
+  migratePhoto: (path) => sqliteDriver.persistPhoto(path)
+})
+const appSettingsRepository = createAppSettingsRepository(database)
+const userRepository = createUserRepository(database)
+const reportRepository = createReportRepository(database)
+const checklistRepository = createChecklistRepository(database)
+const defectRepository = createDefectRepository(database)
+const photoRepository = createPhotoRepository(database)
+const requestQueueRepository = createRequestQueueRepository(database)
+const requestQueue = createApiRequestQueue()
+
+/**
+ * 查询当前设备网络是否可用于访问云端接口。
+ */
+export function isNetworkOnline() {
+  return new Promise((resolve) => {
+    uni.getNetworkType({
+      success: (result) => resolve(result.networkType !== 'none'),
+      fail: () => resolve(false)
+    })
+  })
+}
+
+/**
+ * 返回当前设备网络类型（wifi/5g/4g/3g/2g/none/unknown），供上传并发度决策使用。
+ */
+export function getDeviceNetworkType() {
+  return new Promise((resolve) => {
+    uni.getNetworkType({
+      success: (result) => resolve(result.networkType ?? 'unknown'),
+      fail: () => resolve('unknown')
+    })
+  })
+}
+
+/**
+ * 统一鉴权失败守卫：请求与上传通道共享同一实例，保证并发失效时仅清理一次会话、跳转一次登录页。
+ */
+const authSessionGuard = createAuthSessionGuard({
+  userRepository,
+  redirectToLoginPage: () => {
+    uni.reLaunch({ url: '/pages/login/login' })
+  }
+})
+const apiClient = createApiClient({
+  baseUrl: API_BASE_URL,
+  queue: requestQueue,
+  getSession: () => userRepository.getCachedSession(),
+  getLanguage: () => appSettingsRepository.get('qcm_language') ?? 'zh',
+  onAuthFailure: authSessionGuard.handleAuthFailure
+})
+const authApi = createAuthApi(apiClient)
+const planApi = createPlanApi(apiClient)
+const reportFileApi = createReportFileApi({
+  apiClient,
+  baseUrl: API_BASE_URL,
+  getSession: () => userRepository.getCachedSession(),
+  onAuthFailure: authSessionGuard.handleAuthFailure
+})
+const defectApi = createDefectApi(apiClient)
+const inviteApi = createInviteApi(apiClient)
+const authService = createAuthService({ authApi, userRepository, isOnline: isNetworkOnline })
+const planListService = createPlanListService({ reportRepository, planApi, planViewModel })
+const planDownloadService = createPlanDownloadService({ planApi, reportRepository, planViewModel })
+const planOperationService = createPlanOperationService({ planApi, reportRepository, planDownloadService, searchViewModel })
+const offlineSyncService = createOfflineSyncService({ reportRepository, planApi })
+const inspectionDetailService = createInspectionDetailService({
+  reportRepository,
+  planApi,
+  isOnline: isNetworkOnline,
+  listPhotos: (planId) => photoRepository.listByReportId(planId),
+  viewModel: detailViewModel
+})
+const inspectionMediaService = createInspectionMediaService({
+  photoRepository,
+  reportFileApi,
+  isOnline: isNetworkOnline,
+  photoUploadPolicy,
+  getNetworkType: getDeviceNetworkType
+})
+const defectCatalogService = createDefectCatalogService({
+  defectApi,
+  isOnline: isNetworkOnline,
+  readCache: () => appSettingsRepository.get('qcm_defect_catalog') || { tree: [], levels: [] },
+  writeCache: (catalog) => appSettingsRepository.set('qcm_defect_catalog', catalog)
+})
+const inspectionSubmissionService = createInspectionSubmissionService({
+  isOnline: isNetworkOnline,
+  listPhotos: (planId) => photoRepository.listByReportId(planId),
+  uploadPendingPhotos: (planId) => inspectionMediaService.uploadPendingPhotos(planId),
+  evaluatePhotos: evaluateFinalSubmissionPhotos,
+  planApi
+})
+const persistentOperationService = createPersistentOperationService({ requestQueueRepository, reportFileApi, isOnline: isNetworkOnline })
+const syncQueueOverviewService = createSyncQueueOverviewService({ reportRepository, photoRepository, requestQueueRepository, isPlanPendingSync })
+
+/**
+ * 将已上传图片重新写回本地详情和普通草稿 payload，确保随后同步包含服务端文件 ID。
+ */
+async function refreshDraftPhotosAfterUpload(planId) {
+  const localDetail = await reportRepository.getPlanById(planId)
+  if (localDetail == null) return null
+  const photos = await photoRepository.listByReportId(planId)
+  const refreshed = detailViewModel.mergeDetailPhotos(localDetail, photos)
+  return inspectionDetailService.saveDraft(planId, refreshed, { markDirty: true })
+}
+
+/** 查找尚未到期的照片重试记录，供自动同步在退避时间结束时重新运行。 */
+async function getNextPhotoRetryAt() {
+  const photos = await photoRepository.listPending()
+  const retryTimes = photos
+    .filter((photo) => String(photo?.uploadStatus ?? '').toLowerCase() === 'retry_wait')
+    .map((photo) => Date.parse(String(photo?.nextRetryAt ?? '')))
+    .filter((timestamp) => Number.isFinite(timestamp) && timestamp > 0)
+  return retryTimes.length === 0 ? '' : new Date(Math.min(...retryTimes)).toISOString()
+}
+
+const automaticSyncService = createAutomaticSyncService({
+  getSession: () => userRepository.getCachedSession(),
+  isOnline: isNetworkOnline,
+  processPendingOperations: () => persistentOperationService.processPending(),
+  listPendingPhotoPlanIds: () => photoRepository.listPendingReportIds(),
+  listNextPhotoRetryAt: getNextPhotoRetryAt,
+  uploadPendingPhotos: (planId) => inspectionMediaService.uploadPendingPhotos(planId),
+  refreshDraftPhotos: refreshDraftPhotosAfterUpload,
+  syncPendingPlans: () => offlineSyncService.syncPendingPlans()
+})
+
+let initialized = false
+
+/**
+ * 初始化本地数据库并恢复最近一次登录会话。
+ */
+export async function initializeRuntime() {
+  if (initialized) return
+  await database.open()
+  await userRepository.getLastSession()
+  initialized = true
+}
+
+/** 从 SQLite 读取语言、登录偏好或最近分类等小型本地设置。 */
+export function getAppSetting(key) {
+  return appSettingsRepository.get(key)
+}
+
+/** 将语言、登录偏好或最近分类写入 SQLite 并等待事务提交。 */
+export async function setAppSetting(key, value) {
+  await initializeRuntime()
+  return appSettingsRepository.set(key, value)
+}
+
+/**
+ * 使用账号密码登录并持久化当前会话。
+ */
+export async function login(credentials) {
+  await initializeRuntime()
+  return authService.login(credentials)
+}
+
+/**
+ * 从本地数据库恢复上次有效会话。
+ */
+export async function restoreSession() {
+  await initializeRuntime()
+  return authService.restoreSession()
+}
+
+/**
+ * 清理当前用户会话。
+ */
+export async function logout() {
+  await authService.logout()
+}
+
+/**
+ * 返回运行时缓存的当前用户会话。
+ */
+export function getCurrentSession() {
+  return userRepository.getCachedSession()
+}
+
+/**
+ * 在已登录且联网时自动处理全部持久操作、图片上传和普通草稿同步。
+ */
+export function syncOfflineDataAutomatically() {
+  return automaticSyncService.syncWhenOnline()
+}
+
+/** 订阅自动同步的实时阶段，供详情页显示上传进度与队列；返回取消订阅函数。 */
+export function subscribeAutomaticSyncStatus(listener) {
+  return automaticSyncService.subscribe(listener)
+}
+
+/**
+ * 返回列表页和详情页共用的全局同步队列概览。
+ */
+export function getOfflineSyncOverview() {
+  return syncQueueOverviewService.getOverview()
+}
+
+/**
+ * 返回当前设备离线数据库的全部表快照，供本地数据调试页面展示。
+ */
+export async function getLocalDatabaseSnapshot() {
+  await initializeRuntime()
+  return database.snapshot()
+}
+
+export {
+  planApi,
+  inviteApi,
+  planListService,
+  planDownloadService,
+  planOperationService,
+  offlineSyncService,
+  inspectionDetailService,
+  inspectionMediaService,
+  inspectionSubmissionService,
+  persistentOperationService,
+  defectCatalogService,
+  reportRepository,
+  checklistRepository,
+  defectRepository,
+  photoRepository,
+  requestQueueRepository,
+  reportFileApi,
+  defectApi,
+  reportCommentsApi,
+  requestQueue
+}

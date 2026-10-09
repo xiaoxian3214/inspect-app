@@ -1,0 +1,135 @@
+<template>
+	<view v-if="visible" class="menu-overlay" @click="handleCancel">
+		<view class="action-menu" @click.stop>
+			<text v-if="title !== ''" class="menu-header">{{ t(title) }}</text>
+			<view
+				v-for="item in actions"
+				:key="item.key"
+				class="menu-item"
+				:class="{ disabled: item.disabled === true, 'with-icons': showIcons }"
+				@click="handleSelect(item)"
+			>
+				<AppIcon v-if="showIcons && item.icon" class="menu-icon" :type="item.icon" :size="22" color="#333333" />
+				<text class="menu-text" :class="{ 'with-icons-text': showIcons }">{{ t(item.label) }}</text>
+			</view>
+			<view class="menu-cancel" @click="handleCancel">
+				<text class="menu-cancel-text">{{ t(cancelText) }}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import AppIcon from '../icons/AppIcon.uvue'
+
+	defineProps({
+		visible: { type: Boolean, default: false },
+		title: { type: String, default: '' },
+		actions: { type: Array, default: () => [] },
+		showIcons: { type: Boolean, default: false },
+		cancelText: { type: String, default: '取消' }
+	})
+
+	const emit = defineEmits(['select', 'cancel'])
+
+	/**
+	 * 选择可用操作并将完整操作对象交给页面或业务组件处理。
+	 */
+	function handleSelect(item) {
+		if (item?.disabled === true) return
+		emit('select', item)
+	}
+
+	/**
+	 * 关闭底部操作菜单。
+	 */
+	function handleCancel() {
+		emit('cancel')
+	}
+</script>
+
+<style>
+	.menu-overlay {
+		position: fixed;
+		left: 0;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		z-index: 2000;
+		background-color: rgba(0, 0, 0, 0.5);
+		justify-content: flex-end;
+	}
+
+	.action-menu {
+		width: 100%;
+		padding-top: 8px;
+		padding-bottom: calc(8px + env(safe-area-inset-bottom));
+		border-radius: 16px 16px 0 0;
+		background-color: #ffffff;
+	}
+
+	.menu-header {
+		height: 52px;
+		padding: 0 20px;
+		border-bottom-width: 1px;
+		border-bottom-color: #f0f0f0;
+		color: #333333;
+		font-size: 16px;
+		font-weight: 600;
+		line-height: 52px;
+		text-align: center;
+	}
+
+	.menu-item {
+		height: 52px;
+		padding: 0 20px;
+		border-bottom-width: 1px;
+		border-bottom-color: #f5f5f5;
+		background-color: #ffffff;
+		align-items: center;
+		justify-content: center;
+		flex-direction: row;
+	}
+
+	.menu-item.disabled {
+		opacity: 0.55;
+	}
+
+	.menu-item.with-icons {
+		justify-content: flex-start;
+		padding-left: 20px;
+		padding-right: 20px;
+	}
+
+	.menu-icon {
+		width: 28px;
+		margin-right: 8px;
+	}
+
+	.menu-text {
+		color: #333333;
+		font-size: 16px;
+		line-height: 52px;
+		text-align: center;
+	}
+
+	.menu-text.with-icons-text {
+		flex: 1;
+		text-align: left;
+	}
+
+	.menu-cancel {
+		height: 52px;
+		margin-top: 8px;
+		background-color: #f9f9f9;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.menu-cancel-text {
+		color: #666666;
+		font-size: 16px;
+		line-height: 52px;
+	}
+</style>

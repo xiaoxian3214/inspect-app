@@ -1,0 +1,68 @@
+export function createApiRequestQueue() {
+  const pendingTasks = []
+  const promisesByKey = new Map()
+  let active = false
+  let sequence = 0
+
+  function sortPendingTasks() {
+    pendingTasks.sort((left, right) => {
+      if (left.priority !== right.priority) return right.priority - left.priority
+      return left.sequence - right.sequence
+    })
+  }
+
+  function runNext() {
+    if (active || pendingTasks.length === 0) return
+    const task = pendingTasks.shift()
+    active = true
+
+    Promise.resolve()
+      .then(() => task.execute())
+      .then(task.resolve, task.reject)
+      .finally(() => {
+        if (task.key !== '') promisesByKey.delete(task.key)
+        active = false
+        runNext()
+      })
+  }
+
+  function enqueue(task) {
+    if (task == null || typeof task.execute !== 'function') {
+      return Promise.reject(new Error('请求任务缺少 execute 方法'))
+    }
+
+    const key = String(task.key ?? '').trim()
+    if (key !== '' && promisesByKey.has(key)) return promisesByKey.get(key)
+
+    let resolveTask
+    let rejectTask
+    const promise = new Promise((resolve, reject) => {
+      resolveTask = resolve
+      rejectTask = reject
+    })
+    const queueTask = {
+      key,
+      priority: Number(task.priority ?? 0),
+      sequence,
+      execute: task.execute,
+      resolve: resolveTask,
+      reject: rejectTask
+    }
+    sequence += 1
+
+    if (key !== '') promisesByKey.set(key, promise)
+    pendingTasks.push(queueTask)
+    sortPendingTasks()
+    Promise.resolve().then(runNext)
+    return promise
+  }
+
+  function getSize() {
+    return pendingTasks.length + (active ? 1 : 0)
+  }
+
+  return {
+    enqueue,
+    getSize
+  }
+}

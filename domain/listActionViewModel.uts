@@ -1,0 +1,91 @@
+const FAB_ACTIONS = {
+  merge: { key: 'merge', label: '合并验货', icon: 'merge' },
+  scan: { key: 'scan', label: '通过扫描条码来搜索验货', icon: 'scan' },
+  search: { key: 'search', label: '开始验货', icon: 'search' },
+  quick: { key: 'quick', label: '创建快速验货', icon: 'plus' }
+}
+
+const CARD_ACTIONS = {
+  download: { key: 'download', label: '下载' },
+  'view-inspector': { key: 'view-inspector', label: '查看当前验货员' },
+  unlock: { key: 'unlock', label: '解锁' },
+  reset: { key: 'reset', label: '重置' },
+  copy: { key: 'copy', label: '复制当前验货' },
+  'copy-merged': { key: 'copy-merged', label: '复制合并验货' },
+  'ready-quantity': { key: 'ready-quantity', label: '设置备货数量' },
+  report: { key: 'report', label: '显示报告' },
+  split: { key: 'split', label: '拆分验货' }
+}
+
+/**
+ * 根据当前列表页签返回与 H5 顺序一致的浮动菜单操作。
+ */
+export function buildFabActions(statusKey) {
+  if (statusKey === 'planned') {
+    return [FAB_ACTIONS.merge, FAB_ACTIONS.scan, FAB_ACTIONS.search, FAB_ACTIONS.quick]
+  }
+  if (statusKey === 'report') {
+    return [FAB_ACTIONS.scan, FAB_ACTIONS.search]
+  }
+  return []
+}
+
+/**
+ * 根据本地下载记录、锁状态和当前用户计算计划的下载状态。
+ */
+export function resolveDownloadState(options: any = {}) {
+  if (options?.isLocalDownloaded === true || Boolean(options?.downloadedAt)) return 'downloaded'
+  if (Number(options?.lockFlag ?? 0) !== 1) return 'available'
+
+  const inspectorId = String(options?.inspectorId ?? '').trim()
+  const currentUserId = String(options?.currentUserId ?? '').trim()
+  if (inspectorId !== '' && currentUserId !== '' && inspectorId === currentUserId) return 'downloaded'
+  if (inspectorId !== '' && currentUserId !== '' && inspectorId !== currentUserId) return 'locked'
+  return 'available'
+}
+
+/**
+ * 按 H5 的可见性与顺序生成卡片右侧“更多”菜单操作。
+ */
+export function buildCardActions(options: any = {}) {
+  const actions = []
+  const downloadState = String(options?.downloadState ?? 'available')
+  const statusKey = String(options?.statusKey ?? 'planned')
+  const manageActionsInCard = options?.manageActionsInCard === true
+  const isPlannedOrProgress = statusKey === 'planned' || statusKey === 'progress'
+
+  if (downloadState === 'available') actions.push(CARD_ACTIONS.download)
+  if (downloadState === 'locked') actions.push(CARD_ACTIONS['view-inspector'])
+  if (downloadState === 'downloaded' && isPlannedOrProgress) {
+    actions.push(CARD_ACTIONS.unlock)
+    actions.push(CARD_ACTIONS.reset)
+  }
+  if (manageActionsInCard) actions.push(CARD_ACTIONS.copy)
+  if (manageActionsInCard && options?.isMerged === true) actions.push(CARD_ACTIONS['copy-merged'])
+  actions.push(CARD_ACTIONS['ready-quantity'])
+  if (statusKey === 'report' || downloadState === 'locked') actions.push(CARD_ACTIONS.report)
+  if (options?.showSplit === true) actions.push(CARD_ACTIONS.split)
+  return actions
+}
+
+/**
+ * 未缓存的线上卡片先恢复完整详情；已缓存计划沿用原有操作分流。
+ */
+export function resolveCardClickAction(options: any = {}) {
+  if (options?.selectionMode === true) return 'toggle-merge'
+  const downloadState = String(options?.downloadState ?? 'available')
+  if (options?.isLocalDownloaded !== true) {
+    return downloadState === 'locked' ? 'open-actions' : 'recover-detail'
+  }
+  if (Number(options?.status ?? 0) === 3) return 'open-actions'
+  return 'open-detail'
+}
+
+/**
+ * 判断当前状态是否允许启动一次新的离线数据同步。
+ */
+export function canStartSync(options: any = {}) {
+  return options?.isSyncing !== true
+    && options?.isOnline === true
+    && Number(options?.pendingCount ?? 0) > 0
+}

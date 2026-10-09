@@ -1,0 +1,113 @@
+const COMMENT_CONTENT_MAX_LENGTH = 500
+const COMMENT_TARGET_TYPE = 'REPORT'
+
+/**
+ * 按 H5 字段兼容规则归一化单条服务端评论（含嵌套回复）。
+ * @param row 服务端评论原始对象
+ * @param index 顶层序号，用于兜底生成评论 ID
+ * @returns 归一化后的 { id, content, authorName, createdAt, updatedAt, replies }
+ */
+export function normalizeCommentRow(row, index) {
+	const normalizedIndex = Number(index) ?? 0
+	const source = row != null && typeof row === 'object' ? row : {}
+	const id = String(source.id ?? source.commentId ?? source.reviewCommentId ?? source.reviewId ?? `comment_${normalizedIndex}`).trim()
+	const content = String(source.commentContent ?? source.content ?? source.comment ?? source.remarks ?? source.reviewComments ?? '').trim()
+	const authorName = String(source.createByName ?? source.creatorName ?? source.commenterName ?? source.commenter ?? source.userName ?? source.createName ?? source.reviewerName ?? source.createBy ?? '').trim()
+	const createdAt = String(source.createDate ?? source.createdAt ?? source.updateDate ?? source.updatedAt ?? '').trim()
+	const updatedAt = String(source.updateDate ?? source.updatedAt ?? source.createDate ?? source.createdAt ?? '').trim()
+	const replies = (Array.isArray(source.replies) ? source.replies : []).map((reply, replyIndex) => normalizeCommentRow(reply, replyIndex))
+	return { id, content, authorName, createdAt, updatedAt, replies }
+}
+
+/**
+ * 兼容数组或 records/rows/list/data/items 等分页包装结构并归一化全部评论。
+ * @param payload 接口返回的评论数据
+ * @returns 归一化评论数组
+ */
+export function normalizeReportComments(payload) {
+	let rows = []
+	if (Array.isArray(payload)) rows = payload
+	else if (payload != null && typeof payload === 'object') {
+		if (Array.isArray(payload.records)) rows = payload.records
+		else if (Array.isArray(payload.rows)) rows = payload.rows
+		else if (Array.isArray(payload.list)) rows = payload.list
+		else if (Array.isArray(payload.data)) rows = payload.data
+		else if (Array.isArray(payload.items)) rows = payload.items
+	}
+	return rows.map((row, index) => normalizeCommentRow(row, index))
+}
+
+/**
+ * 深度优先收集一条评论的全部后代回复，压平为二级展示列表。
+ * @param replies 归一化后的直接回复数组
+ * @param parentName 直接被回复人姓名，写入 replyToName
+ * @param bucket 输出的扁平回复列表
+ */
+function collectFlattenedReplies(replies, parentName, bucket) {
+	const rows = Array.isArray(replies) ? replies : []
+	for (const row of rows) {
+		bucket.push({ id: row.id, content: row.content, authorName: row.authorName, createdAt: row.createdAt, updatedAt: row.updatedAt, replyToName: String(parentName ?? ''), replies: [] })
+		collectFlattenedReplies(row.replies, row.authorName, bucket)
+	}
+}
+
+/**
+ * 将归一化的多层评论树压平为 App 可渲染的两级线程（楼层 + 全部回复）。
+ * @param comments normalizeReportComments 的输出
+ * @returns 顶层线程数组，replies 内为扁平后代回复
+ */
+export function buildCommentThreads(comments) {
+	const rows = Array.isArray(comments) ? comments : []
+	return rows.map((row) => {
+		const replies = []
+		collectFlattenedReplies(row.replies, row.authorName, replies)
+		return { id: row.id, content: row.content, authorName: row.authorName, createdAt: row.createdAt, updatedAt: row.updatedAt, replyToName: '', replies }
+	})
+}
+
+/**
+ * 按 H5 规则解析任意评论的回复目标：楼层内统一回复主题根评论。
+ * @param threads buildCommentThreads 的输出
+ * @param commentId 被点击的评论 ID
+ * @returns 回复目标线程；找不到时返回 null
+ */
+export function resolveReplyTarget(threads, commentId) {
+	const normalizedId = String(commentId ?? '').trim()
+	if (normalizedId === '') return null
+	const threadRows = Array.isArray(threads) ? threads : []
+	for (const thread of threadRows) {
+		if (thread.id === normalizedId) return thread
+		const replyRows = Array.isArray(thread.replies) ? thread.replies : []
+		for (const reply of replyRows) {
+			if (reply.id === normalizedId) return thread
+		}
+	}
+	return null
+}
+
+/**
+ * 校验评论草稿：必填且不超过 500 字。
+ * @param content 用户输入的评论内容
+ * @returns { valid, message }，valid 为 false 时 message 说明原因
+ */
+export function validateCommentContent(content) {
+	const normalized = String(content ?? '').trim()
+	if (normalized === '') return { valid: false, message: '评论内容不能为空' }
+	if (normalized.length > COMMENT_CONTENT_MAX_LENGTH) return { valid: false, message: `评论内容不能超过${COMMENT_CONTENT_MAX_LENGTH}字` }
+	return { valid: true, message: '' }
+}
+
+/**
+ * 组装报告评论提交参数：评论目标即报告自身，parentId 为空时提交 null。
+ * @param options { reportId, content, parentId }，parentId 可省略
+ * @returns { reportId, targetId, targetType, parentId, content }
+ */
+export function buildReportCommentParams(options) {
+	const source = options != null && typeof options === 'object' ? options : {}
+	const reportId = String(source.reportId ?? '').trim()
+	if (reportId === '') throw new Error('缺少报告ID')
+	const validation = validateCommentContent(source.content)
+	if (!validation.valid) throw new Error(validation.message)
+	const parentId = String(source.parentId ?? '').trim()
+	return { reportId, targetId: reportId, targetType: COMMENT_TARGET_TYPE, parentId: parentId !== '' ? parentId : null, content: String(source.content ?? '').trim() }
+}

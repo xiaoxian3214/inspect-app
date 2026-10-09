@@ -1,0 +1,39 @@
+<template>
+	<view v-if="visible" class="overlay" @click="closeSheet">
+		<view class="sheet" @click.stop="stopEvent">
+			<view class="sheet-handle"></view>
+			<text class="title">{{ t(title) }}</text>
+			<text class="message">{{ t(message) }}</text>
+			<view class="actions">
+				<button class="button cancel" :disabled="submitting" @click="closeSheet">{{ t(cancelText) }}</button>
+				<button class="button confirm" :class="{ danger: danger }" :disabled="submitting" @click="confirmAction">{{ t(submitting ? '处理中...' : confirmText) }}</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	const props = defineProps({ visible: { type: Boolean, default: false }, title: { type: String, default: '操作确认' }, message: { type: String, default: '' }, confirmText: { type: String, default: '确认' }, cancelText: { type: String, default: '取消' }, danger: { type: Boolean, default: false }, submitting: { type: Boolean, default: false } })
+	const emit = defineEmits(['close', 'confirm'])
+
+	/** 关闭通用二次确认底部弹层。 */
+	function closeSheet() { if (!props.submitting) emit('close') }
+	/** 通知业务页面执行已经确认的操作。 */
+	function confirmAction() { if (!props.submitting) emit('confirm') }
+	/** 阻止点击底部内容区域关闭弹层。 */
+	function stopEvent() {}
+</script>
+
+<style>
+	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2450; justify-content: flex-end; background-color: rgba(15,23,42,.58); }
+	.sheet { width: 100%; padding: 14rpx 30rpx calc(30rpx + env(safe-area-inset-bottom)); border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
+	.sheet-handle { width: 74rpx; height: 8rpx; margin: 0 auto 22rpx; border-radius: 4rpx; background-color: #d7dde7; }
+	.title { color: #172033; font-size: 34rpx; font-weight: 700; }
+	.message { margin-top: 16rpx; color: #64748b; font-size: 25rpx; line-height: 40rpx; }
+	.actions { margin-top: 30rpx; flex-direction: row; }
+	.button { flex: 1; height: 82rpx; margin: 0 8rpx; border-radius: 18rpx; font-size: 26rpx; }
+	.button.cancel { color: #475569; background-color: #f1f5f9; }
+	.button.confirm { color: #ffffff; background-color: #03ae4f; }
+	.button.confirm.danger { background-color: #ef4444; }
+</style>

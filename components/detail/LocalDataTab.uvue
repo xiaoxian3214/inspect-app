@@ -1,0 +1,19 @@
+<template>
+	<view class="tab-content local-data-tab-content">
+		<view class="local-data-card"><view class="local-data-title"><text class="title-text">{{ t('本地报告数据') }}</text><view class="local-data-actions"><view class="action-button" @click="refresh"><text>{{ t('刷新') }}</text></view><view class="action-button primary" @click="copy"><text>{{ t('复制') }}</text></view></view></view><text class="local-data-meta">更新时间：{{ updatedAt ?? '-' }}</text><scroll-view class="json-scroll" scroll-y="true" scroll-x="true"><text class="local-data-json">{{ t(contentText ?? '暂无本地数据') }}</text></scroll-view></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	defineProps({ updatedAt: { type: String, default: '' }, contentText: { type: String, default: '' }, detail: { type: Object, default: () => ({}) }, photos: { type: Array, default: () => [] }, pendingCount: { type: Number, default: 0 } })
+	const emit = defineEmits(['refresh', 'copy', 'sync'])
+	/** 请求父页重新读取当前报告的持久化原始数据。 */
+	function refresh() { emit('refresh') }
+	/** 请求父页复制当前报告 JSON。 */
+	function copy() { emit('copy') }
+</script>
+
+<style>
+	.tab-content, .local-data-tab-content { min-height: 900rpx; }.local-data-card { min-height: 900rpx; padding: 24rpx; background-color: #0b1220; }.local-data-title { padding-bottom: 20rpx; flex-direction: row; align-items: center; justify-content: space-between; border-bottom-width: 2rpx; border-bottom-color: #273244; }.title-text { color: #e2e8f0; font-size: 28rpx; font-weight: 600; }.local-data-actions { flex-direction: row; }.action-button { height: 58rpx; margin-left: 14rpx; padding: 0 20rpx; align-items: center; justify-content: center; border-width: 2rpx; border-color: #475569; border-radius: 12rpx; color: #374151; font-size: 23rpx; background-color: #ffffff; }.action-button.primary { border-color: #2563eb; color: #ffffff; background-color: #2563eb; }.local-data-meta { margin: 18rpx 0; color: #94a3b8; font-size: 23rpx; }.json-scroll { height: 760rpx; border-radius: 16rpx; background-color: #111827; }.local-data-json { padding: 20rpx; color: #e2e8f0; font-size: 22rpx; line-height: 34rpx; white-space: pre; }
+</style>

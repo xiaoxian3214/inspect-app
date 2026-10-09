@@ -1,0 +1,42 @@
+import { initializeRuntime, restoreSession, syncOfflineDataAutomatically } from '../runtime/appRuntime.uts'
+import { getAppSetting } from '../runtime/appRuntime.uts'
+import { applyLocale } from '../i18n/index.uts'
+
+let networkListenerStarted = false
+
+function getCurrentRoute() {
+  const pages = getCurrentPages()
+  if (pages.length === 0) return ''
+  return `/${pages[pages.length - 1].route}`
+}
+
+/**
+ * 注册一次网络恢复监听，并立即尝试同步当前全部离线数据。
+ */
+export function requestAutomaticSync() {
+  if (!networkListenerStarted) {
+    uni.onNetworkStatusChange((result) => {
+      if (result.isConnected) syncOfflineDataAutomatically()
+    })
+    networkListenerStarted = true
+  }
+  return syncOfflineDataAutomatically()
+}
+
+/**
+ * 初始化本地运行时、恢复登录状态并启动联网自动同步。
+ */
+export async function bootstrapApp() {
+  await initializeRuntime()
+  applyLocale(getAppSetting('qcm_language') ?? 'zh')
+  const session = await restoreSession()
+  requestAutomaticSync()
+  const route = getCurrentRoute()
+  if (session != null && route !== '/pages/report/list') {
+    uni.reLaunch({ url: '/pages/report/list?tab=planned' })
+    return
+  }
+  if (session == null && route !== '/pages/login/login') {
+    uni.reLaunch({ url: '/pages/login/login' })
+  }
+}

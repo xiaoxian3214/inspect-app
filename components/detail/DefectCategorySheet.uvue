@@ -1,0 +1,184 @@
+<template>
+	<view v-if="visible" class="category-overlay" @click="closeSheet">
+		<view class="category-sheet" @click.stop="stopEvent">
+			<view class="category-head">
+				<view class="category-back" @click="goBack"><text>{{ step > 1 ? '‹' : '×' }}</text></view>
+				<view class="category-title-wrap">
+					<text class="category-title">{{ stepTitle }}</text>
+					<text class="category-path">{{ selectedPath }}</text>
+				</view>
+				<view class="category-placeholder"></view>
+			</view>
+
+			<input class="category-search" :value="keyword" :placeholder="t('搜索编码或名称')" @input="updateKeyword" />
+
+			<view v-if="step === 1 && keyword === '' && recentCategories.length > 0" class="recent-block">
+				<text class="recent-title">{{ t('最近使用') }}</text>
+				<view class="recent-list">
+					<view v-for="item in recentCategories" :key="item.defectCode" class="recent-chip" @click="applyRecentCategory(item)">
+						<text>{{ item.defectDesc }}</text>
+					</view>
+				</view>
+			</view>
+
+			<scroll-view class="category-list" scroll-y="true">
+				<view v-if="filteredOptions.length === 0" class="empty-state"><text>{{ t(categoryTree.length > 0 ? '没有匹配的疵点分类' : '暂无疵点分类缓存，请联网刷新') }}</text></view>
+				<view v-for="item in filteredOptions" :key="item.code" class="category-row" @click="selectCategory(item)">
+					<view class="category-copy">
+						<text class="category-name">{{ item.name || item.code }}</text>
+						<text v-if="item.code" class="category-code">{{ item.code }}</text>
+					</view>
+					<text class="category-arrow">{{ step < 3 ? '›' : '✓' }}</text>
+				</view>
+			</scroll-view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed, ref, watch } from 'vue'
+	import { getAppSetting, setAppSetting } from '../../runtime/appRuntime.uts'
+	import { normalizeRecentCategories, pushRecentCategory } from '../../domain/defectCategoryHistory.uts'
+
+	const RECENT_CATEGORY_KEY = 'qcm_recent_defect_categories'
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		categoryTree: { type: Array, default: () => [] },
+		selected: { type: Object, default: () => ({}) }
+	})
+	const emit = defineEmits(['close', 'select'])
+	const step = ref(1)
+	const keyword = ref('')
+	const tier1Code = ref('')
+	const tier2Code = ref('')
+	const recentCategories = ref([])
+
+	/** 返回过滤禁用状态后的一级疵点分类。 */
+	const level1Options = computed(() => (props.categoryTree ?? []).filter((item) => String(item?.status ?? '') !== '1'))
+	/** 返回当前选中的一级疵点分类。 */
+	const selectedLevel1 = computed(() => level1Options.value.find((item) => String(item?.code ?? '') === tier1Code.value) || null)
+	/** 返回过滤禁用状态后的二级疵点分类。 */
+	const level2Options = computed(() => (selectedLevel1.value?.children ?? []).filter((item) => String(item?.status ?? '') !== '1'))
+	/** 返回当前选中的二级疵点分类。 */
+	const selectedLevel2 = computed(() => level2Options.value.find((item) => String(item?.code ?? '') === tier2Code.value) || null)
+	/** 返回过滤禁用状态后的三级叶子疵点分类。 */
+	const level3Options = computed(() => (selectedLevel2.value?.children ?? []).filter((item) => {
+		if (String(item?.status ?? '') === '1') return false
+		return item?.isLeaf === true || !Array.isArray(item?.children) || item.children.length === 0
+	}))
+	/** 返回当前选择步骤可展示的分类集合。 */
+	const currentOptions = computed(() => step.value === 1 ? level1Options.value : (step.value === 2 ? level2Options.value : level3Options.value))
+	/** 返回按编码或名称过滤后的分类集合。 */
+	const filteredOptions = computed(() => {
+		const searchText = String(keyword.value ?? '').trim().toLowerCase()
+		if (searchText === '') return currentOptions.value
+		return currentOptions.value.filter((item) => String(item?.code ?? '').toLowerCase().includes(searchText) || String(item?.name ?? '').toLowerCase().includes(searchText))
+	})
+	/** 返回当前分类选择步骤标题。 */
+	const stepTitle = computed(() => step.value === 1 ? '选择一级分类' : (step.value === 2 ? '选择二级分类' : '选择三级分类'))
+	/** 返回已选一级和二级分类组成的路径。 */
+	const selectedPath = computed(() => {
+		const names = []
+		if (selectedLevel1.value?.name) names.push(selectedLevel1.value.name)
+		if (selectedLevel2.value?.name) names.push(selectedLevel2.value.name)
+		return names.length > 0 ? names.join(' / ') : '请选择完整三级疵点类别'
+	})
+
+	/** 从 App 本地存储恢复最近使用的完整三级分类，剔除无效记录并限制在 8 条内。 */
+	function loadRecentCategories() {
+		try {
+			recentCategories.value = normalizeRecentCategories(getAppSetting(RECENT_CATEGORY_KEY))
+		} catch (_) {
+			recentCategories.value = []
+		}
+	}
+	/** 将完整三级分类写入最近使用记录：按疵点编码去重置顶，最多保留 8 条并回写本地存储。 */
+	async function saveRecentCategory(category) {
+		recentCategories.value = pushRecentCategory(recentCategories.value, category)
+		await setAppSetting(RECENT_CATEGORY_KEY, recentCategories.value)
+	}
+	/** 根据当前疵点表单重置分类选择层级和搜索状态。 */
+	function resetSelection(selected) {
+		step.value = 1
+		keyword.value = ''
+		tier1Code.value = String(selected?.tier1Code ?? '')
+		tier2Code.value = String(selected?.tier2Code ?? '')
+		loadRecentCategories()
+	}
+	/** 更新当前层级分类搜索关键词。 */
+	function updateKeyword(event) { keyword.value = String(event?.detail?.value ?? '') }
+	/** 逐级选择疵点分类，选中三级叶子节点后回填完整分类字段。 */
+	async function selectCategory(item) {
+		if (step.value === 1) {
+			tier1Code.value = String(item?.code ?? '')
+			tier2Code.value = ''
+			keyword.value = ''
+			step.value = 2
+			return
+		}
+		if (step.value === 2) {
+			tier2Code.value = String(item?.code ?? '')
+			keyword.value = ''
+			step.value = 3
+			return
+		}
+		const category = {
+			tier1Code: tier1Code.value,
+			tier2Code: tier2Code.value,
+			tier3Code: String(item?.code ?? ''),
+			defectCode: String(item?.code ?? ''),
+			defectDesc: String(item?.name ?? '')
+		}
+		try { await saveRecentCategory(category) } catch (error) { uni.showToast({ title: error?.message ?? '最近分类保存失败', icon: 'none' }); return }
+		emit('select', category)
+	}
+	/** 直接应用最近使用的完整三级分类。 */
+	function applyRecentCategory(item) {
+		emit('select', {
+			tier1Code: String(item?.tier1Code ?? ''),
+			tier2Code: String(item?.tier2Code ?? ''),
+			tier3Code: String(item?.tier3Code ?? item?.defectCode ?? ''),
+			defectCode: String(item?.defectCode ?? ''),
+			defectDesc: String(item?.defectDesc ?? '')
+		})
+	}
+	/** 返回上一级分类，已在一级时关闭分类弹层。 */
+	function goBack() {
+		if (step.value === 1) { closeSheet(); return }
+		step.value -= 1
+		keyword.value = ''
+	}
+	/** 关闭疵点分类选择弹层。 */
+	function closeSheet() { emit('close') }
+	/** 阻止点击分类内容区域关闭弹层。 */
+	function stopEvent() {}
+
+	watch(() => props.visible, (visible) => { if (visible) resetSelection(props.selected) })
+	watch(() => props.selected, (selected) => { if (props.visible) resetSelection(selected) }, { deep: true })
+</script>
+
+<style>
+	.category-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2350; justify-content: flex-end; background-color: rgba(15,23,42,0.55); }
+	.category-sheet { position: absolute; left: 0; top: 10%; right: 0; bottom: 0; flex-direction: column; padding: 24rpx 24rpx 40rpx; border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
+	.category-head { flex-direction: row; align-items: center; }
+	.category-back, .category-placeholder { width: 72rpx; height: 72rpx; align-items: center; justify-content: center; }
+	.category-back { color: #334155; font-size: 48rpx; }
+	.category-title-wrap { flex: 1; align-items: center; }
+	.category-title { color: #172033; font-size: 30rpx; font-weight: 700; }
+	.category-path { margin-top: 4rpx; color: #94a3b8; font-size: 21rpx; }
+	.category-search { height: 74rpx; margin-top: 20rpx; padding: 0 22rpx; border-radius: 18rpx; color: #334155; font-size: 25rpx; background-color: #f1f5f9; }
+	.recent-block { margin-top: 22rpx; }
+	.recent-title { color: #64748b; font-size: 22rpx; }
+	.recent-list { flex-direction: row; flex-wrap: wrap; margin-top: 10rpx; }
+	.recent-chip { margin: 0 12rpx 12rpx 0; padding: 12rpx 18rpx; border-radius: 18rpx; background-color: #ecfdf3; }
+	.recent-chip { color: #038b42; font-size: 22rpx; }
+	.category-list { flex: 1; min-height: 0; margin-top: 16rpx; }
+	.category-row { min-height: 92rpx; padding: 16rpx 12rpx; flex-direction: row; align-items: center; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.category-copy { flex: 1; }
+	.category-name { color: #1e293b; font-size: 27rpx; }
+	.category-code { margin-top: 5rpx; color: #94a3b8; font-size: 21rpx; }
+	.category-arrow { color: #03ae4f; font-size: 34rpx; }
+	.empty-state { padding: 80rpx 24rpx; align-items: center; }
+	.empty-state { color: #94a3b8; font-size: 24rpx; text-align: center; }
+</style>

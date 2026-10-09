@@ -1,0 +1,49 @@
+/**
+ * 判断照片记录是否包含能够参与提交校验的本地或服务端媒体信息。
+ */
+function isPhotoRecord(photo) {
+  if (photo == null || typeof photo !== 'object' || photo?.deleted === true) return false
+  return Boolean(
+    photo?.photoId
+    || photo?.id
+    || photo?.localPath
+    || photo?.fileId
+    || photo?.filePath
+    || photo?.thumbnailPath
+    || photo?.uploadStatus
+  )
+}
+
+/**
+ * 判断照片是否已经具备服务端文件标识或明确的上传成功状态。
+ */
+export function isPhotoUploaded(photo) {
+  if (!isPhotoRecord(photo)) return true
+  if (String(photo?.fileId ?? '').trim() !== '') return true
+  const status = String(photo?.uploadStatus ?? '').trim().toLowerCase()
+  return status === 'done' || status === 'success' || status === 'uploaded'
+}
+
+/**
+ * 汇总最终提交前的图片状态，并返回可直接展示给用户的阻断原因。
+ */
+export function evaluateFinalSubmissionPhotos(photos) {
+  const source = Array.isArray(photos) ? photos.filter(isPhotoRecord) : []
+  const unfinished = source.filter((photo) => !isPhotoUploaded(photo))
+  const failedStatuses = new Set(['failed', 'error', 'needs_attention'])
+  const failedCount = unfinished.filter((photo) => {
+    return failedStatuses.has(String(photo?.uploadStatus ?? '').trim().toLowerCase())
+  }).length
+  const pendingCount = unfinished.length
+
+  return {
+    ready: pendingCount === 0,
+    totalCount: source.length,
+    uploadedCount: source.length - pendingCount,
+    pendingCount,
+    failedCount,
+    message: pendingCount > 0
+      ? `仍有 ${pendingCount} 张图片未上传完成，请联网后重试`
+      : ''
+  }
+}

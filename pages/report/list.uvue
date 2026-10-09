@@ -1,0 +1,899 @@
+<template>
+	<view class="page">
+		<view class="header">
+			<TopSafeArea background-color="#03ae4f" />
+			<view class="top">
+				<view class="top-icon-button" @click="showUserMenu">
+					<AppIcon type="bars" :size="24" color="#ffffff" />
+				</view>
+				<text class="title">{{ t('验货') }}</text>
+				<OfflineSyncStatus
+					class="sync-entry"
+					:is-online="online"
+					:is-syncing="isSyncingData"
+						:pending-count="pendingSyncCount"
+						:failed-count="failedSyncCount"
+						:queue-items="pendingSyncItems"
+				/>
+			</view>
+			<view class="status-tabs">
+				<view
+					v-for="tab in tabs"
+					:key="tab.key"
+					class="status-tab"
+					:class="{ active: activeTab === tab.key }"
+					@click="switchTab(tab.key)"
+				>
+					<text class="tab-icon">{{ tab.icon }}</text>
+					<text class="tab-text">{{ t(tab.label) }}</text>
+					<text v-if="counts[tab.key] > 0" class="tab-badge">{{ counts[tab.key] }}</text>
+				</view>
+			</view>
+		</view>
+		<view v-if="mergeMode" class="merge-mode-bar">
+			<view class="merge-mode-copy">
+				<text class="merge-mode-title">{{ t('选择需要合并的计划') }}</text>
+				<text class="merge-mode-subtitle">{{ mergeInspectType }} · {{ t('已选 {count} 条', { count: mergeSelectedItems.length }) }}</text>
+			</view>
+			<view class="merge-mode-actions">
+				<text class="merge-mode-cancel" @click="cancelMergeMode">{{ t('取消') }}</text>
+				<button class="merge-mode-confirm" :disabled="mergeSelectedItems.length < 2 || operationSubmitting" @click="openMergeConfirm">{{ t('下一步') }}</button>
+			</view>
+		</view>
+
+		<scroll-view
+			class="content"
+			scroll-y="true"
+		>
+			<view v-if="activeTab === 'local'" class="group-list">
+				<view v-if="loading && localReportRows.length === 0" class="loading">
+					<text class="loading-icon">⟳</text>
+					<text>{{ t('读取本地数据中...') }}</text>
+				</view>
+				<view v-else-if="localReportRows.length === 0" class="tip-card">
+					<view class="tip-title">{{ t(errorMessage !== '' ? '读取本地数据失败' : '暂无本地下载数据') }}</view>
+					<view class="tip-sub">{{ t(errorMessage !== '' ? errorMessage : '下载的验货计划会保存到本机 SQLite 的 report 表。') }}</view>
+					<button class="retry-btn" @click="refreshLocalList">{{ t('重新读取') }}</button>
+				</view>
+				<view v-else>
+					<view v-if="errorMessage !== ''" class="inline-notice">{{ errorMessage }}</view>
+					<view class="inline-notice">{{ t('本机 SQLite · report 表 · 共 {count} 条（包含所有状态）', { count: localReportRows.length }) }}</view>
+					<button class="local-refresh-btn" @click="refreshLocalList">{{ t('重新读取本地数据') }}</button>
+					<LocalReportRecord v-for="row in localReportRows" :key="row.reportId" :row="row" />
+				</view>
+			</view>
+			<view v-else-if="loading && groups.length === 0" class="loading">
+				<text class="loading-icon">⟳</text>
+				<text>{{ t('加载中...') }}</text>
+			</view>
+
+			<view v-else-if="groups.length === 0" class="tip-card">
+				<view class="tip-title">{{ t(emptyTitle) }}</view>
+				<view class="tip-sub">{{ t(emptySubtitle) }}</view>
+				<button v-if="errorMessage !== ''" class="retry-btn" @click="refreshList">{{ t('重新加载') }}</button>
+			</view>
+
+			<view v-else class="group-list">
+				<view v-if="errorMessage !== ''" class="inline-notice">{{ errorMessage }}</view>
+				<view v-for="group in groups" :key="group.groupKey" class="plan-group">
+					<view class="order-header">
+						<text class="order-no">{{ group.clientOrderNo }}</text>
+					</view>
+					<view class="supplier-row">
+						<text class="supplier-name">{{ group.supplierName }}</text>
+						<text class="order-date">{{ formatDate(group.orderDate) }}</text>
+					</view>
+					<InspectionPlanCard
+						v-for="item in group.items"
+						:key="getPlanUniqueId(item)"
+						:item="item"
+						:show-download="true"
+						:current-user-id="currentUserId"
+						:status-key="activeTab"
+						:is-local-downloaded="isStoredLocally(item)"
+						:use-internal-actions="true"
+						:manage-actions-in-card="true"
+						:use-internal-card-click="true"
+						:show-action-split="false"
+						:selection-mode="mergeMode"
+						:selection-checked="isMergeChecked(item)"
+						:selection-disabled="mergeMode && !isMergeSelectableItem(item)"
+						@merge-toggle="toggleMergeSelect"
+						@request-refresh="refreshLocalList"
+					/>
+				</view>
+			</view>
+
+			<view v-if="activeTab !== 'local' && !loading" class="pagination-bar">
+				<button class="load-more-btn" :disabled="loadingMore" @click="loadMore">
+					{{ t(loadingMore ? '加载中...' : '加载更多') }}
+				</button>
+				<view v-if="shouldShowPagination" class="pagination-info">
+					{{ t('第 {page} / {pages} 页，共 {total} 条', { page: currentPage, pages: totalPages, total }) }}
+				</view>
+				<view v-if="shouldShowPagination" class="pagination-actions">
+					<button class="page-nav-btn" :disabled="loadingMore || currentPage <= 1" @click="loadPrevPage">{{ t('上一页') }}</button>
+					<button class="page-nav-btn" :disabled="loadingMore || currentPage >= totalPages" @click="loadNextPage">{{ t('下一页') }}</button>
+				</view>
+			</view>
+			<view class="content-space"></view>
+		</scroll-view>
+
+		<view v-if="fabActions.length > 0 && !mergeMode" class="fab" @click="showActionMenu">
+			<AppIcon :type="activeTab === 'report' ? 'search' : 'plus'" :size="32" color="#ffffff" />
+		</view>
+
+		<view v-if="showUserDrawer" class="drawer-overlay" @click="closeUserDrawer">
+			<view class="user-drawer" @click.stop>
+				<view class="user-drawer-title">{{ t('用户信息') }}</view>
+				<view class="user-info-row">
+					<text class="user-info-label">{{ t('用户名称') }}</text>
+					<text class="user-info-value">{{ displayName }}</text>
+				</view>
+				<view class="user-info-row">
+					<text class="user-info-label">{{ t('用户ID') }}</text>
+					<text class="user-info-value">{{ currentUserId ?? '-' }}</text>
+				</view>
+				<view class="user-info-row">
+					<text class="user-info-label">{{ t('邮箱') }}</text>
+					<text class="user-info-value">{{ userEmail ?? '-' }}</text>
+				</view>
+				<view class="language-row">
+					<text class="language-label">{{ t('切换语言') }}</text>
+					<view class="language-options">
+						<view v-for="code in supportedLocales" :key="code" class="language-option" :class="{ active: currentLanguage === code }" @click="setLanguage(code)">{{ t(code === 'zh' ? '中文' : code === 'en' ? '英文' : '越南语') }}</view>
+					</view>
+				</view>
+				<button class="drawer-btn invite" :disabled="inviteGenerating" @click="handleInviteVendor">{{ t(inviteGenerating ? '生成中...' : '邀请供应商') }}</button>
+				<button class="drawer-btn debug" @click="handleViewLocalData">{{ t('查看本地数据') }}</button>
+				<button class="drawer-btn warning" :disabled="isClearingLocalCache" @click="handleClearLocalCache">{{ t(isClearingLocalCache ? '清理中...' : '清除本地缓存') }}</button>
+				<button class="drawer-btn danger" @click="handleLogout">{{ t('退出登录') }}</button>
+			</view>
+		</view>
+
+		<BottomActionSheet
+			:visible="showMenu"
+			:actions="fabActions"
+			:show-icons="true"
+			@select="handleFabAction"
+			@cancel="hideActionMenu"
+		/>
+		<MergePlanSheet
+			:visible="showMergeSheet"
+			:stage="mergeSheetStage"
+			:inspect-type-options="inspectTypeOptions"
+			:selected-inspect-type="mergeInspectType"
+			:selected-items="mergeSelectedItems"
+			:templates="templateOptions"
+			:selected-template-id="mergeTemplateId"
+			:merged-plan-id="mergedPlanId"
+			:submitting="operationSubmitting"
+			@close="closeMergeSheet"
+			@update-inspect-type="setMergeInspectType"
+			@start-selection="startMergeSelection"
+			@update-template="setMergeTemplate"
+			@confirm-merge="confirmMerge"
+			@download="downloadMergedPlan"
+		/>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed, reactive, ref } from 'vue'
+	import BottomActionSheet from '../../components/common/BottomActionSheet.uvue'
+	import MergePlanSheet from '../../components/search/MergePlanSheet.uvue'
+	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
+	import InspectionPlanCard from '../../components/inspection/InspectionPlanCard.uvue'
+	import LocalReportRecord from '../../components/inspection/LocalReportRecord.uvue'
+	import AppIcon from '../../components/icons/AppIcon.uvue'
+	import OfflineSyncStatus from '../../components/sync/OfflineSyncStatus.uvue'
+	import { applyLocale, t } from '../../i18n/index.uts'
+	import { buildFabActions } from '../../domain/listActionViewModel.uts'
+	import { getPlanUniqueId, groupPlans, isPlanInTab, mergePlansLocalFirst } from '../../domain/planViewModel.uts'
+	import { extractCopiedPlanId, getItemInspectType, getPlanOperationId, isBaseMergeEligible, isMergeSelectable } from '../../domain/searchViewModel.uts'
+	import {
+		getCurrentSession,
+		getAppSetting,
+			getOfflineSyncOverview,
+			initializeRuntime,
+			inviteApi,
+				isNetworkOnline,
+				logout,
+				planApi,
+				planListService,
+				planOperationService,
+			reportRepository,
+			setAppSetting,
+			syncOfflineDataAutomatically
+		} from '../../runtime/appRuntime.uts'
+
+	const pageSize = 100
+	const tabs = [
+		{ key: 'planned', label: '已定计划', icon: 'Ⅱ' },
+		{ key: 'progress', label: '进行中', icon: '▶' },
+		{ key: 'report', label: '报告', icon: '✓' },
+		{ key: 'local', label: '本地下载', icon: '↓' }
+	]
+
+	const activeTab = ref('planned')
+	const localPlans = ref([])
+	const localReportRows = ref([])
+	const remoteListMap = reactive({ planned: [], progress: [], report: [] })
+	const pageMap = reactive({ planned: 0, progress: 0, report: 0 })
+	const totalMap = reactive({ planned: 0, progress: 0, report: 0 })
+	const loading = ref(false)
+	const loadingMore = ref(false)
+	const isSyncingData = ref(false)
+	const failedSyncCount = ref(0)
+	const online = ref(true)
+	const errorMessage = ref('')
+	const showMenu = ref(false)
+	const showUserDrawer = ref(false)
+	const displayName = ref('验货员')
+	const userCode = ref('')
+	const userEmail = ref('')
+	const currentUserId = ref('')
+	const supportedLocales = ['zh', 'en', 'vi']
+	const currentLanguage = ref('zh')
+	const inviteGenerating = ref(false)
+	const isClearingLocalCache = ref(false)
+	const localTotal = ref(0)
+	const pendingSyncCount = ref(0)
+	const pendingSyncItems = ref([])
+	const latestDownloadedAt = ref('')
+	const inspectTypeOptions = ref([])
+	const templateOptions = ref([])
+	const mergeMode = ref(false)
+	const showMergeSheet = ref(false)
+	const mergeSheetStage = ref('type')
+	const mergeInspectType = ref('')
+	const mergeSelectedItems = ref([])
+	const mergeTemplateId = ref('')
+	const mergeTemplateName = ref('')
+	const mergedPlanId = ref('')
+	const operationSubmitting = ref(false)
+
+	/**
+	 * 使用 H5 的本地优先规则合并当前页签的本地摘要和远程缓存。
+	 */
+	const visiblePlans = computed(() => mergePlansLocalFirst(
+		localPlans.value,
+		remoteListMap[activeTab.value] ?? []
+	).filter((item) => isPlanInTab(item, activeTab.value)))
+
+	/**
+	 * 按订单号分组当前可见计划，供列表模板直接渲染。
+	 */
+	const groups = computed(() => groupPlans(visiblePlans.value))
+
+	/** 仅根据 SQLite 已读取的计划摘要判断卡片是否存在本地缓存。 */
+	function isStoredLocally(item) {
+		const planId = String(getPlanUniqueId(item) ?? '').trim()
+		return planId !== '' && localPlans.value.some((plan) => String(getPlanUniqueId(plan) ?? '').trim() === planId)
+	}
+
+	/**
+	 * 合并状态页签的本地和远程数量，并单独统计 SQLite 中的全部报告行。
+	 */
+	const counts = computed(() => {
+		const result = { planned: 0, progress: 0, report: 0, local: localReportRows.value.length }
+		for (const tab of tabs) {
+			if (tab.key === 'local') continue
+			const merged = mergePlansLocalFirst(localPlans.value, remoteListMap[tab.key] ?? [])
+			const visibleCount = merged.filter((item) => isPlanInTab(item, tab.key)).length
+			result[tab.key] = Math.max(visibleCount, Number(totalMap[tab.key] ?? 0))
+		}
+		return result
+	})
+
+	/**
+	 * 返回当前页签已加载的远程页码，尚未加载时按第一页展示。
+	 */
+	const currentPage = computed(() => Number(pageMap[activeTab.value] ?? 1))
+
+	/**
+	 * 返回当前页签本地可见数量与远程接口总数的较大值。
+	 */
+	const total = computed(() => Math.max(visiblePlans.value.length, Number(totalMap[activeTab.value] ?? 0)))
+
+	/**
+	 * 判断当前页签是否已经加载过云端列表。
+	 */
+	const hasRemoteLoaded = computed(() => Number(pageMap[activeTab.value] ?? 0) > 0)
+
+	/**
+	 * 计算当前远程结果对应的总页数。
+	 */
+	const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+
+	/**
+	 * 判断是否需要展示上一页和下一页操作。
+	 */
+	const shouldShowPagination = computed(() => total.value > pageSize)
+
+	/**
+	 * 根据当前页签返回空状态标题。
+	 */
+	const emptyTitle = computed(() => {
+		if (activeTab.value === 'progress') return '暂无进行中的验货'
+		if (activeTab.value === 'report') return '暂无验货报告'
+		return '暂无已定计划'
+	})
+
+	/**
+	 * 根据联网状态和当前页签返回空状态说明。
+	 */
+	const emptySubtitle = computed(() => {
+		if (!online.value) return '当前离线，仅展示本机已缓存验货数据。'
+		if (activeTab.value === 'progress') return '从已定计划开始验货后，会自动进入进行中列表。'
+		if (activeTab.value === 'report') return '完成并保存的报告会显示在这里。'
+		return '点击右下角按钮开始查询和下载验货计划。'
+	})
+
+	/**
+	 * 按 H5 页签规则生成右下角浮动菜单操作。
+	 */
+	const fabActions = computed(() => buildFabActions(activeTab.value))
+
+	onLoad((options) => {
+		const requestedTab = String(options?.tab ?? '')
+		if (tabs.some((tab) => tab.key === requestedTab)) activeTab.value = requestedTab
+	})
+
+	/** 进入列表时先展示本地数据，再在后台同步完成后刷新一次状态。 */
+	async function refreshListWithAutomaticSync() {
+		try {
+			await initializeRuntime()
+			currentLanguage.value = String(getAppSetting('qcm_language') ?? 'zh')
+			applyLocale(currentLanguage.value)
+			const automaticTask = syncOfflineDataAutomatically()
+			await refreshLocalList()
+			await automaticTask
+			await refreshLocalList()
+		} catch (error) { errorMessage.value = error?.message ?? 'SQLite 初始化失败，请重试' }
+	}
+
+	onShow(refreshListWithAutomaticSync)
+
+	/**
+	 * 将 ISO 时间格式化为列表抽屉使用的分钟精度文本。
+	 */
+	function formatDateTime(value) {
+		const text = String(value ?? '')
+		if (text.length < 16) return text
+		return text.substring(0, 16).replace('T', ' ')
+	}
+
+	/**
+	 * 将日期值格式化为年月日。
+	 */
+	function formatDate(value) {
+		const text = String(value ?? '')
+		return text.length >= 10 ? text.substring(0, 10) : text
+	}
+
+	/**
+	 * 重新统计用户、本地计划和待同步数据概览。
+	 */
+	async function refreshOverview() {
+		const session = getCurrentSession()
+		displayName.value = (session?.realName || session?.userName) ?? '验货员'
+		userCode.value = (session?.userName || session?.userId) ?? ''
+		userEmail.value = session?.email ?? ''
+		currentUserId.value = session?.userId ?? ''
+		const overview = await planListService.getOverview()
+		const syncOverview = await getOfflineSyncOverview()
+		localTotal.value = Number(overview?.total ?? 0)
+		pendingSyncCount.value = Number(syncOverview?.pendingCount ?? 0)
+		failedSyncCount.value = Number(syncOverview?.failedCount ?? 0)
+		pendingSyncItems.value = Array.isArray(syncOverview?.queueItems) ? syncOverview.queueItems : []
+		latestDownloadedAt.value = formatDateTime(overview?.latestDownloadedAt ?? '')
+	}
+
+	/**
+	 * 对远程单页结果按计划 ID 去重，保持 H5 首次出现顺序。
+	 */
+	function normalizeRemoteRecords(records) {
+		const source = Array.isArray(records) ? records : []
+		const normalized = []
+		const seenIds = new Set()
+		for (const item of source) {
+			const planId = String(getPlanUniqueId(item) ?? '').trim()
+			if (planId !== '' && seenIds.has(planId)) continue
+			if (planId !== '') seenIds.add(planId)
+			normalized.push(item)
+		}
+		return normalized
+	}
+
+	/**
+	 * 从本地数据库读取计划摘要与 report 原始行，不清除远程页签缓存。
+	 */
+	async function loadLocalPlanSummaries() {
+		localPlans.value = await planListService.listPlanSummaries()
+		localReportRows.value = await reportRepository.listStoredReportRows()
+	}
+
+	/**
+	 * 加载指定页数据；远程失败时自动回退到本地列表。
+	 */
+	async function loadPage(page, options: any = {}) {
+		const shouldFetchRemote = options?.remote === true
+		const appendMessage = options?.appendMessage === true
+		const useLoadingMore = page !== 1 && groups.value.length > 0
+		if (useLoadingMore) loadingMore.value = true
+		else loading.value = true
+		if (!appendMessage) errorMessage.value = ''
+
+		try {
+			await initializeRuntime()
+			online.value = await isNetworkOnline()
+			const session = getCurrentSession()
+			await loadLocalPlanSummaries()
+			if (shouldFetchRemote) {
+				try {
+					if (!online.value) throw new Error('当前离线，保留已加载列表和本地数据')
+					const result = await planListService.loadRemotePage({
+						tabKey: activeTab.value,
+						inspectorId: session?.userId ?? '',
+						page,
+						pageSize
+					})
+					remoteListMap[activeTab.value] = normalizeRemoteRecords(result?.records ?? [])
+					pageMap[activeTab.value] = page
+					totalMap[activeTab.value] = Number(result?.total ?? 0)
+				} catch (error) {
+					errorMessage.value = error?.message ?? '云端列表加载失败，已保留当前列表和本地数据'
+				}
+			}
+			await refreshOverview()
+		} catch (error) {
+			errorMessage.value = error?.message ?? '列表加载失败'
+			await refreshOverview()
+		} finally {
+			loading.value = false
+			loadingMore.value = false
+		}
+	}
+
+	/**
+	 * 只从本地数据库重新加载当前页签。
+	 */
+	async function refreshLocalList() {
+		const showLoading = activeTab.value === 'local' ? localReportRows.value.length === 0 : groups.value.length === 0
+		if (showLoading) loading.value = true
+		errorMessage.value = ''
+		try {
+			await initializeRuntime()
+			online.value = await isNetworkOnline()
+			await loadLocalPlanSummaries()
+			await refreshOverview()
+		} catch (error) {
+			errorMessage.value = error?.message ?? '本地列表加载失败'
+		} finally {
+			loading.value = false
+		}
+	}
+
+	/**
+	 * 手动刷新状态页签的云端列表；本地下载页签仅重新读取 SQLite。
+	 */
+	async function refreshList() {
+		if (activeTab.value === 'local') {
+			await refreshLocalList()
+			return
+		}
+		await loadPage(1, { remote: true, appendMessage: false })
+	}
+
+	/**
+	 * 同步本地脏报告；防止重复点击启动并发或循环同步。
+	 */
+	async function syncData() {
+		if (isSyncingData.value) return
+		await initializeRuntime()
+		online.value = await isNetworkOnline()
+		await refreshOverview()
+
+		if (!online.value) {
+			uni.showToast({ title: t('当前无网络，暂无法同步'), icon: 'none' })
+			return
+		}
+		isSyncingData.value = true
+		failedSyncCount.value = 0
+		try {
+			const result = await syncOfflineDataAutomatically()
+			const resultFailedCount = Number(result?.failedCount ?? 0) + Number(result?.failedPhotoCount ?? 0)
+			await refreshLocalList()
+			failedSyncCount.value = Math.max(failedSyncCount.value, resultFailedCount)
+			if (failedSyncCount.value > 0) {
+				uni.showToast({
+					title: `已同步 ${Number(result?.syncedCount ?? 0)} 条，失败 ${failedSyncCount.value} 项`,
+					icon: 'none'
+				})
+				return
+			}
+			const totalCount = Number(result?.syncedCount ?? 0) + Number(result?.uploadedPhotoCount ?? 0)
+			uni.showToast({ title: totalCount > 0 ? `同步成功，共 ${totalCount} 项` : '本地数据已是最新', icon: totalCount > 0 ? 'success' : 'none' })
+		} catch (error) {
+			failedSyncCount.value = Math.max(1, pendingSyncCount.value)
+			uni.showToast({ title: error?.message ?? '同步失败', icon: 'none' })
+		} finally {
+			isSyncingData.value = false
+			await refreshOverview()
+		}
+	}
+
+	/**
+	 * 切换状态页签并立即加载对应本地列表。
+	 */
+	async function switchTab(tabKey) {
+		if (activeTab.value === tabKey) return
+		if (mergeMode.value) cancelMergeMode()
+		activeTab.value = tabKey
+		await refreshLocalList()
+	}
+
+	/**
+	 * 加载远程下一页；首次点击时先加载第一页远程数据。
+	 */
+	async function loadMore() {
+		if (!hasRemoteLoaded.value) {
+			await loadPage(1, { remote: true, appendMessage: true })
+			return
+		}
+		if (currentPage.value >= totalPages.value) {
+			uni.showToast({ title: t('已加载全部数据'), icon: 'none' })
+			return
+		}
+		await loadPage(currentPage.value + 1, { remote: true, appendMessage: true })
+	}
+
+	/**
+	 * 加载远程上一页。
+	 */
+	async function loadPrevPage() {
+		if (!hasRemoteLoaded.value || currentPage.value <= 1) return
+		await loadPage(currentPage.value - 1, { remote: true, appendMessage: true })
+	}
+
+	/**
+	 * 加载远程下一页。
+	 */
+	async function loadNextPage() {
+		if (!hasRemoteLoaded.value || currentPage.value >= totalPages.value) return
+		await loadPage(currentPage.value + 1, { remote: true, appendMessage: true })
+	}
+
+	/**
+	 * 打开用户信息抽屉。
+	 */
+	function showUserMenu() {
+		showUserDrawer.value = true
+	}
+
+	/**
+	 * 关闭用户信息抽屉。
+	 */
+	function closeUserDrawer() {
+		showUserDrawer.value = false
+	}
+
+	/**
+	 * 保存 H5 同源语言代码并让后续接口请求立即使用该语言。
+	 */
+	async function setLanguage(languageCode) {
+		const normalizedLanguage = supportedLocales.includes(String(languageCode)) ? String(languageCode) : 'zh'
+		try {
+			await setAppSetting('qcm_language', normalizedLanguage)
+			currentLanguage.value = normalizedLanguage
+			applyLocale(normalizedLanguage)
+			uni.showToast({ title: t('已切换语言：{language}', { language: normalizedLanguage }), icon: 'none' })
+		} catch (error) { uni.showToast({ title: error?.message ?? t('语言保存失败'), icon: 'none' }) }
+	}
+
+	/**
+	 * 生成供应商邀请链接并复制到系统剪贴板。
+	 */
+	async function handleInviteVendor() {
+		if (inviteGenerating.value) return
+		inviteGenerating.value = true
+		try {
+			const response = await inviteApi.generateVendorInviteLink()
+			const inviteLink = String(response?.inviteLink ?? '').trim()
+			if (inviteLink === '') throw new Error('邀请链接为空')
+			uni.setClipboardData({ data: inviteLink })
+			closeUserDrawer()
+			uni.showToast({ title: t('邀请链接已复制'), icon: 'success' })
+		} catch (error) {
+			uni.showToast({ title: error?.message ?? '生成邀请链接失败', icon: 'none' })
+		} finally {
+			inviteGenerating.value = false
+		}
+	}
+
+	/**
+	 * 展示本地计划、待同步数量和最近更新时间摘要。
+	 */
+	async function handleViewLocalData() {
+		uni.navigateTo({ url: '/pages/debug/database' })
+	}
+
+	/**
+	 * 二次确认后清空全部本地验货缓存并刷新列表。
+	 */
+	/**
+	 * 使用原生确认框返回布尔结果，供危险操作串联多次确认。
+	 */
+	function showDrawerConfirm(options) {
+		return new Promise((resolve) => {
+			uni.showModal({
+				title: options?.title ?? '提示',
+				content: options?.content ?? '',
+				confirmText: options?.confirmText ?? '确定',
+				cancelText: options?.cancelText ?? '取消',
+				confirmColor: options?.confirmColor ?? '#ef4444',
+				success: (result) => resolve(result.confirm === true),
+				fail: () => resolve(false)
+			})
+		})
+	}
+
+	/**
+	 * 按 H5 流程执行两次确认后清空全部本地验货缓存。
+	 */
+	async function handleClearLocalCache() {
+		if (isClearingLocalCache.value) return
+		closeUserDrawer()
+		const firstConfirmed = await showDrawerConfirm({
+			title: t('清除本地缓存'),
+			content: t('该操作会删除当前设备上的全部离线验货数据，且不可恢复，是否继续？'),
+			confirmText: '继续',
+			cancelText: '取消'
+		})
+		if (!firstConfirmed) return
+		const secondConfirmed = await showDrawerConfirm({
+			title: t('再次确认'),
+			content: t('请再次确认：确定清除全部本地缓存数据？'),
+			confirmText: '确认清除',
+			cancelText: '返回'
+		})
+		if (!secondConfirmed) return
+		isClearingLocalCache.value = true
+		try {
+			await reportRepository.clearPlans()
+			localPlans.value = []
+			for (const tab of tabs) {
+				remoteListMap[tab.key] = []
+				pageMap[tab.key] = 0
+				totalMap[tab.key] = 0
+			}
+			await refreshLocalList()
+			uni.showToast({ title: t('本地缓存已清除'), icon: 'success' })
+		} catch (error) {
+			uni.showToast({ title: error?.message ?? '清理本地缓存失败', icon: 'none' })
+		} finally {
+			isClearingLocalCache.value = false
+		}
+	}
+
+	/**
+	 * 打开与当前页签匹配的浮动操作菜单。
+	 */
+	function showActionMenu() {
+		if (fabActions.value.length === 0) return
+		showMenu.value = true
+	}
+
+	/**
+	 * 关闭右下角浮动操作菜单。
+	 */
+	function hideActionMenu() {
+		showMenu.value = false
+	}
+
+	/**
+	 * 根据 H5 菜单操作键执行对应导航或功能提示。
+	 */
+	function handleFabAction(action) {
+		hideActionMenu()
+		const actionKey = String(action?.key ?? '')
+		if (actionKey === 'scan') {
+			goScanSearch()
+			return
+		}
+		if (actionKey === 'search') {
+			goSearch()
+			return
+		}
+		if (actionKey === 'merge') {
+			openMergeFlow()
+			return
+		}
+		if (actionKey === 'quick') showQuickInspectionTip()
+	}
+
+	/**
+	 * 跳转搜索页并请求页面自动打开扫码入口。
+	 */
+	function goScanSearch() {
+		uni.navigateTo({ url: '/pages/report/search?autoScan=1' })
+	}
+
+	/**
+	 * 跳转到验货计划搜索页。
+	 */
+	function goSearch() {
+		hideActionMenu()
+		closeUserDrawer()
+		uni.navigateTo({ url: '/pages/report/search' })
+	}
+
+	/** 懒加载验货类型字典，接口失败时使用当前已定计划中的类型兜底。 */
+	async function loadInspectTypeOptions() {
+		if (inspectTypeOptions.value.length > 0) return
+		try {
+			inspectTypeOptions.value = await planApi.getInspectTypeDict()
+		} catch (error) {
+			const values = Array.from(new Set(visiblePlans.value.map((item) => getItemInspectType(item)).filter((value) => value !== '')))
+			inspectTypeOptions.value = values.map((value, index) => ({ value, label: value, sortOrder: index + 1 }))
+		}
+	}
+
+	/** 懒加载合并计划下载时可选的清单模板。 */
+	async function loadTemplateOptions() {
+		if (templateOptions.value.length > 0) return
+		templateOptions.value = await planApi.getPlanTemplates()
+	}
+
+	/** 从 FAB 菜单打开 H5 同款验货类型选择弹层。 */
+	async function openMergeFlow() {
+		try {
+			if (!(await isNetworkOnline())) throw new Error('合并验货需要联网，请连接网络后重试')
+			await loadInspectTypeOptions()
+			if (mergeInspectType.value === '' && inspectTypeOptions.value.length > 0) mergeInspectType.value = String(inspectTypeOptions.value[inspectTypeOptions.value.length - 1]?.value ?? '')
+			mergeSheetStage.value = 'type'
+			showMergeSheet.value = true
+		} catch (error) { uni.showToast({ title: error?.message ?? '加载验货类型失败', icon: 'none' }) }
+	}
+
+	/** 更新合并流程选择的验货类型。 */
+	function setMergeInspectType(value) { mergeInspectType.value = String(value ?? '') }
+	/** 关闭合并弹层但保留当前卡片多选状态。 */
+	function closeMergeSheet() { showMergeSheet.value = false }
+	/** 进入合并卡片多选模式并清空上一次结果。 */
+	function startMergeSelection() { if (mergeInspectType.value !== '') { mergeSelectedItems.value = []; mergedPlanId.value = ''; mergeMode.value = true; showMergeSheet.value = false } }
+	/** 返回当前合并选择中的首条计划作为后续兼容性锚点。 */
+	function getMergeAnchorItem() { return mergeSelectedItems.value.length > 0 ? mergeSelectedItems.value[0] : null }
+	/** 判断当前计划是否已经加入合并选择。 */
+	function isMergeChecked(item) { const id = getPlanOperationId(item); return mergeSelectedItems.value.some((selected) => getPlanOperationId(selected) === id) }
+	/** 判断计划是否满足当前验货类型和首条计划的 H5 合并规则。 */
+	function isMergeSelectableItem(item) { return isMergeChecked(item) || isMergeSelectable(item, mergeInspectType.value, getMergeAnchorItem()) }
+	/** 按 H5 合并资格规则添加或移除当前计划。 */
+	function toggleMergeSelect(item) {
+		const planId = getPlanOperationId(item)
+		if (planId === '') { uni.showToast({ title: t('计划ID缺失，无法选择'), icon: 'none' }); return }
+		if (isMergeChecked(item)) { mergeSelectedItems.value = mergeSelectedItems.value.filter((selected) => getPlanOperationId(selected) !== planId); return }
+		if (!isBaseMergeEligible(item, mergeInspectType.value)) { uni.showToast({ title: t('仅支持未下载、已定计划且未合并的同类型任务'), icon: 'none' }); return }
+		if (!isMergeSelectableItem(item)) { uni.showToast({ title: t('需与首条计划保持同工厂、同货类、同验货类型'), icon: 'none' }); return }
+		mergeSelectedItems.value = [...mergeSelectedItems.value, item]
+	}
+	/** 退出合并模式并清空类型、选择、模板和远程结果。 */
+	function cancelMergeMode() { mergeMode.value = false; showMergeSheet.value = false; mergeSelectedItems.value = []; mergedPlanId.value = ''; mergeTemplateId.value = ''; mergeTemplateName.value = '' }
+	/** 加载清单模板并打开已选计划确认弹层。 */
+	async function openMergeConfirm() {
+		if (mergeSelectedItems.value.length < 2) return
+		try { await loadTemplateOptions(); if (mergeTemplateId.value === '' && templateOptions.value.length > 0) setMergeTemplate(templateOptions.value[0]); mergeSheetStage.value = 'confirm'; showMergeSheet.value = true }
+		catch (error) { uni.showToast({ title: error?.message ?? '加载清单失败', icon: 'none' }) }
+	}
+	/** 更新合并计划下载使用的清单模板。 */
+	function setMergeTemplate(option) { mergeTemplateId.value = String(option?.id ?? ''); mergeTemplateName.value = String(option?.name ?? '') }
+	/** 再次校验全部计划后调用在线合并接口。 */
+	async function confirmMerge() {
+		if (operationSubmitting.value || mergeSelectedItems.value.length < 2) return
+		const anchor = mergeSelectedItems.value[0]
+		if (!mergeSelectedItems.value.every((item) => isMergeSelectable(item, mergeInspectType.value, anchor))) { uni.showToast({ title: t('存在不满足合并条件的任务'), icon: 'none' }); return }
+		operationSubmitting.value = true
+		try {
+			const response = await planOperationService.mergePlans(mergeSelectedItems.value.map((item) => getPlanOperationId(item)))
+			const copiedPlanId = extractCopiedPlanId(response)
+			mergedPlanId.value = copiedPlanId !== '' ? copiedPlanId : String(response?.parentPlanId ?? '')
+			if (mergedPlanId.value === '') throw new Error('合并成功但未返回计划ID')
+			uni.showToast({ title: t('合并成功'), icon: 'success' })
+		} catch (error) { uni.showToast({ title: error?.message ?? '合并失败', icon: 'none' }) }
+		finally { operationSubmitting.value = false }
+	}
+	/** 下载合并生成的新计划到离线数据库，并刷新列表回显。 */
+	async function downloadMergedPlan() {
+		if (mergedPlanId.value === '' || operationSubmitting.value) return
+		operationSubmitting.value = true
+		try {
+			await planOperationService.downloadToLocal(mergedPlanId.value, { templateId: mergeTemplateId.value, templateName: mergeTemplateName.value })
+			await refreshLocalList()
+			cancelMergeMode()
+			await refreshList()
+			uni.showToast({ title: t('已下载到本地'), icon: 'success' })
+		} catch (error) { uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' }) }
+		finally { operationSubmitting.value = false }
+	}
+
+	/**
+	 * 提示快速验货入口已按 H5 保留。
+	 */
+	function showQuickInspectionTip() {
+		uni.showToast({ title: t('创建快速验货功能待接入'), icon: 'none' })
+	}
+
+	/**
+	 * 清理本地会话并返回登录页。
+	 */
+	async function handleLogout() {
+		try {
+			await logout()
+		} catch (error) {
+			console.warn('退出登录时清理本地会话失败:', error)
+		}
+		uni.reLaunch({ url: '/pages/login/login' })
+	}
+</script>
+
+<style>
+	.page { flex: 1; background-color: #f5f5f5; }
+	.header { background-color: #03ae4f; color: #ffffff; padding: 10px 18px 0; box-shadow: 0 2px 8px rgba(3, 174, 79, 0.16); }
+	.top { height: 48px; flex-direction: row; align-items: center; justify-content: space-between; }
+	.top-icon-button { width: 40px; height: 40px; align-items: center; justify-content: center; }
+	.title { color: #ffffff; font-size: 20px; font-weight: 600; }
+	.sync-entry { width: 40px; align-items: flex-end; }
+	.status-tabs { flex-direction: row; margin-top: 8px; }
+	.status-tab { position: relative; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding: 10px 0 8px; border-bottom-width: 3px; border-bottom-color: transparent; opacity: 0.9; }
+	.status-tab.active { border-bottom-color: #ffffff; opacity: 1; }
+	.tab-icon { color: #ffffff; font-size: 18px; line-height: 20px; }
+	.tab-text { margin-top: 4px; color: #ffffff; font-size: 13px; line-height: 16px; }
+	.tab-badge { position: absolute; top: 4px; right: 10px; min-width: 18px; height: 18px; padding: 0 5px; color: #ffffff; background-color: #ff4444; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; }
+	.merge-mode-bar { min-height: 68px; padding: 10px 16px; flex-direction: row; align-items: center; justify-content: space-between; background-color: #ecfdf3; border-bottom-width: 1px; border-bottom-color: #bbf7d0; }
+	.merge-mode-copy { flex: 1; }
+	.merge-mode-title { color: #166534; font-size: 15px; font-weight: 700; }
+	.merge-mode-subtitle { margin-top: 4px; color: #15803d; font-size: 12px; }
+	.merge-mode-actions { margin-left: 12px; flex-direction: row; align-items: center; }
+	.merge-mode-cancel { padding: 10px 12px; color: #64748b; font-size: 14px; }
+	.merge-mode-confirm { min-width: 84px; height: 38px; margin-left: 4px; border-radius: 19px; color: #ffffff; background-color: #16a34a; font-size: 13px; }
+	.content { flex: 1; }
+	.loading { align-items: center; padding: 80px 20px; color: #64748b; font-size: 14px; }
+	.loading-icon { margin-bottom: 10px; font-size: 22px; }
+	.tip-card { margin: 16px; padding: 28px 20px; border-radius: 18px; background-color: #ffffff; align-items: center; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04); }
+	.tip-title { color: #1e293b; font-size: 18px; font-weight: 600; text-align: center; }
+	.tip-sub { margin-top: 10px; color: #94a3b8; font-size: 13px; line-height: 20px; text-align: center; }
+	.retry-btn { min-width: 120px; height: 40px; margin-top: 18px; color: #ffffff; background-color: #16a34a; border-radius: 20px; font-size: 14px; }
+	.group-list { padding: 16px 0 0; }
+	.inline-notice { margin: 0 16px 12px; padding: 10px 12px; border-radius: 12px; color: #c2410c; background-color: #fff7ed; font-size: 12px; line-height: 18px; }
+	.local-refresh-btn { height: 36px; margin: 0 16px 12px; color: #15803d; background-color: #ecfdf5; border-radius: 10px; font-size: 13px; }
+	.plan-group { margin: 0 16px 14px; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05); }
+	.order-header { padding: 12px 14px 10px; background-color: #f5f5f5; }
+	.order-no { color: #0f172a; font-size: 17px; font-weight: 700; }
+	.supplier-row { flex-direction: row; justify-content: space-between; padding: 10px 14px 2px; background-color: #ffffff; }
+	.supplier-name { color: #64748b; font-size: 12px; }
+	.order-date { color: #94a3b8; font-size: 12px; }
+	.pagination-bar { padding: 10px 16px 0; }
+	.load-more-btn { height: 40px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
+	.pagination-info { margin-top: 10px; color: #64748b; font-size: 12px; text-align: center; }
+	.pagination-actions { flex-direction: row; margin-top: 10px; }
+	.page-nav-btn { flex: 1; height: 40px; margin: 0 4px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
+	.content-space { height: 100px; }
+	.fab { position: fixed; right: 20px; bottom: 40px; width: 60px; height: 60px; border-radius: 30px; align-items: center; justify-content: center; background-color: #05b552; box-shadow: 0 8px 16px rgba(5, 181, 82, 0.32); z-index: 1200; }
+	.drawer-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2100; background-color: rgba(0, 0, 0, 0.42); }
+	.user-drawer { width: 82%; max-width: 320px; height: 100%; padding: 80px 18px 24px; background-color: #ffffff; box-shadow: 6px 0 24px rgba(15, 23, 42, 0.16); }
+	.user-drawer-title { color: #0f172a; font-size: 20px; font-weight: 700; margin-bottom: 18px; }
+	.user-info-row { min-height: 46px; flex-direction: row; justify-content: space-between; align-items: center; border-bottom-width: 1px; border-bottom-color: #f1f5f9; }
+	.user-info-label { color: #64748b; font-size: 13px; }
+	.user-info-value { max-width: 170px; color: #0f172a; font-size: 13px; text-align: right; }
+	.drawer-btn { height: 44px; margin-top: 14px; border-radius: 12px; color: #334155; background-color: #f1f5f9; font-size: 14px; }
+	.language-row { margin-top: 24px; }
+	.language-label { color: #334155; font-size: 14px; font-weight: 600; }
+	.language-options { flex-direction: row; margin-top: 12px; }
+	.language-option { flex: 1; margin-right: 8px; padding: 9px 0; border-width: 1px; border-color: #d1d5db; border-radius: 10px; color: #64748b; text-align: center; font-size: 13px; }
+	.language-option.active { color: #166534; border-color: #22c55e; background-color: #f0fdf4; font-weight: 600; }
+	.drawer-btn.invite { color: #166534; border-width: 1px; border-color: #22c55e; background-color: #f0fdf4; }
+	.drawer-btn.debug { color: #4338ca; border-width: 1px; border-color: #a5b4fc; background-color: #eef2ff; }
+	.drawer-btn.warning { color: #b45309; border-width: 1px; border-color: #f59e0b; background-color: #fffbeb; }
+	.drawer-btn.danger { color: #ffffff; background-color: #ef4444; }
+</style>

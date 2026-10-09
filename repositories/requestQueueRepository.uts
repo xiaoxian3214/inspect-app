@@ -1,0 +1,98 @@
+/**
+ * 安全解析持久任务中的 JSON 字段。
+ */
+function parseJson(value) {
+  if (value == null || value === '') return {}
+  try { return JSON.parse(value) } catch (_) { return {} }
+}
+
+/**
+ * 将数据库任务行转换为业务任务对象。
+ */
+function normalizeTaskRow(row) {
+  return { ...row, payload: parseJson(row?.payload), headers: parseJson(row?.headers) }
+}
+
+/**
+ * 创建离线接口操作持久队列仓库。
+ */
+export function createRequestQueueRepository(database) {
+  /**
+   * 写入持久任务，并按 dedupeKey 去重尚未完成的同类操作。
+   */
+  async function enqueue(task) {
+    const dedupeKey = String(task?.dedupeKey ?? '').trim()
+    const existing = database.readTable('request_queue').find((row) => dedupeKey !== '' && row?.dedupeKey === dedupeKey && row?.status !== 'COMPLETED')
+    if (existing) return normalizeTaskRow(existing)
+    const now = new Date().toISOString()
+    const row = {
+      id: String(task?.id || `queue-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      taskType: String(task?.taskType ?? ''),
+      method: task?.method ?? 'POST',
+      url: task?.url ?? '',
+      payload: JSON.stringify(task?.payload ?? {}),
+      headers: JSON.stringify(task?.headers ?? {}),
+      priority: Number(task?.priority ?? 0),
+      dedupeKey,
+      status: 'PENDING',
+      retryCount: Number(task?.retryCount ?? 0),
+      maxRetries: Number(task?.maxRetries ?? 3),
+      nextRunAt: task?.nextRunAt || now,
+      lastError: '',
+      createdAt: now,
+      updatedAt: now
+    }
+    await database.transaction(async (transaction) => transaction.upsert('request_queue', 'id', row))
+    return normalizeTaskRow(row)
+  }
+
+  /**
+   * 读取等待执行或可重试的持久任务，并按优先级和创建时间排序。
+   */
+  async function listPending() {
+    const now = Date.now()
+    return database.readTable('request_queue')
+      .filter((row) => (row?.status === 'PENDING' || row?.status === 'FAILED') && new Date(row?.nextRunAt ?? 0).getTime() <= now)
+      .sort((left, right) => {
+        const priorityDifference = Number(right?.priority ?? 0) - Number(left?.priority ?? 0)
+        return priorityDifference !== 0 ? priorityDifference : String(left?.createdAt ?? '').localeCompare(String(right?.createdAt ?? ''))
+      })
+      .map(normalizeTaskRow)
+  }
+
+  /**
+   * 读取全部尚未完成的持久操作，包括等待下次重试的失败任务。
+   */
+  async function listUnfinished() {
+    return database.readTable('request_queue')
+      .filter((row) => row?.status === 'PENDING' || row?.status === 'FAILED')
+      .map(normalizeTaskRow)
+  }
+
+  /**
+   * 删除已经成功完成的持久任务。
+   */
+  async function complete(taskId) {
+    await database.transaction(async (transaction) => transaction.removeWhere('request_queue', (row) => String(row?.id ?? '') === String(taskId ?? '')))
+  }
+
+  /**
+   * 记录任务失败原因和下次重试时间。
+   */
+  async function fail(task, error) {
+    const retryCount = Number(task?.retryCount ?? 0) + 1
+    const delayMs = Math.min(60000, 1000 * Math.pow(2, retryCount))
+    await database.transaction(async (transaction) => transaction.upsert('request_queue', 'id', {
+      ...task,
+      payload: JSON.stringify(task?.payload ?? {}),
+      headers: JSON.stringify(task?.headers ?? {}),
+      status: 'FAILED',
+      retryCount,
+      nextRunAt: new Date(Date.now() + delayMs).toISOString(),
+      lastError: error?.message || String(error ?? '任务执行失败'),
+      updatedAt: new Date().toISOString()
+    }))
+  }
+
+  return { enqueue, listPending, listUnfinished, complete, fail }
+}

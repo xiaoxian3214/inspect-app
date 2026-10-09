@@ -1,0 +1,39 @@
+/** 将计划数量的空值显示为占位符，同时保留有效的零。 */
+function displayQuantity(value) {
+  return value === undefined || value === null || value === '' ? '-' : value
+}
+
+/** 按 H5 字段优先级选择第一个非空值，并保留数字零。 */
+function firstNonEmpty(values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== '') return value
+  }
+  return '-'
+}
+
+/** 将预计离港日期压缩为列表弹框使用的年月日文本。 */
+function displayDepartureDate(value) {
+  const text = String(value ?? '').trim()
+  if (text === '') return '-'
+  return text.length >= 10 ? text.substring(0, 10) : text
+}
+
+/** 按 H5 的字段及回退顺序构建下载确认弹框的计划信息。 */
+export function buildDownloadPlanFields(item) {
+  const plan = item?.plan != null && typeof item.plan === 'object' ? item.plan : item ?? {}
+  return [
+    { label: '订单号', value: firstNonEmpty([plan?.clientOrderNo, plan?.domeNo, item?.clientOrderNo, item?.domeNo, item?.planNo]) },
+    { label: '款号', value: firstNonEmpty([plan?.subGoodsNo, item?.subGoodsNo]) },
+    { label: '产品名称', value: firstNonEmpty([plan?.goodsName, item?.productName, item?.goodsName]) },
+    { label: '总数量', value: displayQuantity(plan?.requiredQuantity ?? item?.requiredQuantity ?? item?.quantity) },
+    { label: '样品数量', value: displayQuantity(plan?.sampleSize ?? item?.sampleSize ?? item?.sampleQty) },
+    { label: '供应商', value: firstNonEmpty([plan?.factoryName, item?.factoryName, item?.supplierName]) },
+    { label: '计划日期', value: firstNonEmpty([plan?.deliveryDate, item?.deliveryDate]) },
+    { label: '预计离港时间', value: displayDepartureDate(firstNonEmpty([plan?.etd, plan?.estimatedDepartureDate, item?.etd, item?.estimatedDepartureDate])) },
+    { label: '检查类型', value: firstNonEmpty([plan?.inspectType, item?.inspectType]) },
+    { label: '批次', value: firstNonEmpty([plan?.batchNo, item?.batchNo]) },
+    { label: '采购合同', value: firstNonEmpty([plan?.domeNo, item?.domeNo]) },
+    { label: '制造令', value: firstNonEmpty([plan?.produceNo, item?.produceNo]) },
+    { label: '模具色卡号', value: firstNonEmpty([plan?.modelNo, item?.modelNo]) }
+  ]
+}

@@ -1,0 +1,46 @@
+<template>
+	<view class="record">
+		<view class="record-heading">
+			<text class="record-title">{{ row.productName ? row.productName : row.reportId }}</text>
+			<text class="record-status">状态 {{ row.status }}</text>
+		</view>
+		<text class="record-meta">计划 ID：{{ row.reportId }}</text>
+		<text class="record-meta">订单号：{{ row.orderNo ? row.orderNo : '-' }}</text>
+		<text class="record-meta">下载时间：{{ row.downloadAt ? row.downloadAt : '-' }}</text>
+		<view class="record-actions">
+			<text class="record-action" @click="toggleRawData">{{ t(expanded ? '收起完整 SQLite 数据' : '查看完整 SQLite 数据') }}</text>
+			<text class="record-action" @click="copyRawData">{{ t('复制 JSON') }}</text>
+		</view>
+		<text v-if="expanded" class="record-json">{{ rawData }}</text>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed, ref } from 'vue'
+
+	const props = defineProps({ row: { type: Object, required: true } })
+	const expanded = ref(false)
+
+	/** 将 report 表原始行序列化展示，保留 jsonData 等全部数据库字段。 */
+	const rawData = computed(() => JSON.stringify(props.row, null, 2))
+
+	/** 展开或收起当前计划的完整 SQLite 原始行。 */
+	function toggleRawData() { expanded.value = !expanded.value }
+
+	/** 将当前计划的完整数据库行复制到系统剪贴板。 */
+	function copyRawData() {
+		uni.setClipboardData({ data: rawData.value, success: () => uni.showToast({ title: t('已复制本地数据'), icon: 'success' }) })
+	}
+</script>
+
+<style>
+	.record { margin: 0 16px 14px; padding: 14px; border-radius: 16px; background-color: #ffffff; }
+	.record-heading { flex-direction: row; align-items: center; justify-content: space-between; }
+	.record-title { flex: 1; color: #0f172a; font-size: 16px; font-weight: 600; }
+	.record-status { margin-left: 8px; color: #166534; font-size: 12px; }
+	.record-meta { margin-top: 7px; color: #64748b; font-size: 12px; }
+	.record-actions { flex-direction: row; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top-width: 1px; border-top-color: #e2e8f0; }
+	.record-action { color: #15803d; font-size: 13px; }
+	.record-json { margin-top: 12px; padding: 10px; border-radius: 8px; color: #334155; background-color: #f1f5f9; font-size: 11px; }
+</style>

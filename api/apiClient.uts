@@ -1,0 +1,120 @@
+function trimTrailingSlash(value) {
+  return String(value ?? '').replace(/\/+$/, '')
+}
+
+function buildQueryString(query) {
+  const source = query != null && typeof query === 'object' ? query : {}
+  const pairs = []
+  for (const key of Object.keys(source)) {
+    const value = source[key]
+    if (value === undefined || value === null || value === '') continue
+    pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+  }
+  return pairs.length > 0 ? `?${pairs.join('&')}` : ''
+}
+
+/**
+ * 判断响应体是否为“令牌缺失/失效”业务错误：code 401，或 code 400 且提示包含令牌缺失关键字。
+ */
+function isMissingTokenResponse(body) {
+  if (body == null || typeof body !== 'object') return false
+  const code = Number(body.code)
+  if (code === 401) return true
+  if (code !== 400) return false
+  const message = String(body.message ?? '')
+  return message.includes('未提供访问令牌') || message.includes('请先登录') || message.includes('Token无效或已过期')
+}
+
+/**
+ * 解析响应中的鉴权失败信息；普通响应返回 null。
+ * HTTP 401 优先提示“登录已过期”，业务码缺失令牌提示“登录已失效”，与 H5 request.js 保持一致。
+ */
+function resolveAuthFailure(response) {
+  const statusCode = Number(response?.statusCode ?? 0)
+  if (statusCode === 401) return { fallbackMessage: '登录已过期，请重新登录' }
+  const body = response?.data
+  if (body != null && typeof body === 'object' && ('code' in body ?? 'success' in body) && isMissingTokenResponse(body)) {
+    return { fallbackMessage: '登录已失效，请重新登录' }
+  }
+  return null
+}
+
+/**
+ * 解包传输层响应：HTTP 非 2xx 与业务失败统一抛错，成功时返回 data 字段。
+ */
+function unwrapResponse(response) {
+  const statusCode = Number(response?.statusCode ?? 0)
+  const body = response?.data
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new Error(body?.message || `HTTP ${statusCode}`)
+  }
+  if (body != null && typeof body === 'object' && ('code' in body ?? 'success' in body)) {
+    const success = body.success !== false && (body.code === undefined || Number(body.code) === 200 || Number(body.code) === 0)
+    if (!success) throw new Error(body.message ?? '接口调用失败')
+    return body.data
+  }
+  return body
+}
+
+export function createUniTransport() {
+  return function transport(request) {
+    return new Promise((resolve, reject) => {
+      uni.request({
+        url: request.url,
+        method: request.method,
+        data: request.data,
+        header: request.headers,
+        timeout: request.timeout,
+        success: resolve,
+        fail: reject
+      })
+    })
+  }
+}
+
+export function createApiClient(options) {
+  const baseUrl = trimTrailingSlash(options.baseUrl)
+  const queue = options.queue
+  const transport = options.transport || createUniTransport()
+  const getSession = typeof options.getSession === 'function' ? options.getSession : () => null
+  const getLanguage = typeof options.getLanguage === 'function' ? options.getLanguage : () => 'zh'
+  const onAuthFailure = typeof options.onAuthFailure === 'function' ? options.onAuthFailure : null
+
+  function request(requestOptions) {
+    const language = getLanguage() ?? 'zh'
+    const session = getSession()
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept-Language': language,
+      ...(requestOptions?.headers ?? {})
+    }
+    if (session?.token) headers.Authorization = `Bearer ${session.token}`
+
+    const query = { language, ...(requestOptions?.query ?? {}) }
+    const taskKey = String(requestOptions?.key || `${requestOptions?.method ?? 'GET'}:${requestOptions?.url ?? ''}:${JSON.stringify(query)}:${JSON.stringify(requestOptions?.data ?? {})}`)
+
+    return queue.enqueue({
+      key: taskKey,
+      priority: Number(requestOptions?.priority ?? 0),
+      execute: async () => {
+        const response = await transport({
+          url: `${baseUrl}${requestOptions.url}${buildQueryString(query)}`,
+          method: requestOptions?.method ?? 'GET',
+          data: requestOptions?.data ?? {},
+          headers,
+          timeout: Number(requestOptions?.timeout ?? 30000)
+        })
+        const authFailure = resolveAuthFailure(response)
+        if (authFailure != null && onAuthFailure != null) {
+          return onAuthFailure({
+            url: requestOptions?.url ?? '',
+            fallbackMessage: authFailure.fallbackMessage
+          })
+        }
+        return unwrapResponse(response)
+      }
+    })
+  }
+
+  return { request }
+}

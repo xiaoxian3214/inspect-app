@@ -1,0 +1,13 @@
+<template>
+	<view class="top-safe-area" :style="{ backgroundColor: backgroundColor }"></view>
+</template>
+
+<script setup lang="uts">
+	defineProps({
+		backgroundColor: { type: String, default: 'transparent' }
+	})
+</script>
+
+<style>
+	.top-safe-area { width: 100%; height: var(--status-bar-height); flex-shrink: 0; }
+</style>

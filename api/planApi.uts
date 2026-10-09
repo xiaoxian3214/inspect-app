@@ -1,0 +1,357 @@
+/**
+ * 判断报告请求是否为禁止绕过联网和图片校验的最终提交。
+ */
+function isFinalReportPayload(payload) {
+  const value = payload?.finishFlag ?? payload?.report?.finishFlag ?? payload?.plan?.finishFlag
+  if (value === true) return true
+  return String(value ?? '').trim() === '1'
+}
+
+/**
+ * 创建验货计划与报告相关的接口集合。
+ */
+export function createPlanApi(apiClient) {
+  /**
+   * 按 H5 契约分页查询验货计划。
+   */
+  async function searchPlans(searchParams: any = {}, page: number = 1, pageSize: number = 100) {
+    const data = await apiClient.request({
+      url: '/api/plans/search',
+      method: 'POST',
+      query: { current: page, size: pageSize },
+      data: searchParams,
+      key: `plans:search:${page}:${pageSize}:${JSON.stringify(searchParams)}`,
+      priority: 10
+    })
+    if (Array.isArray(data)) return { records: data, total: data.length }
+    return {
+      records: Array.isArray(data?.records) ? data.records : [],
+      total: Number(data?.total ?? data?.records?.length ?? 0)
+    }
+  }
+
+  /**
+   * 下载指定计划并生成可供离线验货使用的本地报告数据。
+   */
+  async function downloadPlan(planId, payload: any = {}) {
+    return apiClient.request({
+      url: `/api/reports/generate/empty/${encodeURIComponent(String(planId))}`,
+      method: 'POST',
+      query: { templateId: payload?.templateId ?? '' },
+      data: payload,
+      key: `plan:download:${planId}:${payload?.templateId ?? ''}`,
+      priority: 50,
+      timeout: 60000
+    })
+  }
+
+  /**
+   * 按 H5 同源接口获取指定验货计划的完整详情数据。
+   */
+  async function getPlanDetail(planId) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法获取详情')
+    return apiClient.request({
+      url: `/api/reports/plan/${encodeURIComponent(normalizedPlanId)}/detail`,
+      method: 'GET',
+      key: `reports:plan-detail:${normalizedPlanId}`,
+      priority: 40
+    })
+  }
+
+  /**
+   * 按 H5 同源接口获取已生成报告的完整详情数据。
+   */
+  async function getReportDetail(reportId) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    if (normalizedReportId === '') throw new Error('报告ID缺失，无法获取详情')
+    return apiClient.request({
+      url: `/api/reports/${encodeURIComponent(normalizedReportId)}/detail`,
+      method: 'GET',
+      key: `reports:detail:${normalizedReportId}`,
+      priority: 40
+    })
+  }
+
+  /**
+   * 获取当前账号待验货计划数量。
+   */
+  async function getPendingCount() {
+    const result = await apiClient.request({
+      url: '/api/plans/pending-count',
+      method: 'GET',
+      key: 'plans:pending-count',
+      priority: 20
+    })
+    return Number(result?.count ?? result?.pendingCount ?? result ?? 0)
+  }
+
+  /**
+   * 获取并归一化验货类型字典，按后台排序值升序返回。
+   */
+  async function getInspectTypeDict() {
+    const data = await apiClient.request({
+      url: '/api/dict/data/code/inspect_type',
+      method: 'GET',
+      key: 'dict:inspect-type',
+      priority: 20
+    })
+    const rows = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
+    return rows.map((item) => ({
+      value: String(item?.dictValue ?? item?.value ?? item?.code ?? '').trim(),
+      label: String(item?.dictLabel ?? item?.label ?? item?.name ?? '').trim(),
+      sortOrder: Number(item?.sortOrder ?? 0)
+    })).filter((item) => item.value !== '' && item.label !== '')
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+  }
+
+  /**
+   * 获取并归一化可用于下载和复制的清单模板列表。
+   */
+  async function getPlanTemplates() {
+    const data = await apiClient.request({
+      url: '/api/plans/templates',
+      method: 'GET',
+      key: 'plans:templates',
+      priority: 20
+    })
+    const rows = Array.isArray(data)
+      ? data
+      : (Array.isArray(data?.records) ? data.records : (Array.isArray(data?.data?.records) ? data.data.records : []))
+    const options = []
+    const seenIds = new Set()
+    for (const item of rows) {
+      const id = String(item?.id ?? item?.templateId ?? item?.value ?? item?.code ?? '').trim()
+      const name = String(item?.templateName ?? item?.name ?? item?.label ?? item?.templateLabel ?? '').trim()
+      if (id === '' || name === '' || seenIds.has(id)) continue
+      seenIds.add(id)
+      options.push({ id, name, raw: item })
+    }
+    return options
+  }
+
+  /**
+   * 合并至少两个满足页面规则的验货计划。
+   */
+  async function mergePlans(sourcePlanIds: any[] = []) {
+    const ids = (Array.isArray(sourcePlanIds) ? sourcePlanIds : [])
+      .map((id) => String(id ?? '').trim())
+      .filter((id) => id !== '')
+    if (ids.length < 2) throw new Error('至少选择两个计划才能合并')
+    return apiClient.request({
+      url: '/api/plans/merge',
+      method: 'POST',
+      data: { sourcePlanIds: ids },
+      key: `plans:merge:${ids.join(',')}`,
+      priority: 60,
+      timeout: 60000
+    })
+  }
+
+  /**
+   * 拆分指定的合并验货计划并返回拆分结果。
+   */
+  async function splitPlan(planId) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法拆分')
+    return apiClient.request({
+      url: `/api/plans/split/${encodeURIComponent(normalizedPlanId)}`,
+      method: 'POST',
+      data: {},
+      key: `plans:split:${normalizedPlanId}`,
+      priority: 60,
+      timeout: 60000
+    })
+  }
+
+  /**
+   * 按 H5 查询参数契约复制当前或整个合并验货计划。
+   */
+  async function copyPlan(planId, payload: any = {}) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    const inspectType = String(payload?.inspectType ?? '').trim()
+    const copyFlag = Number(payload?.copyFlag ?? 0)
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法复制')
+    if (inspectType === '') throw new Error('检查类型缺失，无法复制')
+    if (copyFlag !== 1 && copyFlag !== 2) throw new Error('复制类型缺失，无法复制')
+    return apiClient.request({
+      url: `/api/plans/${encodeURIComponent(normalizedPlanId)}/copy`,
+      method: 'POST',
+      query: {
+        inspectType,
+        copyFlag,
+        templateId: String(payload?.templateId ?? '').trim(),
+        templateName: String(payload?.templateName ?? '').trim(),
+        id: normalizedPlanId
+      },
+      data: null,
+      key: `plans:copy:${normalizedPlanId}:${copyFlag}:${inspectType}`,
+      priority: 60,
+      timeout: 60000
+    })
+  }
+
+  /**
+   * 解锁或重置计划，并由 reportDeleteFlag 控制是否删除云端报告。
+   */
+  async function releasePlan(planId, reportDeleteFlag: number = 0) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法解锁')
+    return apiClient.request({
+      url: `/api/reports/generate/release/${encodeURIComponent(normalizedPlanId)}`,
+      method: 'POST',
+      query: { reportDeleteFlag: Number(reportDeleteFlag ?? 0) },
+      data: {},
+      key: `plans:release:${normalizedPlanId}:${Number(reportDeleteFlag ?? 0)}`,
+      priority: 70,
+      timeout: 60000
+    })
+  }
+
+  /**
+   * 更新指定计划的备货或完工数量。
+   */
+  async function updateFinishQuantity(planId, finishQuantity) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    const quantity = Number(finishQuantity)
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法更新备货数量')
+    if (!Number.isFinite(quantity) || quantity < 0) throw new Error('请输入有效的备货数量')
+    return apiClient.request({
+      url: `/api/plans/${encodeURIComponent(normalizedPlanId)}/finish-quantity`,
+      method: 'POST',
+      query: { finishQuantity: quantity },
+      data: null,
+      key: `plans:finish-quantity:${normalizedPlanId}:${quantity}`,
+      priority: 50
+    })
+  }
+
+  /**
+   * 按 H5 契约复制检查项结果及用户选择的关联内容。
+   */
+  async function copyCheckItems(params: any = {}) {
+    const sourcePlanId = String(params?.sourcePlanId ?? '').trim()
+    const targetPlanIds = (Array.isArray(params?.targetPlanIds) ? params.targetPlanIds : [])
+      .map((id) => String(id ?? '').trim())
+      .filter((id) => id !== '')
+    if (sourcePlanId === '') throw new Error('源计划ID不能为空')
+    if (targetPlanIds.length === 0) throw new Error('目标计划ID列表不能为空')
+    return apiClient.request({
+      url: '/api/plans/copy-items',
+      method: 'POST',
+      data: {
+        sourcePlanId,
+        sourceItemId: String(params?.sourceItemId ?? ''),
+        targetItemIds: Array.isArray(params?.targetItemIds) ? params.targetItemIds : [],
+        targetPlanIds,
+        copyPhotos: params?.copyPhotos ?? false,
+        copyStatus: params?.copyStatus ?? false,
+        copySpecs: params?.copySpecs ?? false,
+        copyText: params?.copyText ?? false,
+        copyBarcode: params?.copyBarcode ?? false,
+        copyRemarks: params?.copyRemarks ?? false
+      },
+      key: `plans:copy-items:${sourcePlanId}:${targetPlanIds.join(',')}`,
+      priority: 50,
+      timeout: 60000
+    })
+  }
+
+  /**
+   * 将指定服务端文件复制到目标计划的检查项中。
+   */
+  async function copyPhotosToItems(params: any = {}) {
+    const sourcePlanId = String(params?.sourcePlanId ?? '').trim()
+    const sourceItemId = String(params?.sourceItemId ?? '').trim()
+    const targetPlanIds = (Array.isArray(params?.targetPlanIds) ? params.targetPlanIds : []).map((id) => String(id ?? '').trim()).filter((id) => id !== '')
+    const targetItemIds = (Array.isArray(params?.targetItemIds) ? params.targetItemIds : []).map((id) => String(id ?? '').trim()).filter((id) => id !== '')
+    const fileIds = (Array.isArray(params?.fileIds) ? params.fileIds : []).map((id) => String(id ?? '').trim()).filter((id) => id !== '')
+    if (sourcePlanId === '') throw new Error('源计划ID不能为空')
+    if (sourceItemId === '') throw new Error('源检查点ID不能为空')
+    if (targetPlanIds.length === 0) throw new Error('目标计划ID列表不能为空')
+    if (targetItemIds.length === 0) throw new Error('目标检查点ID列表不能为空')
+    if (fileIds.length === 0) throw new Error('文件ID列表不能为空')
+    return apiClient.request({
+      url: '/api/plans/copy-photos-to-items',
+      method: 'POST',
+      data: { sourcePlanId, sourceItemId, targetPlanIds, targetItemIds, copyPhotos: true, fileIds },
+      key: `plans:copy-photos:${sourcePlanId}:${sourceItemId}:${fileIds.join(',')}`,
+      priority: 50,
+      timeout: 60000
+    })
+  }
+
+  /**
+   * 更新指定计划的抽样数量。
+   */
+  async function updateSampleQuantity(planId, sampleQuantity) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    const quantity = Number(sampleQuantity)
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法更新样品数量')
+    if (!Number.isFinite(quantity) || quantity < 0) throw new Error('请输入有效的样品数量')
+    return apiClient.request({
+      url: `/api/plans/${encodeURIComponent(normalizedPlanId)}/sample-quantity`,
+      method: 'POST',
+      query: { sampleQuantity: quantity },
+      data: null,
+      key: `plans:sample-quantity:${normalizedPlanId}:${quantity}`,
+      priority: 50
+    })
+  }
+
+  /**
+   * 按指定数量拆分计划船期。
+   */
+  async function splitByQuantity(planId, quantityValue) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    const quantity = Number(quantityValue)
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法按数量拆分')
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('请输入有效的拆分数量')
+    return apiClient.request({
+      url: `/api/plans/${encodeURIComponent(normalizedPlanId)}/split-by-quantity`,
+      method: 'POST',
+      query: { quantity },
+      data: null,
+      key: `plans:split-by-quantity:${normalizedPlanId}:${quantity}`,
+      priority: 60,
+      timeout: 60000
+    })
+  }
+
+  /**
+   * 提交离线编辑形成的报告数据到云端。
+   */
+  async function generateReport(payload: any = {}, submitOptions: any = {}) {
+    if (isFinalReportPayload(payload) && submitOptions?.finalSubmissionVerified !== true) {
+      throw new Error('最终提交必须先完成联网和图片上传校验')
+    }
+    return apiClient.request({
+      url: '/api/reports/generate',
+      method: 'POST',
+      data: payload,
+      key: `report:generate:${payload?.planId ?? payload?.id ?? JSON.stringify(payload)}`,
+      priority: 80,
+      timeout: 60000
+    })
+  }
+
+  return {
+    searchPlans,
+    downloadPlan,
+    getPlanDetail,
+    getReportDetail,
+    getPendingCount,
+    generateReport,
+    getInspectTypeDict,
+    getPlanTemplates,
+    mergePlans,
+    splitPlan,
+    copyPlan,
+    releasePlan,
+    updateFinishQuantity,
+    copyCheckItems,
+    copyPhotosToItems,
+    updateSampleQuantity,
+    splitByQuantity
+  }
+}

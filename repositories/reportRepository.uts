@@ -1,0 +1,487 @@
+/**
+ * 安全解析本地数据库中的 JSON 字符串，解析失败时返回空对象。
+ */
+function parseJson(value) {
+  if (value == null || value === '') return {}
+  try {
+    return JSON.parse(value)
+  } catch (_) {
+    return {}
+  }
+}
+
+/**
+ * 从下载计划的多种 H5 数据结构中提取稳定的本地计划主键。
+ */
+function getPlanKey(plan) {
+  return String(
+    (plan?.plan?.id
+    || plan?.plan?.planId
+    || plan?.planId
+    || plan?.id
+    || plan?.reportId)
+    ?? ''
+  )
+}
+
+/**
+ * 判断照片是否已经具备服务端文件信息或完成上传状态。
+ */
+function isUploadedPhoto(photo) {
+  if (String(photo?.fileId ?? '').trim() !== '') return true
+  const status = String(photo?.uploadStatus ?? '').trim().toLowerCase()
+  return status === 'done' || status === 'success' || status === 'uploaded'
+}
+
+/**
+ * 从照片数据库行还原媒体记录，并用独立列补齐旧数据缺失的上传字段。
+ */
+function parsePhotoRecord(row) {
+  const parsed = parseJson(row?.jsonData)
+  return {
+    ...parsed,
+    photoId: (parsed?.photoId || parsed?.id || row?.sourcePhotoId) ?? '',
+    fileId: (parsed?.fileId || row?.fileId) ?? '',
+    uploadStatus: (parsed?.uploadStatus || row?.uploadStatus) ?? '',
+    localPath: (parsed?.localPath || row?.localPath) ?? '',
+    ownerType: (parsed?.ownerType || row?.ownerType) ?? '',
+    ownerId: (parsed?.ownerId || row?.ownerId) ?? ''
+  }
+}
+
+/**
+ * 将照片仓库中较新的上传结果合并到页面传入的旧媒体快照，同时保留当前归属和排序。
+ */
+function mergePersistedUploadState(photo, persistedPhoto) {
+  if (!isUploadedPhoto(persistedPhoto)) return photo
+  return {
+    ...(photo ?? {}),
+    ...(persistedPhoto ?? {}),
+    photoId: (photo?.photoId || photo?.id || persistedPhoto?.photoId || persistedPhoto?.id) ?? '',
+    ownerType: (photo?.ownerType || persistedPhoto?.ownerType) ?? '',
+    ownerId: (photo?.ownerId || photo?.itemId || photo?.defectId || persistedPhoto?.ownerId) ?? '',
+    dataKey: (photo?.dataKey || persistedPhoto?.dataKey) ?? '',
+    bizId: (photo?.bizId || persistedPhoto?.bizId) ?? '',
+    bizType: (photo?.bizType || persistedPhoto?.bizType) ?? '',
+    subGoodsNo: (photo?.subGoodsNo || persistedPhoto?.subGoodsNo) ?? '',
+    localPath: (photo?.localPath || persistedPhoto?.localPath) ?? '',
+    sortNo: photo?.sortNo ?? persistedPhoto?.sortNo,
+    uploadStatus: 'done',
+    uploadError: ''
+  }
+}
+
+/**
+ * 按照片稳定 ID 合并已持久化的上传结果，避免旧报告草稿把完成状态覆盖回 pending。
+ */
+function mergePhotoListWithPersistedUploads(photos, persistedPhotoMap) {
+  return (Array.isArray(photos) ? photos : []).map((photo) => {
+    const photoId = String(photo?.photoId ?? photo?.id ?? '').trim()
+    if (photoId === '') return photo
+    return mergePersistedUploadState(photo, persistedPhotoMap.get(photoId))
+  })
+}
+
+/** 把旧草稿缺少的已落库照片恢复到所属检查项或疵点，保持报告 JSON 与照片表一致。 */
+function restorePhotoOwner(detail, photo) {
+  const ownerId = String(photo?.dataKey ?? photo?.ownerId ?? '')
+  if (photo?.ownerType === 'checklist' && ownerId !== '') {
+    const current = detail.checklistData[ownerId] ?? {}
+    detail.checklistData[ownerId] = { ...current, photos: [...(current.photos ?? []), photo] }
+    detail.checklistItems = detail.checklistItems.map((item) => {
+      return String(item?.itemId ?? item?.id ?? '') === ownerId
+        ? { ...item, data: { ...(item?.data ?? {}), photos: detail.checklistData[ownerId].photos } }
+        : item
+    })
+  }
+  if (photo?.ownerType === 'defect' && ownerId !== '') {
+    detail.defects = detail.defects.map((defect) => {
+      return String(defect?.defectId ?? defect?.id ?? '') === ownerId
+        ? { ...defect, photos: [...(defect?.photos ?? []), photo] }
+        : defect
+    })
+  }
+}
+
+/**
+ * 将数据库报告行转换为 H5 列表使用的轻量计划摘要，并用数据库列回填缺失展示字段。
+ */
+function summarizeReportRow(row) {
+  const jsonData = parseJson(row?.jsonData)
+  const plan = jsonData?.plan != null && typeof jsonData.plan === 'object' ? jsonData.plan : {}
+  const planId = String(row?.reportId ?? plan?.id ?? plan?.planId ?? '')
+  const remoteReportId = String(jsonData?.report?.id ?? '').trim()
+  return {
+    id: plan?.id || planId,
+    planId,
+    reportId: remoteReportId || planId,
+    status: Number.isFinite(Number(row?.status)) ? Number(row.status) : 0,
+    progress: Number(jsonData?.progress ?? 0),
+    syncStatus: String(jsonData?.syncStatus ?? ''),
+    downloadedAt: row?.downloadAt ?? '',
+    updatedAt: (jsonData?.updatedAt || jsonData?.syncedAt || row?.downloadAt) ?? '',
+    lockStatus: row?.lockStatus ?? '',
+    lockerId: row?.lockerId ?? '',
+    lockExpireAt: row?.lockExpireAt ?? '',
+    plan: {
+      id: plan?.id || planId,
+      planId: plan?.planId || planId,
+      reportId: (plan?.reportId || jsonData?.reportId || remoteReportId) ?? '',
+      clientOrderNo: (plan?.clientOrderNo || row?.orderNo || jsonData?.clientOrderNo) ?? '',
+      domeNo: (plan?.domeNo || jsonData?.domeNo) ?? '',
+      factoryName: (plan?.factoryName || jsonData?.factoryName) ?? '',
+      goodsName: (plan?.goodsName || plan?.goodsCname || row?.productName || jsonData?.productName) ?? '',
+      goodsCname: plan?.goodsCname ?? '',
+      subGoodsNo: plan?.subGoodsNo ?? '',
+      batchNo: plan?.batchNo ?? '',
+      inspectType: (plan?.inspectType || jsonData?.inspectType) ?? '',
+      templateId: (plan?.templateId || jsonData?.templateId) ?? '',
+      templateName: (plan?.templateName || jsonData?.templateName) ?? '',
+      createDate: (plan?.createDate || jsonData?.createdAt || row?.downloadAt) ?? '',
+      updateDate: (plan?.updateDate || jsonData?.updatedAt) ?? '',
+      inspectorId: (plan?.inspectorId || jsonData?.inspectorId) ?? '',
+      inspectorName: (plan?.inspectorName || jsonData?.inspectorName) ?? '',
+      lockFlag: plan?.lockFlag ?? jsonData?.lockFlag,
+      mergeType: plan?.mergeType ?? jsonData?.mergeType,
+      parentPlanId: (plan?.parentPlanId || jsonData?.parentPlanId) ?? '',
+      goodsFlag: plan?.goodsFlag ?? jsonData?.goodsFlag,
+      produceNo: (plan?.produceNo || jsonData?.produceNo) ?? '',
+      modelNo: (plan?.modelNo || jsonData?.modelNo) ?? '',
+      requiredQuantity: plan?.requiredQuantity ?? jsonData?.requiredQuantity
+    }
+  }
+}
+
+export function createReportRepository(database) {
+  /**
+   * 读取本地验货记录，并还原为列表页面可直接使用的计划对象。
+   */
+  async function listPlans() {
+    const rows = database.readTable('report')
+    return rows.map((row) => {
+      const jsonData = parseJson(row.jsonData)
+      const remoteReportId = String(jsonData?.report?.id ?? '').trim()
+      return {
+        ...jsonData,
+        id: jsonData?.plan?.id || row.reportId,
+        planId: row.reportId,
+        reportId: remoteReportId || row.reportId,
+        status: row.status,
+        downloadedAt: row.downloadAt ?? '',
+        lockStatus: row.lockStatus ?? '',
+        lockerId: row.lockerId ?? '',
+        lockExpireAt: row.lockExpireAt ?? '',
+        syncRetry: Number(row.syncRetry ?? 0)
+      }
+    })
+  }
+
+  /**
+   * 读取 H5 列表同结构的本地计划摘要，避免完整详情覆盖后丢失产品展示字段。
+   */
+  async function listPlanSummaries() {
+    return database.readTable('report').map(summarizeReportRow)
+  }
+
+  /** 返回 SQLite report 表的全部原始行，供本地下载页签核对完整存储内容。 */
+  async function listStoredReportRows() {
+    return database.readTable('report')
+  }
+
+  /**
+   * 按计划、报告或嵌套计划 ID 读取单个完整本地详情。
+   */
+  async function getPlanById(planId) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (normalizedPlanId === '') return null
+    const plans = await listPlans()
+    return plans.find((plan) => {
+      const candidates = [
+        plan?.id,
+        plan?.planId,
+        plan?.reportId,
+        plan?.plan?.id,
+        plan?.plan?.planId,
+        plan?.report?.id
+      ].filter((id) => id !== undefined && id !== null).map((id) => String(id))
+      return candidates.includes(normalizedPlanId)
+    }) || null
+  }
+
+  /**
+   * 保存单个下载计划到本地报告表，相同计划 ID 时覆盖旧数据。
+   */
+  async function savePlan(plan) {
+    const planKey = getPlanKey(plan)
+    if (planKey === '') throw new Error('计划ID缺失，无法保存到本地')
+    const planSource = plan?.plan != null && typeof plan.plan === 'object' ? plan.plan : plan
+    const row = {
+      reportId: planKey,
+      orderNo: (planSource?.clientOrderNo || planSource?.domeNo) ?? '',
+      productName: (planSource?.goodsName || planSource?.goodsCname || plan?.productName) ?? '',
+      jsonData: JSON.stringify(plan),
+      downloadAt: plan?.downloadedAt || new Date().toISOString(),
+      lockExpireAt: plan?.lockExpireAt ?? '',
+      status: Number.isFinite(Number(plan?.status)) ? Number(plan.status) : 0,
+      lockStatus: plan?.lockStatus ?? '',
+      lockerId: plan?.lockerId ?? '',
+      syncRetry: Number(plan?.syncRetry ?? 0)
+    }
+    await database.transaction(async (transaction) => {
+      transaction.upsert('report', 'reportId', row)
+    })
+    return plan
+  }
+
+  /** 仅在提交的草稿仍是最新版本时清除脏标记，避免网络响应覆盖拍照期间的新编辑。 */
+  async function completeDraftSync(planId, submittedPayload, remoteReportId, syncedAt) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法完成草稿同步')
+    let saved = null
+    await database.transaction(async (transaction) => {
+      const row = transaction.read('report').find((item) => String(item?.reportId ?? '') === normalizedPlanId)
+      if (row == null) throw new Error('本地报告不存在，无法完成草稿同步')
+      const current = parseJson(row.jsonData)
+      const latestDraft = JSON.stringify(current?.pendingSyncPayload) !== JSON.stringify(submittedPayload)
+      saved = {
+        ...current,
+        reportId: remoteReportId || current?.reportId || normalizedPlanId,
+        report: { ...(current?.report ?? {}), ...(remoteReportId ? { id: remoteReportId } : {}) },
+        syncStatus: latestDraft ? current?.syncStatus : 'SYNCED',
+        pendingSyncPayload: latestDraft ? current?.pendingSyncPayload : null,
+        syncedAt,
+        updatedAt: latestDraft ? current?.updatedAt : syncedAt
+      }
+      transaction.upsert('report', 'reportId', { ...row, jsonData: JSON.stringify(saved) })
+    })
+    return saved
+  }
+
+  /**
+   * 在同一事务中批量保存下载计划，任一计划无 ID 时整体回滚。
+   */
+  async function savePlans(plans) {
+    const source = Array.isArray(plans) ? plans : []
+    await database.transaction(async (transaction) => {
+      for (const plan of source) {
+        const planKey = getPlanKey(plan)
+        if (planKey === '') throw new Error('计划ID缺失，无法保存到本地')
+        const planSource = plan?.plan != null && typeof plan.plan === 'object' ? plan.plan : plan
+        transaction.upsert('report', 'reportId', {
+          reportId: planKey,
+          orderNo: (planSource?.clientOrderNo || planSource?.domeNo) ?? '',
+          productName: (planSource?.goodsName || planSource?.goodsCname) ?? '',
+          jsonData: JSON.stringify(plan),
+          downloadAt: plan?.downloadedAt || new Date().toISOString(),
+          lockExpireAt: plan?.lockExpireAt ?? '',
+          status: Number.isFinite(Number(plan?.status)) ? Number(plan.status) : 0,
+          lockStatus: plan?.lockStatus ?? '',
+          lockerId: plan?.lockerId ?? '',
+          syncRetry: Number(plan?.syncRetry ?? 0)
+        })
+      }
+    })
+    return source
+  }
+
+  /**
+   * 在同一事务中保存报告完整快照，并将合并验货的共享内容同步到同组本地计划入口。
+   */
+  async function saveDetailSnapshot(planId, snapshot) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (normalizedPlanId === '') throw new Error('计划ID缺失，无法保存详情')
+    const persistedPhotoMap = new Map()
+    database.readTable('photo')
+      .filter((row) => String(row?.reportId ?? '') === normalizedPlanId)
+      .forEach((row) => {
+        const photo = parsePhotoRecord(row)
+        const photoId = String(photo?.photoId ?? photo?.id ?? row?.sourcePhotoId ?? '').trim()
+        if (photoId !== '') persistedPhotoMap.set(photoId, photo)
+      })
+    const checklistData = { ...(snapshot?.checklistData ?? {}) }
+    Object.keys(checklistData).forEach((itemId) => {
+      const itemData = checklistData[itemId] ?? {}
+      checklistData[itemId] = {
+        ...itemData,
+        photos: mergePhotoListWithPersistedUploads(itemData?.photos, persistedPhotoMap)
+      }
+    })
+    const checklistItems = (Array.isArray(snapshot?.checklistItems) ? snapshot.checklistItems : []).map((item) => ({
+      ...item,
+      data: item?.data != null && typeof item.data === 'object'
+        ? { ...item.data, photos: mergePhotoListWithPersistedUploads(item.data?.photos, persistedPhotoMap) }
+        : item?.data
+    }))
+    const defects = (Array.isArray(snapshot?.defects) ? snapshot.defects : []).map((defect) => ({
+      ...defect,
+      photos: mergePhotoListWithPersistedUploads(defect?.photos, persistedPhotoMap)
+    }))
+    const detail = {
+      ...(snapshot ?? {}),
+      planId: normalizedPlanId,
+      checklistData,
+      checklistItems,
+      defects,
+      photos: mergePhotoListWithPersistedUploads(snapshot?.photos, persistedPhotoMap)
+    }
+    const planSource = detail?.plan != null && typeof detail.plan === 'object' ? detail.plan : detail
+    await database.transaction(async (transaction) => {
+      const currentPhotos = transaction.read('photo')
+        .filter((row) => String(row?.reportId ?? '') === normalizedPlanId)
+        .map(parsePhotoRecord)
+      const currentPhotoMap = new Map(currentPhotos.map((photo) => [String(photo?.photoId ?? photo?.id ?? ''), photo]))
+      const snapshotPhotoIds = new Set(detail.photos.map((photo) => String(photo?.photoId ?? photo?.id ?? '')))
+      detail.photos = mergePhotoListWithPersistedUploads(detail.photos, currentPhotoMap)
+      currentPhotos.forEach((photo) => {
+        if (!snapshotPhotoIds.has(String(photo?.photoId ?? photo?.id ?? ''))) {
+          detail.photos.push(photo)
+          restorePhotoOwner(detail, photo)
+        }
+      })
+      transaction.upsert('report', 'reportId', {
+        reportId: normalizedPlanId,
+        orderNo: (planSource?.clientOrderNo || planSource?.domeNo) ?? '',
+        productName: (planSource?.goodsName || planSource?.goodsCname) ?? '',
+        jsonData: JSON.stringify(detail),
+        downloadAt: detail?.downloadedAt || new Date().toISOString(),
+        lockExpireAt: detail?.lockExpireAt ?? '',
+        status: Number.isFinite(Number(detail?.status)) ? Number(detail.status) : 0,
+        lockStatus: detail?.lockStatus ?? '',
+        lockerId: detail?.lockerId ?? '',
+        syncRetry: Number(detail?.syncRetry ?? 0)
+      })
+      const parentPlanId = String(detail?.plan?.parentPlanId ?? '').trim()
+      const reportEntityId = String(detail?.report?.id ?? '').trim()
+      if (Number(detail?.plan?.mergeType ?? 0) === 2 && parentPlanId !== '' && reportEntityId !== '' && (detail?.inspectionPlans ?? []).length > 1) {
+        const groupPlanIds = new Set(detail.inspectionPlans.map((plan) => String(plan?.id ?? plan?.planId ?? '')))
+        const sharedPhotoIds = new Set(detail.photos.map((photo) => String(photo?.photoId ?? photo?.id ?? '')))
+        transaction.read('report').forEach((row) => {
+          const siblingPlanId = String(row?.reportId ?? '')
+          if (siblingPlanId === normalizedPlanId || !groupPlanIds.has(siblingPlanId)) return
+          const sibling = parseJson(row?.jsonData)
+          if (String(sibling?.plan?.parentPlanId ?? '') !== parentPlanId || String(sibling?.report?.id ?? '') !== reportEntityId) return
+          const shared = {
+            ...detail,
+            id: sibling?.id ?? siblingPlanId,
+            planId: siblingPlanId,
+            plan: { ...(sibling?.plan ?? {}), status: detail?.status ?? sibling?.plan?.status },
+            downloadedAt: sibling?.downloadedAt ?? detail?.downloadedAt,
+            pendingSyncPayload: sibling?.pendingSyncPayload ?? null,
+            syncStatus: sibling?.syncStatus ?? 'SYNCED'
+          }
+          transaction.upsert('report', 'reportId', {
+            ...row,
+            status: Number.isFinite(Number(detail?.status)) ? Number(detail.status) : row.status,
+            jsonData: JSON.stringify(shared)
+          })
+          transaction.removeWhere('photo', (photoRow) => String(photoRow?.reportId ?? '') === siblingPlanId && !sharedPhotoIds.has(String(photoRow?.sourcePhotoId ?? '')))
+        })
+      }
+      transaction.removeWhere('checklist', (row) => String(row?.reportId ?? '') === normalizedPlanId)
+      detail.checklistItems.forEach((item, index) => {
+        const sourceItemId = String(item?.itemId ?? item?.id ?? index)
+        transaction.upsert('checklist', 'itemId', {
+          itemId: `${normalizedPlanId}::${sourceItemId}`,
+          sourceItemId,
+          reportId: normalizedPlanId,
+          skuNo: (item?.skuNo || item?.subGoodsNo) ?? '',
+          qty: Number(item?.qty ?? item?.quantity ?? 0),
+          checkedQty: Number(item?.checkedQty ?? item?.data?.checkedQty ?? 0),
+          passQty: Number(item?.passQty ?? item?.data?.passQty ?? 0),
+          defectQty: Number(item?.defectQty ?? item?.data?.defectQty ?? 0),
+          sortNo: index,
+          jsonData: JSON.stringify(item),
+          updatedAt: new Date().toISOString()
+        })
+      })
+      transaction.removeWhere('defect', (row) => String(row?.reportId ?? '') === normalizedPlanId)
+      detail.defects.forEach((defect, index) => {
+        const sourceDefectId = String(defect?.defectId ?? defect?.id ?? `local-${index}`)
+        transaction.upsert('defect', 'defectId', {
+          defectId: `${normalizedPlanId}::${sourceDefectId}`,
+          sourceDefectId,
+          reportId: normalizedPlanId,
+          itemId: (defect?.checkItemId || defect?.itemId) ?? '',
+          defectType: (defect?.type || defect?.defectType || defect?.severity) ?? '',
+          desc: (defect?.defectDesc || defect?.desc || defect?.description) ?? '',
+          photoPaths: JSON.stringify(defect?.photos ?? []),
+          sortNo: index,
+          jsonData: JSON.stringify(defect),
+          createAt: defect?.createdAt || defect?.createAt || new Date().toISOString()
+        })
+      })
+      transaction.removeWhere('photo', (row) => String(row?.reportId ?? '') === normalizedPlanId)
+      detail.photos.forEach((photo, index) => {
+        const sourcePhotoId = String(photo?.photoId ?? photo?.id ?? `local-${index}`)
+        transaction.upsert('photo', 'photoId', {
+          photoId: `${normalizedPlanId}::${sourcePhotoId}`,
+          sourcePhotoId,
+          defectId: photo?.defectId || (photo?.ownerType === 'defect' ? photo?.ownerId ?? '' : ''),
+          reportId: normalizedPlanId,
+          localPath: photo?.localPath ?? '',
+          uploadStatus: photo?.uploadStatus || (photo?.fileId ? 'done' : 'pending'),
+          fileId: photo?.fileId ?? '',
+          ownerType: photo?.ownerType ?? '',
+          ownerId: (photo?.ownerId || photo?.itemId || photo?.defectId) ?? '',
+          sortNo: index,
+          jsonData: JSON.stringify(photo),
+          md5: photo?.md5 ?? ''
+        })
+      })
+    })
+    return detail
+  }
+
+  /**
+   * 按计划、报告或嵌套计划 ID 批量删除本地验货记录。
+   */
+  async function removePlansByIds(planIds) {
+    const idSet = new Set((Array.isArray(planIds) ? planIds : [])
+      .map((id) => String(id ?? '').trim())
+      .filter((id) => id !== ''))
+    if (idSet.size === 0) return []
+    await database.transaction(async (transaction) => {
+      transaction.removeWhere('report', (row) => {
+        const jsonData = parseJson(row?.jsonData)
+        const candidates = [
+          row?.reportId,
+          jsonData?.id,
+          jsonData?.planId,
+          jsonData?.reportId,
+          jsonData?.plan?.id,
+          jsonData?.plan?.planId,
+          jsonData?.plan?.reportId,
+          jsonData?.report?.id
+        ].filter((id) => id !== undefined && id !== null).map((id) => String(id))
+        return candidates.some((id) => idSet.has(id))
+      })
+    })
+    return Array.from(idSet)
+  }
+
+  /**
+   * 清空全部本地验货计划及其离线报告记录。
+   */
+  async function clearPlans() {
+    await database.transaction(async (transaction) => {
+      transaction.replace('report', [])
+      transaction.replace('checklist', [])
+      transaction.replace('defect', [])
+      transaction.replace('photo', [])
+      transaction.replace('sync_log', [])
+    })
+  }
+
+  return {
+    listPlans,
+    listPlanSummaries,
+    listStoredReportRows,
+    getPlanById,
+    savePlan,
+    completeDraftSync,
+    savePlans,
+    saveDetailSnapshot,
+    removePlansByIds,
+    clearPlans
+  }
+}

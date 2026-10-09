@@ -1,0 +1,70 @@
+/**
+ * 将 H5 登录响应归一化为 App 可离线缓存的用户会话。
+ */
+export function normalizeLoginResponse(response, fallbackUserName, nowValue) {
+  const data = response != null && typeof response === 'object' ? response : {}
+  const token = (data.accessToken || data.token) ?? ''
+  if (token === '') throw new Error('登录响应缺少访问令牌')
+
+  const userName = (data.username || data.userName || fallbackUserName) ?? ''
+  const roles = Array.isArray(data.roles) ? data.roles : []
+  const expiresIn = Number(data.expiresIn ?? 7200)
+  const baseTime = Number(nowValue ?? Date.now())
+
+  return {
+    userId: String(data.userId ?? data.employeeNo ?? userName),
+    userName,
+    realName: data.realName || userName,
+    email: data.email ?? '',
+    token,
+    refreshToken: data.refreshToken ?? '',
+    role: roles.length > 0 ? roles.join(',') : (data.role ?? 'inspector'),
+    roles,
+    permissions: Array.isArray(data.permissions) ? data.permissions : [],
+    expireAt: new Date(baseTime + expiresIn * 1000).toISOString(),
+    rememberPwd: false,
+    autoLogin: true,
+    updatedAt: new Date(baseTime).toISOString()
+  }
+}
+
+export function createAuthService(options) {
+  const authApi = options.authApi
+  const userRepository = options.userRepository
+  const onlineChecker = options.isOnline
+  const now = typeof options.now === 'function' ? options.now : () => Date.now()
+
+  async function login(credentials) {
+    const online = await onlineChecker()
+    if (!online) {
+      const localSession = await userRepository.getLastSession()
+      if (localSession?.token) return localSession
+      throw new Error('当前无网络且无可用离线身份，请联网登录一次')
+    }
+
+    const response = await authApi.login({
+      userName: credentials.userName,
+      password: credentials.password
+    })
+    const session = normalizeLoginResponse(response, credentials.userName, now())
+    session.rememberPwd = credentials.rememberPwd === true
+    session.autoLogin = credentials.autoLogin !== false
+    await userRepository.saveSession(session)
+    return session
+  }
+
+  async function restoreSession() {
+    const session = await userRepository.getLastSession()
+    return session?.token ? session : null
+  }
+
+  async function logout() {
+    await userRepository.clearSession()
+  }
+
+  return {
+    login,
+    restoreSession,
+    logout
+  }
+}

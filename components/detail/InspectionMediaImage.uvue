@@ -1,0 +1,37 @@
+<template>
+	<view v-if="isVideo" class="video-fallback"><AppIcon type="camera" :size="26" color="#94a3b8" /></view>
+	<image v-else class="inspection-media-image" :src="source" :mode="imageMode" @error="handleImageError" />
+</template>
+
+<script setup lang="uts">
+	import { computed, ref, watch } from 'vue'
+	import AppIcon from '../icons/AppIcon.uvue'
+	import { API_BASE_URL } from '../../config/appConfig.uts'
+	import { getMediaDisplayUrl } from '../../domain/mediaDisplay.uts'
+	import { isVideoMedia } from '../../domain/photoUploadPolicy.uts'
+
+	const props = defineProps({
+		media: { type: Object, default: () => ({}) },
+		viewMode: { type: String, default: 'thumbnail' },
+		imageMode: { type: String, default: 'aspectFill' }
+	})
+
+	/** 判定当前媒体是否为视频；视频无静态缩略图，网格内改用深色占位底。 */
+	const isVideo = computed(() => isVideoMedia(props.media))
+	const fallbackSource = ref('')
+	/** 优先展示本地图片，失效时展示同一文件 ID 对应的服务端图片。 */
+	const source = computed(() => fallbackSource.value || getMediaDisplayUrl(props.media, props.viewMode, API_BASE_URL))
+	/** 本地旧路径加载失败时仅重试一次远程地址，避免持续加载失败循环。 */
+	function handleImageError() {
+		if (fallbackSource.value !== '' || !props.media?.localPath) return
+		const remote = getMediaDisplayUrl({ ...props.media, localPath: '' }, props.viewMode, API_BASE_URL)
+		if (remote !== '' && remote !== source.value) fallbackSource.value = remote
+	}
+	watch(() => props.media, () => { fallbackSource.value = '' })
+	watch(() => props.viewMode, () => { fallbackSource.value = '' })
+</script>
+
+<style>
+	.inspection-media-image { width: 100%; height: 100%; }
+	.video-fallback { width: 100%; height: 100%; align-items: center; justify-content: center; background-color: #1e293b; }
+</style>

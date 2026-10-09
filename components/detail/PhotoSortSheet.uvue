@@ -1,0 +1,90 @@
+<template>
+	<view v-if="visible" class="overlay" @click="closeSheet">
+		<view class="sheet" @click.stop="stopEvent">
+			<view class="sheet-handle"></view>
+			<view class="sheet-head">
+				<text class="head-action" @click="closeSheet">{{ t('取消') }}</text>
+				<text class="sheet-title">{{ t('调整图片顺序') }}</text>
+				<text class="head-action done" @click="saveOrder">{{ t('完成') }}</text>
+			</view>
+			<text class="sort-hint">{{ t('先选择图片，再点击目标位置') }}</text>
+			<scroll-view class="sort-body" scroll-y="true" show-scrollbar="false">
+				<view class="sort-grid">
+					<view
+						v-for="(photo, index) in sortedPhotos"
+						:key="photo.photoId || photo.fileId || photo.localPath || index"
+						class="sort-cell"
+						:class="{ selected: selectedIndex === index }"
+						@click="selectPosition(index)"
+					>
+						<InspectionMediaImage class="sort-image" :media="photo" />
+						<view class="sort-number"><text>{{ index + 1 }}</text></view>
+						<view v-if="selectedIndex === index" class="selected-mask"><text>{{ t('已选择') }}</text></view>
+					</view>
+				</view>
+			</scroll-view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { ref, watch } from 'vue'
+	import { moveMediaItem, normalizeMediaOrder } from '../../domain/mediaSort.uts'
+	import InspectionMediaImage from './InspectionMediaImage.uvue'
+
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		photos: { type: Array, default: () => [] }
+	})
+	const emit = defineEmits(['close', 'sorted'])
+	const sortedPhotos = ref([])
+	const selectedIndex = ref(-1)
+
+	/** 打开排序弹层时复制当前图片顺序，关闭时清除临时选择。 */
+	watch(() => props.visible, (visible) => {
+		if (visible) sortedPhotos.value = normalizeMediaOrder(props.photos)
+		selectedIndex.value = -1
+	})
+
+	/** 先记录源图片，再在用户点击目标位置时完成不可变换位。 */
+	function selectPosition(index) {
+		if (selectedIndex.value < 0) {
+			selectedIndex.value = index
+			return
+		}
+		if (selectedIndex.value === index) {
+			selectedIndex.value = -1
+			return
+		}
+		sortedPhotos.value = moveMediaItem(sortedPhotos.value, selectedIndex.value, index)
+		selectedIndex.value = -1
+	}
+
+	/** 提交当前临时顺序，由检查项和详情页持久化草稿。 */
+	function saveOrder() { emit('sorted', normalizeMediaOrder(sortedPhotos.value)) }
+	/** 关闭排序弹层并放弃尚未提交的临时顺序。 */
+	function closeSheet() { emit('close') }
+	/** 阻止点击弹层内容时触发遮罩关闭。 */
+	function stopEvent() {}
+</script>
+
+<style>
+	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2600; justify-content: flex-end; background-color: rgba(15,23,42,.46); }
+	.sheet { width: 100%; max-height: 82vh; padding-bottom: calc(24rpx + env(safe-area-inset-bottom)); border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
+	.sheet-handle { width: 72rpx; height: 8rpx; margin: 14rpx auto 4rpx; border-radius: 4rpx; background-color: #cbd5e1; }
+	.sheet-head { height: 92rpx; padding: 0 28rpx; flex-direction: row; align-items: center; justify-content: space-between; border-bottom-width: 1rpx; border-bottom-color: #eef2f7; }
+	.sheet-title { color: #0f172a; font-size: 30rpx; font-weight: 700; }
+	.head-action { width: 100rpx; color: #64748b; font-size: 25rpx; }
+	.head-action.done { color: #039447; text-align: right; font-weight: 600; }
+	.sort-hint { padding: 18rpx 28rpx; color: #64748b; font-size: 23rpx; background-color: #f8fafc; }
+	.sort-body { max-height: 58vh; padding: 18rpx; box-sizing: border-box; }
+	.sort-grid { width: 100%; flex-direction: row; flex-wrap: wrap; }
+	.sort-cell { position: relative; width: 33.333333%; aspect-ratio: 1; padding: 8rpx; box-sizing: border-box; }
+	.sort-image { width: 100%; height: 100%; overflow: hidden; border-width: 3rpx; border-color: transparent; border-radius: 18rpx; background-color: #f1f5f9; }
+	
+	.sort-number { position: absolute; left: 18rpx; top: 18rpx; min-width: 42rpx; height: 42rpx; padding: 0 8rpx; border-radius: 21rpx; align-items: center; justify-content: center; color: #ffffff; font-size: 21rpx; background-color: rgba(15,23,42,.72); }
+	
+	.selected-mask { position: absolute; left: 8rpx; top: 8rpx; right: 8rpx; bottom: 8rpx; padding: 8rpx 16rpx; border-radius: 18rpx; align-items: center; justify-content: center; color: #ffffff; font-size: 22rpx; background-color: rgba(3,168,78,.42); }
+	
+</style>

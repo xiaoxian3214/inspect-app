@@ -1,0 +1,173 @@
+<template>
+	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
+		<view class="sheet-panel" @click.stop>
+			<text class="sheet-title">{{ t(stage === 'type' ? '选择合并验货类型' : '确认合并验货') }}</text>
+
+			<view v-if="stage === 'type'" class="section">
+				<text class="section-label">{{ t('验货类型') }}</text>
+				<view class="chip-list">
+					<view v-for="option in inspectTypeOptions" :key="option.value" class="chip" :class="{ active: selectedInspectType === option.value }" @click="selectInspectType(option.value)">
+						<text class="chip-text">{{ option.label }}</text>
+					</view>
+				</view>
+				<text v-if="inspectTypeOptions.length === 0" class="empty-text">{{ t('暂无可选验货类型') }}</text>
+			</view>
+
+			<view v-else>
+				<text class="summary-text">已选择 {{ selectedItems.length }} 条计划</text>
+				<scroll-view class="preview-list" scroll-y="true">
+					<view v-for="item in selectedItems" :key="getItemId(item)" class="preview-item">
+						<text class="preview-title">{{ getItemTitle(item) }}</text>
+						<text class="preview-subtitle">{{ getItemSubtitle(item) }}</text>
+					</view>
+				</scroll-view>
+				<view class="section">
+					<text class="section-label">{{ t('清单模板') }}</text>
+					<picker :range="templateNames" :value="templateIndex" @change="changeTemplate">
+						<view class="picker-value">{{ t(selectedTemplateName ?? '请选择清单') }}</view>
+					</picker>
+				</view>
+				<view v-if="mergedPlanId !== ''" class="success-box">
+					<text class="success-title">{{ t('合并成功') }}</text>
+					<text class="success-text">{{ t('可立即下载并保存到本地。') }}</text>
+				</view>
+			</view>
+
+			<view class="sheet-actions">
+				<button class="action-button secondary" :disabled="submitting" @click="closeSheet">{{ t('取消') }}</button>
+				<button v-if="stage === 'type'" class="action-button primary" :disabled="submitting || selectedInspectType === ''" @click="startSelection">{{ t('开始选择') }}</button>
+				<button v-else-if="mergedPlanId === ''" class="action-button primary" :disabled="submitting || selectedItems.length < 2" @click="confirmMerge">
+					{{ t(submitting ? '合并中...' : '确认合并') }}
+				</button>
+				<button v-else class="action-button primary" :disabled="submitting" @click="downloadMerged">
+					{{ t(submitting ? '下载中...' : '下载到本地') }}
+				</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		stage: { type: String, default: 'type' },
+		inspectTypeOptions: { type: Array, default: () => [] },
+		selectedInspectType: { type: String, default: '' },
+		selectedItems: { type: Array, default: () => [] },
+		templates: { type: Array, default: () => [] },
+		selectedTemplateId: { type: String, default: '' },
+		mergedPlanId: { type: String, default: '' },
+		submitting: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['close', 'update-inspect-type', 'start-selection', 'update-template', 'confirm-merge', 'download'])
+
+	/**
+	 * 返回模板名称数组供原生 picker 使用。
+	 */
+	const templateNames = computed(() => props.templates.map((item) => String(item?.name ?? '')))
+
+	/**
+	 * 返回当前模板在 picker 中的索引。
+	 */
+	const templateIndex = computed(() => Math.max(0, props.templates.findIndex((item) => String(item?.id ?? '') === props.selectedTemplateId)))
+
+	/**
+	 * 返回当前已选清单模板名称。
+	 */
+	const selectedTemplateName = computed(() => props.templates.find((item) => String(item?.id ?? '') === props.selectedTemplateId)?.name ?? '')
+
+	/**
+	 * 从计划对象中读取稳定计划 ID。
+	 */
+	function getItemId(item) {
+		return String(item?.plan?.id ?? item?.plan?.planId ?? item?.planId ?? item?.id ?? '')
+	}
+
+	/**
+	 * 返回合并预览的订单和货号标题。
+	 */
+	function getItemTitle(item) {
+		const plan = (item?.plan || item) ?? {}
+		return `${(plan?.clientOrderNo || plan?.domeNo) ?? '未分组'} · ${(plan?.subGoodsNo || plan?.goodsNo) ?? '-'}`
+	}
+
+	/**
+	 * 返回合并预览的产品和供应商摘要。
+	 */
+	function getItemSubtitle(item) {
+		const plan = (item?.plan || item) ?? {}
+		return `${(plan?.goodsName || plan?.goodsCname) ?? '未命名产品'} / ${plan?.factoryName ?? '-'}`
+	}
+
+	/**
+	 * 关闭合并弹层。
+	 */
+	function closeSheet() {
+		emit('close')
+	}
+
+	/**
+	 * 更新合并流程选中的验货类型。
+	 */
+	function selectInspectType(value) {
+		emit('update-inspect-type', value)
+	}
+
+	/**
+	 * 进入卡片多选合并模式。
+	 */
+	function startSelection() {
+		emit('start-selection')
+	}
+
+	/**
+	 * 根据 picker 索引更新合并下载模板。
+	 */
+	function changeTemplate(event) {
+		const index = Number(event?.detail?.value ?? 0)
+		const option = props.templates[index]
+		if (option != null) emit('update-template', option)
+	}
+
+	/**
+	 * 提交已选计划进行远程合并。
+	 */
+	function confirmMerge() {
+		emit('confirm-merge')
+	}
+
+	/**
+	 * 下载合并成功的新计划到本地。
+	 */
+	function downloadMerged() {
+		emit('download')
+	}
+</script>
+
+<style>
+	.sheet-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.42); }
+	.sheet-panel { width: 100%; max-height: 88vh; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
+	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }
+	.section { margin-top: 30rpx; }
+	.section-label { color: #334155; font-size: 28rpx; font-weight: 600; }
+	.chip-list { flex-direction: row; flex-wrap: wrap; margin-top: 20rpx; }
+	.chip { margin-right: 16rpx; margin-bottom: 16rpx; padding: 16rpx 24rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 32rpx; }
+	.chip.active { border-color: #16a34a; background-color: #f0fdf4; }
+	.chip-text { color: #475569; font-size: 26rpx; }
+	.summary-text { display: block; margin-top: 24rpx; color: #166534; font-size: 28rpx; font-weight: 600; }
+	.preview-list { max-height: 360rpx; margin-top: 18rpx; }
+	.preview-item { padding: 20rpx; margin-bottom: 12rpx; border-radius: 16rpx; background-color: #f8fafc; }
+	.preview-title { color: #0f172a; font-size: 27rpx; font-weight: 600; }
+	.preview-subtitle, .empty-text { margin-top: 8rpx; color: #64748b; font-size: 24rpx; }
+	.picker-value { height: 80rpx; margin-top: 16rpx; padding: 0 24rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; color: #334155; font-size: 27rpx; line-height: 80rpx; }
+	.success-box { margin-top: 24rpx; padding: 22rpx; border-radius: 18rpx; background-color: #ecfdf5; }
+	.success-title { color: #166534; font-size: 28rpx; font-weight: 700; }
+	.success-text { margin-top: 6rpx; color: #15803d; font-size: 24rpx; }
+	.sheet-actions { flex-direction: row; margin-top: 32rpx; }
+	.action-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.action-button.secondary { color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
+	.action-button.primary { color: #ffffff; background-color: #16a34a; }
+</style>

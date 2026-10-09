@@ -1,0 +1,131 @@
+/**
+ * 返回计划可识别的稳定 ID。
+ */
+function resolvePlanId(plan) {
+  return String(plan?.planId ?? plan?.id ?? plan?.reportId ?? plan?.plan?.id ?? '').trim()
+}
+
+/**
+ * 返回同步明细中优先展示的订单、货号或计划标识。
+ */
+function resolvePlanLabel(plan, fallbackId = '') {
+  return String(
+    (plan?.plan?.clientOrderNo
+    || plan?.plan?.subGoodsNo
+    || plan?.plan?.goodsName
+    || plan?.clientOrderNo
+    || plan?.subGoodsNo
+    || fallbackId)
+    ?? '本地验货数据'
+  ).trim()
+}
+
+/**
+ * 将照片归属转换为用户可理解的同步内容。
+ */
+function resolvePhotoOwnerLabel(photo) {
+  const ownerId = String(photo?.dataKey ?? photo?.ownerId ?? photo?.defectId ?? '').trim()
+  const ownerType = String(photo?.ownerType ?? '').trim().toLowerCase()
+  if (ownerType === 'defect') return `疵点 ${ownerId ?? '图片'}`
+  if (ownerType === 'checklist') return `检查项 ${ownerId ?? '图片'}`
+  return ownerId === '' ? '图片' : `图片 ${ownerId}`
+}
+
+/**
+ * 生成单张待上传照片的展示队列项。
+ */
+function buildPhotoQueueItem(photo, planLabelMap) {
+  const planId = String(photo?.reportId ?? '').trim()
+  const status = String(photo?.uploadStatus ?? 'pending').trim().toLowerCase()
+  const error = String(photo?.uploadError ?? '').trim()
+  const storedLabel = String(planLabelMap.get(planId) ?? '')
+  const planLabel = storedLabel !== '' ? storedLabel : (planId !== '' ? planId : '本地验货数据')
+  return {
+    id: `upload:${planId}:${(photo?.photoId || photo?.id || photo?.localPath) ?? ''}`,
+    syncType: '上传',
+    operationType: 'upload',
+    content: `${planLabel} ${resolvePhotoOwnerLabel(photo)}`,
+    meta: error === '' ? `状态：${status}` : `状态：${status} · ${error}`,
+    status
+  }
+}
+
+/**
+ * 生成持久接口操作的展示队列项。
+ */
+function buildOperationQueueItem(task) {
+  const taskType = String(task?.taskType ?? '').trim().toUpperCase()
+  const failed = String(task?.status ?? '').trim().toUpperCase() === 'FAILED'
+  const fileId = String(task?.payload?.fileId ?? '').trim()
+  const syncType = taskType === 'FILE_DELETE' ? '删除' : '操作'
+  const content = taskType === 'FILE_DELETE' ? `删除文件 ${(fileId || task?.id) ?? ''}` : `执行离线操作 ${(taskType || task?.id) ?? ''}`
+  const retryCount = Number(task?.retryCount ?? 0)
+  const error = String(task?.lastError ?? '').trim()
+  return {
+    id: `operation:${task?.id || task?.dedupeKey || content}`,
+    syncType,
+    operationType: taskType === 'FILE_DELETE' ? 'delete' : 'operation',
+    content,
+    meta: error !== '' ? `${error}${retryCount > 0 ? ` · 已重试 ${retryCount} 次` : ''}` : (failed ? '等待重试' : '等待同步'),
+    status: failed ? 'failed' : 'pending'
+  }
+}
+
+/**
+ * 生成普通报告草稿的展示队列项，最终提交由既有策略排除。
+ */
+function buildDraftQueueItem(plan) {
+  const planId = resolvePlanId(plan)
+  const planLabel = resolvePlanLabel(plan, planId)
+  return {
+    id: `save:${planId}`,
+    syncType: '保存',
+    operationType: 'save',
+    content: `${planLabel} 保存验货数据`,
+    meta: '普通报告草稿',
+    status: 'pending'
+  }
+}
+
+/**
+ * 创建全局离线同步队列概览服务，统一统计持久操作、图片和普通草稿。
+ */
+export function createSyncQueueOverviewService(options) {
+  const reportRepository = options.reportRepository
+  const photoRepository = options.photoRepository
+  const requestQueueRepository = options.requestQueueRepository
+  const isPlanPendingSync = options.isPlanPendingSync
+
+  /**
+   * 返回列表页与详情页共用的同步队列数量和失败数量。
+   */
+  async function getOverview() {
+    const plans = await reportRepository.listPlans()
+    const photos = await photoRepository.listPending()
+    const operations = await requestQueueRepository.listUnfinished()
+    const pendingDraftCount = plans.filter((plan) => isPlanPendingSync(plan)).length
+    const pendingPhotoCount = photos.length
+    const pendingOperationCount = operations.length
+    const failedPhotoCount = photos.filter((photo) => ['failed', 'error', 'needs_attention'].includes(String(photo?.uploadStatus ?? '').toLowerCase())).length
+    const failedOperationCount = operations.filter((task) => String(task?.status ?? '').toUpperCase() === 'FAILED').length
+    const planLabelMap = new Map(plans.map((plan) => {
+      const planId = resolvePlanId(plan)
+      return [planId, resolvePlanLabel(plan, planId)]
+    }))
+    const queueItems = [
+      ...photos.map((photo) => buildPhotoQueueItem(photo, planLabelMap)),
+      ...operations.map(buildOperationQueueItem),
+      ...plans.filter((plan) => isPlanPendingSync(plan)).map(buildDraftQueueItem)
+    ]
+    return {
+      pendingCount: pendingDraftCount + pendingPhotoCount + pendingOperationCount,
+      failedCount: failedPhotoCount + failedOperationCount,
+      pendingDraftCount,
+      pendingPhotoCount,
+      pendingOperationCount,
+      queueItems
+    }
+  }
+
+  return { getOverview }
+}

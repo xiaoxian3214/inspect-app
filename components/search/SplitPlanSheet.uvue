@@ -1,0 +1,112 @@
+<template>
+	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
+		<view class="sheet-panel" @click.stop>
+			<text class="sheet-title">{{ t('拆分验货') }}</text>
+			<text class="summary-text">{{ resultItems.length > 0 ? '拆分完成，可逐项下载' : `将拆分 ${previewItems.length} 条合并明细` }}</text>
+			<scroll-view class="preview-list" scroll-y="true">
+				<view v-for="item in displayItems" :key="getItemId(item)" class="preview-item">
+					<view class="preview-main">
+						<text class="preview-title">{{ getItemTitle(item) }}</text>
+						<text class="preview-subtitle">{{ getItemSubtitle(item) }}</text>
+					</view>
+					<button v-if="resultItems.length > 0" class="download-button" :disabled="submitting || isDownloaded(item)" @click="downloadItem(item)">
+						{{ t(isDownloaded(item) ? '已下载' : '下载') }}
+					</button>
+				</view>
+			</scroll-view>
+			<view class="sheet-actions">
+				<button class="action-button secondary" :disabled="submitting" @click="closeSheet">{{ t('关闭') }}</button>
+				<button v-if="resultItems.length === 0" class="action-button primary" :disabled="submitting || previewItems.length === 0" @click="confirmSplit">
+					{{ t(submitting ? '拆分中...' : '确认拆分') }}
+				</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		previewItems: { type: Array, default: () => [] },
+		resultItems: { type: Array, default: () => [] },
+		downloadedIds: { type: Array, default: () => [] },
+		submitting: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['close', 'confirm', 'download'])
+
+	/**
+	 * 返回拆分前预览或拆分后的结果列表。
+	 */
+	const displayItems = computed(() => props.resultItems.length > 0 ? props.resultItems : props.previewItems)
+
+	/**
+	 * 从拆分项中提取稳定计划 ID。
+	 */
+	function getItemId(item) {
+		return String(item?.plan?.id ?? item?.plan?.planId ?? item?.planId ?? item?.id ?? '')
+	}
+
+	/**
+	 * 返回拆分项订单号和货号标题。
+	 */
+	function getItemTitle(item) {
+		const plan = (item?.plan || item) ?? {}
+		return `${(plan?.clientOrderNo || plan?.domeNo) ?? '未分组'} · ${(plan?.subGoodsNo || plan?.goodsNo) ?? '-'}`
+	}
+
+	/**
+	 * 返回拆分项产品名称摘要。
+	 */
+	function getItemSubtitle(item) {
+		const plan = (item?.plan || item) ?? {}
+		return String(plan?.goodsName ?? plan?.goodsCname ?? '未命名产品')
+	}
+
+	/**
+	 * 判断拆分结果是否已保存到本地。
+	 */
+	function isDownloaded(item) {
+		return props.downloadedIds.includes(getItemId(item))
+	}
+
+	/**
+	 * 关闭拆分弹层。
+	 */
+	function closeSheet() {
+		emit('close')
+	}
+
+	/**
+	 * 提交当前合并计划的拆分请求。
+	 */
+	function confirmSplit() {
+		emit('confirm')
+	}
+
+	/**
+	 * 请求下载指定拆分结果到本地。
+	 */
+	function downloadItem(item) {
+		emit('download', item)
+	}
+</script>
+
+<style>
+	.sheet-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.42); }
+	.sheet-panel { width: 100%; max-height: 88vh; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
+	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }
+	.summary-text { display: block; margin-top: 14rpx; color: #64748b; font-size: 26rpx; }
+	.preview-list { max-height: 560rpx; margin-top: 22rpx; }
+	.preview-item { flex-direction: row; align-items: center; padding: 20rpx; margin-bottom: 12rpx; border-radius: 16rpx; background-color: #f8fafc; }
+	.preview-main { flex: 1; min-width: 0; }
+	.preview-title { color: #0f172a; font-size: 27rpx; font-weight: 600; }
+	.preview-subtitle { margin-top: 8rpx; color: #64748b; font-size: 24rpx; }
+	.download-button { min-width: 124rpx; height: 64rpx; margin-left: 16rpx; border-radius: 16rpx; color: #ffffff; background-color: #16a34a; font-size: 24rpx; }
+	.sheet-actions { flex-direction: row; margin-top: 32rpx; }
+	.action-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.action-button.secondary { color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
+	.action-button.primary { color: #ffffff; background-color: #16a34a; }
+</style>

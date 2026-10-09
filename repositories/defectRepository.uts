@@ -1,0 +1,91 @@
+/**
+ * 安全还原疵点数据库行中的完整业务数据。
+ */
+function parseDefectRow(row) {
+  try {
+    return JSON.parse(row?.jsonData ?? '{}')
+  } catch (_) {
+    return {}
+  }
+}
+
+/**
+ * 创建报告与疵点 ID 组合的稳定本地主键。
+ */
+function buildDefectKey(reportId, defectId) {
+  return `${String(reportId ?? '').trim()}::${String(defectId ?? '').trim()}`
+}
+
+/**
+ * 创建离线疵点仓库。
+ */
+export function createDefectRepository(database) {
+  /**
+   * 按报告 ID 读取全部本地疵点。
+   */
+  async function listByReportId(reportId) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    return database.readTable('defect')
+      .filter((row) => String(row?.reportId ?? '') === normalizedReportId)
+      .sort((left, right) => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+      .map(parseDefectRow)
+  }
+
+  /**
+   * 完整替换指定报告的疵点快照。
+   */
+  async function replaceByReportId(reportId, defects) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    if (normalizedReportId === '') throw new Error('报告ID不能为空')
+    const source = Array.isArray(defects) ? defects : []
+    await database.transaction(async (transaction) => {
+      transaction.removeWhere('defect', (row) => String(row?.reportId ?? '') === normalizedReportId)
+      source.forEach((defect, index) => {
+        const sourceDefectId = String(defect?.defectId ?? defect?.id ?? `local-${index}`)
+        transaction.upsert('defect', 'defectId', {
+          defectId: buildDefectKey(normalizedReportId, sourceDefectId),
+          sourceDefectId,
+          reportId: normalizedReportId,
+          itemId: defect?.itemId ?? '',
+          defectType: (defect?.defectType || defect?.severity) ?? '',
+          desc: (defect?.defectDesc || defect?.desc) ?? '',
+          photoPaths: JSON.stringify(defect?.photos ?? []),
+          sortNo: index,
+          jsonData: JSON.stringify(defect),
+          createAt: defect?.createAt || new Date().toISOString()
+        })
+      })
+    })
+    return source
+  }
+
+  /**
+   * 新增或更新单个本地疵点。
+   */
+  async function save(reportId, defect) {
+    const existing = await listByReportId(reportId)
+    const sourceDefectId = String(defect?.defectId ?? defect?.id ?? '').trim()
+    if (sourceDefectId === '') throw new Error('疵点ID不能为空')
+    const index = existing.findIndex((current) => String(current?.defectId ?? current?.id ?? '') === sourceDefectId)
+    if (index >= 0) existing[index] = { ...existing[index], ...defect }
+    else existing.push(defect)
+    await replaceByReportId(reportId, existing)
+    return defect
+  }
+
+  /**
+   * 删除指定报告中的单个本地疵点。
+   */
+  async function remove(reportId, defectId) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    const normalizedDefectId = String(defectId ?? '').trim()
+    await database.transaction(async (transaction) => {
+      transaction.removeWhere('defect', (row) => {
+        return String(row?.reportId ?? '') === normalizedReportId
+          && String(row?.sourceDefectId ?? '') === normalizedDefectId
+      })
+    })
+  }
+
+  return { listByReportId, replaceByReportId, save, remove }
+}

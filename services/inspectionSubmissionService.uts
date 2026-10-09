@@ -1,0 +1,68 @@
+/**
+ * 创建最终验货提交服务，将联网检查、图片上传和报告提交保持为单次用户操作。
+ */
+export function createInspectionSubmissionService(options) {
+  const isOnline = options.isOnline
+  const listPhotos = options.listPhotos
+  const uploadPendingPhotos = options.uploadPendingPhotos
+  const evaluatePhotos = options.evaluatePhotos
+  const planApi = options.planApi
+
+  /**
+   * 断言当前设备在线，避免最终提交进入离线重试或自动同步流程。
+   */
+  async function assertOnline(message) {
+    const online = await isOnline()
+    if (!online) throw new Error(message)
+  }
+
+  /**
+   * 读取指定计划的全部照片并计算最终提交前的上传完成状态。
+   */
+  async function getPhotoState(planId) {
+    const photos = await listPhotos(planId)
+    return evaluatePhotos(Array.isArray(photos) ? photos : [])
+  }
+
+  /**
+   * 在线上传当前计划的待处理图片，并在上传结束后重新确认没有遗留图片。
+   */
+  async function ensurePhotosUploaded(planId) {
+    let state = await getPhotoState(planId)
+    if (state.ready) return state
+
+    await uploadPendingPhotos(planId)
+    state = await getPhotoState(planId)
+    if (!state.ready) {
+      throw new Error(state.message || `仍有 ${state.pendingCount ?? 0} 张图片未上传完成，请联网后重试`)
+    }
+    return state
+  }
+
+  /**
+   * 强制在线完成最终报告提交；该方法不会创建离线任务，也不会延迟自动执行。
+   */
+  async function submitFinalReport(input) {
+    const planId = String(input?.planId ?? input?.payload?.planId ?? '').trim()
+    if (planId === '') throw new Error('计划ID缺失，无法提交验货报告')
+
+    await assertOnline('最终提交需要联网，请连接网络后重试')
+    await ensurePhotosUploaded(planId)
+    await assertOnline('网络已断开，请重新联网后提交')
+
+    return planApi.generateReport(
+      {
+        ...(input?.payload ?? {}),
+        planId,
+        finishFlag: 1
+      },
+      { finalSubmissionVerified: true }
+    )
+  }
+
+  return {
+    getPhotoState,
+    ensurePhotosUploaded,
+    submitFinalReport
+  }
+}

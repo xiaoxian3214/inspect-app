@@ -1,0 +1,22 @@
+/** 创建 SQLite 设置仓库，允许业务代码同步读取已提交的本地缓存。 */
+export function createAppSettingsRepository(database) {
+  /** 从 SQLite 已提交镜像还原某项设置，不存在或 JSON 损坏时返回空值。 */
+  function get(key) {
+    const row = database.readTable('app_setting').find((item) => item?.key === String(key ?? ''))
+    if (row == null) return null
+    try { return JSON.parse(row.jsonData) } catch (_) { return null }
+  }
+
+  /** 原子写入设置、离线字典或本地表单偏好，确认持久化后再返回。 */
+  async function set(key, value) {
+    const normalizedKey = String(key ?? '').trim()
+    if (normalizedKey === '') throw new Error('设置键不能为空')
+    await database.transaction(async (transaction) => transaction.upsert('app_setting', 'key', {
+      key: normalizedKey,
+      jsonData: JSON.stringify(value),
+      updatedAt: new Date().toISOString()
+    }))
+  }
+
+  return { get, set }
+}

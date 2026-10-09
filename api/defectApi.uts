@@ -1,0 +1,47 @@
+/**
+ * 从接口常见包装结构中提取数组数据。
+ */
+function resolveRows(data) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.data)) return data.data
+  if (Array.isArray(data?.records)) return data.records
+  return []
+}
+
+/**
+ * 创建疵点分类树和严重程度字典接口集合。
+ */
+export function createDefectApi(apiClient) {
+  /**
+   * 获取完整疵点三级分类树。
+   */
+  async function getDefectTree() {
+    const data = await apiClient.request({
+      url: '/api/defect-tier-config/tree',
+      method: 'GET',
+      key: 'defect:tier-tree',
+      priority: 20
+    })
+    return resolveRows(data)
+  }
+
+  /**
+   * 获取并归一化疵点严重程度字典。
+   */
+  async function getDefectLevels() {
+    const data = await apiClient.request({
+      url: '/api/dict/data/code/defect_level',
+      method: 'GET',
+      key: 'dict:defect-level',
+      priority: 20
+    })
+    return resolveRows(data).map((item) => ({
+      value: String(item?.dictValue ?? item?.value ?? item?.code ?? '').trim(),
+      label: String(item?.dictLabel ?? item?.label ?? item?.name ?? '').trim(),
+      sortOrder: Number(item?.sortOrder ?? 0)
+    })).filter((item) => item.value !== '' && item.label !== '')
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+  }
+
+  return { getDefectTree, getDefectLevels }
+}

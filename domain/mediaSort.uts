@@ -1,0 +1,26 @@
+/**
+ * 复制媒体列表并将 sortNo 归一化为从 1 开始的连续序号。
+ */
+export function normalizeMediaOrder(items) {
+  return (Array.isArray(items) ? items : []).map((item, index) => ({
+    ...(item ?? {}),
+    sortNo: index + 1
+  }))
+}
+
+/**
+ * 将指定媒体移动到目标位置，返回不修改原数组且 sortNo 连续的新列表。
+ */
+export function moveMediaItem(items, fromIndex, toIndex) {
+  const normalizedItems = Array.isArray(items) ? items : []
+  const sourceIndex = Number(fromIndex)
+  const targetIndex = Number(toIndex)
+  if (!Number.isInteger(sourceIndex) || !Number.isInteger(targetIndex)) return normalizeMediaOrder(normalizedItems)
+  if (sourceIndex < 0 || sourceIndex >= normalizedItems.length) return normalizeMediaOrder(normalizedItems)
+  if (targetIndex < 0 || targetIndex >= normalizedItems.length) return normalizeMediaOrder(normalizedItems)
+  if (sourceIndex === targetIndex) return normalizeMediaOrder(normalizedItems)
+  const reordered = normalizedItems.map((item) => ({ ...(item ?? {}) }))
+  const movedItems = reordered.splice(sourceIndex, 1)
+  reordered.splice(targetIndex, 0, movedItems[0])
+  return normalizeMediaOrder(reordered)
+}

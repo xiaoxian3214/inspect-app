@@ -1,0 +1,55 @@
+/**
+ * 根据触摸位移锁定手势方向；纵向手势交还页面滚动，横向手势用于清单侧滑。
+ */
+export function resolveGestureAxis(deltaX, deltaY, threshold = 10) {
+  const safeDeltaX = Math.abs(Number(deltaX ?? 0))
+  const safeDeltaY = Math.abs(Number(deltaY ?? 0))
+  const safeThreshold = Math.max(1, Number(threshold ?? 10))
+  if (Math.max(safeDeltaX, safeDeltaY) < safeThreshold) return 'pending'
+  return safeDeltaX > safeDeltaY ? 'horizontal' : 'vertical'
+}
+
+/**
+ * 将清单滑动位移限制在 H5 左右操作区宽度内。
+ */
+export function clampSwipeOffset(offset, leftWidth, rightWidth) {
+  const safeLeftWidth = Math.max(0, Number(leftWidth ?? 0))
+  const safeRightWidth = Math.max(0, Number(rightWidth ?? 0))
+  return Math.max(-safeRightWidth, Math.min(safeLeftWidth, Number(offset ?? 0)))
+}
+
+/**
+ * 根据手指起始位置与横向移动距离计算当前清单滑动位移。
+ */
+export function resolveSwipeMove(startOffset, deltaX, leftWidth, rightWidth) {
+  return clampSwipeOffset(Number(startOffset ?? 0) + Number(deltaX ?? 0), leftWidth, rightWidth)
+}
+
+/**
+ * 根据松手位移决定打开左侧快捷状态、右侧四种结果操作或回到关闭状态。
+ */
+export function resolveSwipeTarget(offset, leftWidth, rightWidth, threshold = 48) {
+  const safeOffset = Number(offset ?? 0)
+  const safeThreshold = Math.max(1, Number(threshold ?? 48))
+  if (safeOffset >= safeThreshold) return { offset: Math.max(0, Number(leftWidth ?? 0)), position: 'left' }
+  if (safeOffset <= -safeThreshold) return { offset: -Math.max(0, Number(rightWidth ?? 0)), position: 'right' }
+  return { offset: 0, position: 'closed' }
+}
+
+/**
+ * 根据手势起始展开状态和反向拖动距离决定松手结果，使已展开操作可短距离拖回关闭。
+ */
+export function resolveSwipeRelease(offset, startOffset, deltaX, leftWidth, rightWidth, threshold = 48) {
+  const safeStartOffset = Number(startOffset ?? 0)
+  const safeDeltaX = Number(deltaX ?? 0)
+  const safeThreshold = Math.max(1, Number(threshold ?? 48))
+  if (safeStartOffset < 0) {
+    if (safeDeltaX >= safeThreshold) return { offset: 0, position: 'closed' }
+    return { offset: -Math.max(0, Number(rightWidth ?? 0)), position: 'right' }
+  }
+  if (safeStartOffset > 0) {
+    if (safeDeltaX <= -safeThreshold) return { offset: 0, position: 'closed' }
+    return { offset: Math.max(0, Number(leftWidth ?? 0)), position: 'left' }
+  }
+  return resolveSwipeTarget(offset, leftWidth, rightWidth, threshold)
+}

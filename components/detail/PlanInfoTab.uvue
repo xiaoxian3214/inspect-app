@@ -1,0 +1,65 @@
+<template>
+	<view class="tab-page">
+		<template v-if="isMergedMode">
+			<view class="info-card merge-card">
+				<view class="merge-header" @click="toggleMerged"><text class="expand-icon">{{ mergedExpanded ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ t('合并验货') }}</text><text class="merge-sub">单号：{{ mergedNo }}</text></view></view>
+				<view v-if="mergedExpanded" class="merge-content">
+					<view class="sub-info-card"><view v-for="field in mergedCommonFields" :key="field.label" class="info-row"><text class="info-label">{{ field.label }}</text><text class="info-value">{{ field.value }}</text></view></view>
+					<view class="merge-table-head"><text class="table-name">{{ t('订单号-款号-款名') }}</text><text class="table-number">{{ t('总数量') }}</text><text class="table-number">{{ t('样品数量') }}</text></view>
+					<view v-for="(row, index) in inspectionPlans" :key="rowKey(row, index)" class="merge-table-row"><text class="table-name">{{ mergeRowName(row, index) }}</text><text class="table-number">{{ displayValue(row.requiredQuantity) }}</text><text class="table-number">{{ displayValue(row.sampleSize) }}</text></view>
+					<view class="merge-table-row total-row"><text class="table-name">{{ t('所有') }}</text><text class="table-number">{{ mergedTotals.requiredQuantity }}</text><text class="table-number">{{ mergedTotals.sampleSize }}</text></view>
+				</view>
+			</view>
+			<view v-for="(row, index) in inspectionPlans" :key="rowKey(row, index)" class="info-card merge-card">
+				<view class="merge-header" @click="togglePlan(row, index)"><text class="expand-icon">{{ isPlanExpanded(row, index) ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ row.goodsName || `验货项 ${index + 1}` }}</text><text class="merge-sub">单号：{{ (row.clientOrderNo || row.planNo) ?? '-' }}</text><text class="merge-sub">产品：{{ row.subGoodsNo ?? '-' }}#{{ row.batchNo ?? '-' }}</text></view></view>
+				<view v-if="isPlanExpanded(row, index)" class="merge-content"><view class="sub-info-card"><view v-for="field in planFields(row)" :key="field.label" class="info-row"><text class="info-label">{{ field.label }}</text><text class="info-value">{{ field.value }}</text></view></view></view>
+			</view>
+		</template>
+		<view v-else class="info-card"><view v-for="field in currentFields" :key="field.label" class="info-row"><text class="info-label">{{ field.label }}</text><text class="info-value">{{ field.value }}</text></view></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed, ref } from 'vue'
+	import { buildMergedPlanSummary, buildPlanInfoFields } from '../../domain/detailViewModel.uts'
+	const props = defineProps({ detail: { type: Object, default: () => ({}) }, planData: { type: Object, default: null } })
+	defineEmits(['update'])
+	const mergedExpanded = ref(true)
+	const expandedPlans = ref({})
+	const detailFieldLabels = ['产品名称', '需验数量', '样品数量', '供应商名称', '交货日期', '清单', '验货类型', '抽样标准', '供应商编号', '客户名称', '客户编号', '货号', '客户订单号', '采购合同号', '制造令', '模具色卡号', '批次', '验货员']
+	/** 返回兼容旧 detail prop 与 H5 planData prop 的详情对象。 */
+	const sourceDetail = computed(() => (props.planData || props.detail) ?? {})
+	/** 返回当前计划公共字段对象。 */
+	const currentPlan = computed(() => sourceDetail.value?.plan && typeof sourceDetail.value.plan === 'object' ? sourceDetail.value.plan : sourceDetail.value)
+	/** 判断订单信息是否按 H5 合并验货卡片展示。 */
+	const isMergedMode = computed(() => Number(currentPlan.value?.mergeType ?? 0) === 2)
+	/** 返回 H5 合并验货的全部子计划。 */
+	const inspectionPlans = computed(() => Array.isArray(sourceDetail.value?.inspectionPlans) && sourceDetail.value.inspectionPlans.length > 0 ? sourceDetail.value.inspectionPlans : [currentPlan.value])
+	/** 返回普通验货的十八个 H5 订单字段。 */
+	const currentFields = computed(() => buildPlanInfoFields(currentPlan.value).filter((field) => detailFieldLabels.includes(field.label)))
+	/** 返回合并验货数量汇总。 */
+	const mergedTotals = computed(() => buildMergedPlanSummary(inspectionPlans.value))
+	/** 返回合并验货公共卡片字段。 */
+	const mergedCommonFields = computed(() => { const plan = { ...currentPlan.value, requiredQuantity: mergedTotals.value.requiredQuantity, sampleSize: mergedTotals.value.sampleSize }; const fields = buildPlanInfoFields(plan); const labels = ['产品名称', '需验数量', '样品数量', '供应商名称', '交货日期', '抽样标准', '验货类型', '客户名称', '客户编号']; return fields.filter((field) => labels.includes(field.label)).map((field) => ({ ...field, label: field.label === '需验数量' ? '总数量' : field.label })) })
+	/** 返回合并验货主单号。 */
+	const mergedNo = computed(() => (currentPlan.value?.parentPlanId || currentPlan.value?.planNo || currentPlan.value?.clientOrderNo) ?? '-')
+	/** 切换合并验货公共卡片。 */
+	function toggleMerged() { mergedExpanded.value = !mergedExpanded.value }
+	/** 返回子计划稳定渲染键。 */
+	function rowKey(row, index) { return String(row?.id ?? row?.planId ?? row?.reportId ?? index) }
+	/** 切换指定子计划详情卡。 */
+	function togglePlan(row, index) { const key = rowKey(row, index); expandedPlans.value = { ...expandedPlans.value, [key]: !expandedPlans.value[key] } }
+	/** 判断指定子计划详情卡是否展开。 */
+	function isPlanExpanded(row, index) { return expandedPlans.value[rowKey(row, index)] === true }
+	/** 返回指定子计划的十八个 H5 字段。 */
+	function planFields(plan) { return buildPlanInfoFields(plan).filter((field) => detailFieldLabels.includes(field.label)) }
+	/** 将空值显示为 H5 统一占位符。 */
+	function displayValue(value) { return value === 0 ? 0 : (value === null || value === undefined || value === '' ? '-' : value) }
+	/** 拼接合并汇总表的订单号、款号和款名。 */
+	function mergeRowName(row, index) { return [row?.planNo || row?.clientOrderNo || `#${index + 1}`, row?.subGoodsNo ?? '', row?.goodsName ?? ''].filter((value) => String(value ?? '') !== '').join('-') }
+</script>
+
+<style>
+	.tab-page { padding: 22rpx; }.info-card { margin-bottom: 20rpx; padding: 8rpx 26rpx; border-radius: 22rpx; background-color: #ffffff; }.info-row { min-height: 86rpx; flex-direction: row; align-items: center; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }.info-label { width: 190rpx; color: #64748b; font-size: 24rpx; }.info-value { flex: 1; color: #334155; font-size: 26rpx; text-align: right; }.merge-card { padding: 0; overflow: hidden; }.merge-header { min-height: 112rpx; padding: 22rpx 24rpx; flex-direction: row; align-items: center; }.expand-icon { width: 40rpx; color: #03ae4f; font-size: 32rpx; }.merge-meta { flex: 1; }.merge-title { color: #172033; font-size: 29rpx; font-weight: 700; }.merge-sub { margin-top: 6rpx; color: #64748b; font-size: 22rpx; }.merge-content { padding: 0 20rpx 20rpx; border-top-width: 2rpx; border-top-color: #f1f5f9; }.sub-info-card { padding: 4rpx 8rpx; }.merge-table-head, .merge-table-row { min-height: 70rpx; padding: 0 10rpx; flex-direction: row; align-items: center; border-top-width: 2rpx; border-top-color: #e2e8f0; }.merge-table-head { border-radius: 12rpx 12rpx 0 0; background-color: #f8fafc; }.table-name { flex: 1; color: #334155; font-size: 21rpx; }.table-number { width: 110rpx; color: #334155; font-size: 21rpx; text-align: right; }.total-row { color: #15803d; font-weight: 700; background-color: #f0fdf4; }
+</style>

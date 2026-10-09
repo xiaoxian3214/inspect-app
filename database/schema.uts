@@ -1,0 +1,120 @@
+export const DATABASE_NAME = 'qarma_offline.db'
+export const DATABASE_VERSION = 1
+
+export const TABLE_NAMES = [
+  'user',
+  'report',
+  'checklist',
+  'defect',
+  'photo',
+  'sync_log',
+  'request_queue',
+  'schema_migration',
+  'app_setting'
+]
+
+export const schemaSqlList = [
+  `CREATE TABLE IF NOT EXISTS user (
+    userId TEXT PRIMARY KEY,
+    userName TEXT,
+    token TEXT,
+    refreshToken TEXT,
+    role TEXT,
+    expireAt TEXT,
+    encryptedPassword TEXT,
+    autoLogin INTEGER DEFAULT 0,
+    rememberPwd INTEGER DEFAULT 0,
+    updatedAt TEXT,
+    jsonData TEXT
+  );`,
+  `CREATE TABLE IF NOT EXISTS report (
+    reportId TEXT PRIMARY KEY,
+    orderNo TEXT,
+    productName TEXT,
+    jsonData TEXT,
+    downloadAt TEXT,
+    lockExpireAt TEXT,
+    status INTEGER DEFAULT 0,
+    lockStatus TEXT,
+    lockerId TEXT,
+    syncRetry INTEGER DEFAULT 0
+  );`,
+	  `CREATE TABLE IF NOT EXISTS checklist (
+	    itemId TEXT PRIMARY KEY,
+	    sourceItemId TEXT,
+	    reportId TEXT,
+    skuNo TEXT,
+    qty INTEGER DEFAULT 0,
+    checkedQty INTEGER DEFAULT 0,
+    passQty INTEGER DEFAULT 0,
+    defectQty INTEGER DEFAULT 0,
+    sortNo INTEGER DEFAULT 0,
+    jsonData TEXT,
+    updatedAt TEXT
+  );`,
+	  `CREATE TABLE IF NOT EXISTS defect (
+	    defectId TEXT PRIMARY KEY,
+	    sourceDefectId TEXT,
+	    reportId TEXT,
+    itemId TEXT,
+    defectType TEXT,
+    desc TEXT,
+    photoPaths TEXT,
+    sortNo INTEGER DEFAULT 0,
+    jsonData TEXT,
+    createAt TEXT
+  );`,
+	  `CREATE TABLE IF NOT EXISTS photo (
+	    photoId TEXT PRIMARY KEY,
+	    sourcePhotoId TEXT,
+	    defectId TEXT,
+    reportId TEXT,
+    localPath TEXT,
+    uploadStatus TEXT,
+    fileId TEXT,
+    ownerType TEXT,
+    ownerId TEXT,
+    sortNo INTEGER DEFAULT 0,
+    jsonData TEXT,
+    md5 TEXT
+  );`,
+  `CREATE TABLE IF NOT EXISTS sync_log (
+    id TEXT PRIMARY KEY,
+    reportId TEXT,
+    action TEXT,
+    errorMessage TEXT,
+    retryCount INTEGER DEFAULT 0,
+    createdAt TEXT
+  );`,
+  `CREATE TABLE IF NOT EXISTS request_queue (
+    id TEXT PRIMARY KEY,
+    taskType TEXT,
+    method TEXT,
+    url TEXT,
+    payload TEXT,
+    headers TEXT,
+    priority INTEGER DEFAULT 0,
+    dedupeKey TEXT,
+    status TEXT,
+    retryCount INTEGER DEFAULT 0,
+    maxRetries INTEGER DEFAULT 3,
+    nextRunAt TEXT,
+    lastError TEXT,
+    createdAt TEXT,
+    updatedAt TEXT
+  );`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_request_queue_dedupe
+    ON request_queue(dedupeKey)
+    WHERE dedupeKey IS NOT NULL AND dedupeKey <> '';`,
+  `CREATE TABLE IF NOT EXISTS schema_migration (
+    version INTEGER PRIMARY KEY,
+    appliedAt TEXT
+  );`,
+  `CREATE TABLE IF NOT EXISTS app_setting (
+    key TEXT PRIMARY KEY,
+    jsonData TEXT,
+    updatedAt TEXT
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_report_status ON report(status);`,
+  `CREATE INDEX IF NOT EXISTS idx_request_queue_status ON request_queue(status, priority, createdAt);`
+]

@@ -1,0 +1,218 @@
+/**
+ * 照片上传重试的指数退避表与最终封顶延迟，与 H5 端 photoUpload 策略保持一致。
+ */
+const PHOTO_UPLOAD_RETRY_DELAYS = [2000, 5000, 15000, 30000, 60000, 120000]
+const PHOTO_UPLOAD_MAX_RETRY_DELAY = 300000
+
+/**
+ * 视频拍摄的单条时长上限（秒），与 H5 端 chooseMedia maxDuration 约束一致。
+ */
+export const MAX_VIDEO_DURATION_SECONDS = 60
+
+/**
+ * 视频上传的单文件大小上限（MB）。
+ */
+export const MAX_VIDEO_SIZE_MB = 200
+
+/**
+ * 视频上传通道固定串行：大文件逐条上传，避免挤占弱网带宽与内存。
+ */
+export const VIDEO_UPLOAD_CONCURRENCY = 1
+
+/**
+ * 上传兜底超时（毫秒）：视频 15 分钟对齐 H5，图片沿用 App 现状 2 分钟。
+ */
+export const IMAGE_UPLOAD_TIMEOUT_MS = 120000
+export const VIDEO_UPLOAD_TIMEOUT_MS = 900000
+
+/**
+ * 视频文件扩展名集合，用于无显式 mediaType/fileType 时的兜底判定。
+ */
+const VIDEO_FILE_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', '3gp', 'avi', 'mkv', 'webm', 'wmv'])
+
+/**
+ * 服务端上传接口接受的业务类型：检查项结果与疵点记录。
+ */
+const VALID_UPLOAD_BIZ_TYPES = new Set(['checkResult', 'checkPoint', 'defect'])
+
+/**
+ * 本地媒体 ownerType 到服务端 bizType 的映射，report 无对应业务类型故不收录。
+ */
+const OWNER_TYPE_TO_BIZ_TYPE = {
+  checklist: 'checkResult',
+  defect: 'defect'
+}
+
+/**
+ * 返回第 attempt 次重试前需要等待的毫秒数，超出退避表后固定为 5 分钟封顶。
+ */
+export function getPhotoUploadRetryDelay(attempt) {
+  const normalizedAttempt = Math.max(1, Number(attempt) ?? 1)
+  return PHOTO_UPLOAD_RETRY_DELAYS[normalizedAttempt - 1] ?? PHOTO_UPLOAD_MAX_RETRY_DELAY
+}
+
+/**
+ * 按错误携带的 HTTP 状态判断是否值得自动重试：
+ * 408/425/429 与 5xx 可重试，其余 4xx（参数、鉴权、文件过大等）不重试，
+ * 无 HTTP 状态的网络类错误默认可重试，但显式标记 retryable=false 的错误永不重试。
+ */
+export function isRetryableUploadError(error) {
+  if (error != null && error?.retryable === false) return false
+  const httpStatus = Number(error?.httpStatus ?? error?.statusCode ?? error?.status ?? 0)
+  if (httpStatus === 408 || httpStatus === 425 || httpStatus === 429 || httpStatus >= 500) return true
+  if (httpStatus >= 400 && httpStatus < 500) return false
+  return true
+}
+
+/**
+ * 将一次上传失败归类为可重试的 retry_wait 或需人工处理的 needs_attention。
+ * retryCount 为本次失败前该照片已完成的重试次数，返回值原样携带；
+ * delayMs 与 nextRetryAt 描述第 retryCount+1 次重试的等待时长与触发时间。
+ */
+export function classifyUploadFailure(error, retryCount, nowMs) {
+  const normalizedRetryCount = Math.max(0, Number(retryCount) ?? 0)
+  const timestamp = Number(nowMs)
+  const normalizedNow = Number.isFinite(timestamp) && timestamp !== 0 ? timestamp : Date.now()
+  const message = String(error?.message ?? '图片上传失败')
+  const retryable = isRetryableUploadError(error)
+  if (!retryable) {
+    return {
+      retryable: false,
+      status: 'needs_attention',
+      message,
+      retryCount: normalizedRetryCount,
+      delayMs: 0,
+      nextRetryAt: ''
+    }
+  }
+  const delayMs = getPhotoUploadRetryDelay(normalizedRetryCount + 1)
+  return {
+    retryable: true,
+    status: 'retry_wait',
+    message,
+    retryCount: normalizedRetryCount,
+    delayMs,
+    nextRetryAt: new Date(normalizedNow + delayMs).toISOString()
+  }
+}
+
+/**
+ * 判断照片是否已到达可再次上传的时间：
+ * 仅 retry_wait 状态受 nextRetryAt 约束，其余待上传状态立即可执行。
+ */
+export function isPhotoUploadRetryReady(photo, nowMs) {
+  if (String(photo?.uploadStatus ?? '').toLowerCase() !== 'retry_wait') return true
+  const nextRetryAt = Date.parse(String(photo?.nextRetryAt ?? ''))
+  const timestamp = Number(nowMs)
+  const normalizedNow = Number.isFinite(timestamp) && timestamp !== 0 ? timestamp : Date.now()
+  return !(nextRetryAt > 0) || nextRetryAt <= normalizedNow
+}
+
+/**
+ * 按当前网络类型推导图片并发上传数：
+ * 无网络为 0，弱网（2g/3g）为 1，4g 为 2，wifi/5g/未知默认 4。
+ */
+export function resolveUploadConcurrency(networkInfo) {
+  const networkType = String(networkInfo?.networkType ?? '').trim().toLowerCase()
+  if (networkType === 'none') return 0
+  if (networkType === '2g' || networkType === '3g' || networkType === 'slow-2g') return 1
+  if (networkType === '4g') return 2
+  return 4
+}
+
+/**
+ * 从任意媒体对象或路径字符串判定是否为视频，与 H5 端 isVideoMedia 语义一致：
+ * 依次尝试 mediaType > fileType > mimeType > fileExt/ext > 路径扩展名，
+ * 任一字段以 video 开头或命中视频扩展名即判定为视频，无法判定时按图片处理。
+ * @param media 媒体记录对象或本地路径字符串
+ * @returns 是否应按视频通道处理
+ */
+export function isVideoMedia(media) {
+  if (media == null) return false
+  if (typeof media === 'string') return pathHasVideoExtension(media)
+  const mediaType = String(media?.mediaType ?? '').trim().toLowerCase()
+  if (mediaType !== '') return mediaType === 'video' || mediaType.startsWith('video/')
+  const fileType = String(media?.fileType ?? '').trim().toLowerCase()
+  if (fileType !== '') return fileType === 'video' || fileType.startsWith('video/')
+  const mimeType = String(media?.mimeType ?? '').trim().toLowerCase()
+  if (mimeType !== '') return mimeType === 'video' || mimeType.startsWith('video/')
+  const fileExt = String(media?.fileExt ?? media?.ext ?? '').trim().toLowerCase().replace(/^\./, '')
+  if (fileExt !== '') return VIDEO_FILE_EXTENSIONS.has(fileExt)
+  return pathHasVideoExtension(String(media?.localPath ?? media?.path ?? media?.url ?? ''))
+}
+
+/**
+ * 判断路径字符串去除查询串与锚点后是否以视频扩展名结尾。
+ */
+function pathHasVideoExtension(path) {
+  const normalizedPath = String(path ?? '').trim().split(/[?#]/)[0]
+  if (normalizedPath === '') return false
+  const dotIndex = normalizedPath.lastIndexOf('.')
+  if (dotIndex < 0) return false
+  return VIDEO_FILE_EXTENSIONS.has(normalizedPath.slice(dotIndex + 1).toLowerCase())
+}
+
+/**
+ * 校验视频时长是否不超过单条上限。
+ * @param durationSeconds 视频时长（秒），未知时跳过校验
+ * @returns valid 表示是否通过，message 为超限时的用户可读原因
+ */
+export function validateVideoDuration(durationSeconds) {
+  const duration = Number(durationSeconds)
+  if (!(duration > 0)) return { valid: true, message: '' }
+  if (duration > MAX_VIDEO_DURATION_SECONDS) {
+    return { valid: false, message: `视频时长不能超过 ${MAX_VIDEO_DURATION_SECONDS} 秒` }
+  }
+  return { valid: true, message: '' }
+}
+
+/**
+ * 校验视频文件大小是否不超过单文件上限。
+ * @param sizeMb 视频大小（MB），未知时跳过校验
+ * @returns valid 表示是否通过，message 为超限时的用户可读原因
+ */
+export function validateVideoSize(sizeMb) {
+  const size = Number(sizeMb)
+  if (!(size > 0)) return { valid: true, message: '' }
+  if (size > MAX_VIDEO_SIZE_MB) {
+    return { valid: false, message: `视频大小不能超过 ${MAX_VIDEO_SIZE_MB}MB` }
+  }
+  return { valid: true, message: '' }
+}
+
+/**
+ * 按媒体类型推导上传兜底超时（毫秒）：视频 15 分钟，其余（图片）2 分钟。
+ */
+export function resolveUploadTimeoutMs(media) {
+  return isVideoMedia(media) ? VIDEO_UPLOAD_TIMEOUT_MS : IMAGE_UPLOAD_TIMEOUT_MS
+}
+
+/**
+ * 校验并归一化单张照片的服务端上传参数。
+ * 优先使用照片自带的 bizId/bizType，缺失时按 ownerType 映射（checklist→checkResult、defect→defect），
+ * 业务类型缺失或非法（如 REPORT）时直接抛错，避免把无效数据提交给服务端。
+ */
+export function buildValidatedUploadParams(planId, params) {
+  const source = params != null && typeof params === 'object' ? params : {}
+  let bizId = String(source?.bizId ?? '').trim()
+  let bizType = String(source?.bizType ?? '').trim()
+  if (bizType === '') {
+    const mappedBizType = OWNER_TYPE_TO_BIZ_TYPE[String(source?.ownerType ?? '').trim().toLowerCase()]
+    if (mappedBizType != null) {
+      bizType = mappedBizType
+      if (bizId === '') bizId = String(source?.ownerId ?? '').trim()
+    }
+  }
+  if (!VALID_UPLOAD_BIZ_TYPES.has(bizType)) {
+    const error = new Error(`图片上传缺少有效的业务类型: ${bizType ?? '(空)'}`)
+    error.retryable = false
+    throw error
+  }
+  if (bizId === '') bizId = String(planId ?? '').trim()
+  return {
+    bizId,
+    bizType,
+    subGoodsNo: String(source?.subGoodsNo ?? '').trim(),
+    sortNo: source?.sortNo
+  }
+}

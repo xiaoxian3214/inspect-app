@@ -1,0 +1,22 @@
+export function createPlanDownloadService(options) {
+  const planApi = options.planApi
+  const reportRepository = options.reportRepository
+  const planViewModel = options.planViewModel
+
+  /** 从一次接口响应保存整组合并报告；传入成员 ID 时拒绝不完整下载，避免部分成员落库。 */
+  async function downloadToLocal(planId, payload, expectedPlanIds = []) {
+    const downloadData = await planApi.downloadPlan(planId, payload ?? {})
+    const records = planViewModel.splitDownloadDataToLocalPlans(downloadData).map((record) => ({
+      ...record,
+      status: Number.isFinite(Number(record?.status)) ? Number(record.status) : 0,
+      downloadedAt: record?.downloadedAt || new Date().toISOString()
+    }))
+    if (records.length === 0) throw new Error('下载数据为空，无法保存到本地')
+    const downloadedIds = new Set(records.map((record) => String(record?.planId ?? '')))
+    if (expectedPlanIds.some((id) => !downloadedIds.has(String(id)))) throw new Error('合并验货数据不完整，请稍后重试')
+    await reportRepository.savePlans(records)
+    return records
+  }
+
+  return { downloadToLocal }
+}

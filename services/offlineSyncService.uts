@@ -1,0 +1,124 @@
+/**
+ * 将计划状态标准化为 App 使用的数字状态。
+ */
+function normalizePlanStatus(plan) {
+  const value = plan?.status ?? plan?.plan?.status ?? ''
+  if (typeof value === 'number') return value === 2 ? 1 : value
+  const text = String(value ?? '').toUpperCase()
+  if (text === '3' || text === 'COMPLETED' || text === 'DONE' || text === 'SUBMITTED') return 3
+  if (text === '1' || text === '2' || text === 'IN_PROGRESS' || text === 'PROCESSING') return 1
+  return 0
+}
+
+/**
+ * 判断计划是否为应由父计划统一同步的合并子计划。
+ */
+function isMergedChildPlan(plan) {
+  const source = plan?.plan != null && typeof plan.plan === 'object' ? plan.plan : plan
+  if (Number(source?.mergeType ?? 0) !== 2) return false
+  const parentPlanId = String(source?.parentPlanId ?? plan?.parentPlanId ?? '').trim()
+  const ownId = String(source?.id ?? source?.planId ?? plan?.planId ?? plan?.id ?? '').trim()
+  return parentPlanId !== '' && parentPlanId !== ownId
+}
+
+/**
+ * 判断待同步数据是否属于必须由用户在线主动执行的最终提交。
+ */
+export function isFinalSubmissionPayload(payload) {
+  if (payload == null || typeof payload !== 'object') return false
+  const value = payload?.finishFlag ?? payload?.report?.finishFlag ?? payload?.plan?.finishFlag
+  if (value === true) return true
+  return String(value ?? '').trim() === '1'
+}
+
+/**
+ * 判断本地计划是否包含可提交到云端的待同步报告数据。
+ */
+export function isPlanPendingSync(plan) {
+  if (plan == null || typeof plan !== 'object') return false
+  if (normalizePlanStatus(plan) === 3) return false
+  if (isMergedChildPlan(plan)) return false
+
+  const payloadStatus = String(
+    (plan?.pendingSyncPayload?.status
+    || plan?.pendingSyncPayload?.plan?.status)
+    ?? ''
+  ).toUpperCase()
+  if (payloadStatus === '3' || payloadStatus === 'COMPLETED' || payloadStatus === 'DONE' || payloadStatus === 'SUBMITTED') {
+    return false
+  }
+  if (plan?.pendingSyncPayload == null) return false
+  if (isFinalSubmissionPayload(plan.pendingSyncPayload)) return false
+  return plan?.syncStatus === 'DIRTY' || !plan?.syncStatus
+}
+
+/**
+ * 从报告生成接口的多种返回结构中提取报告 ID。
+ */
+function resolveGeneratedReportId(result) {
+  if (typeof result === 'string' || typeof result === 'number') return String(result)
+  return String(
+    (result?.reportId
+    || result?.id
+    || result?.data?.reportId
+    || result?.data?.id)
+    ?? ''
+  ).trim()
+}
+
+/**
+ * 创建串行离线同步服务，避免同一批本地报告重复提交。
+ */
+export function createOfflineSyncService(options) {
+  const reportRepository = options.reportRepository
+  const planApi = options.planApi
+  let activeSync = null
+
+  /**
+   * 顺序提交所有待同步计划，并在单条失败时继续处理剩余计划。
+   */
+  function syncPendingPlans() {
+    if (activeSync != null) return activeSync
+    activeSync = (async () => {
+      const localPlans = await reportRepository.listPlans()
+      const pendingPlans = localPlans.filter(isPlanPendingSync)
+      let syncedCount = 0
+      let failedCount = 0
+
+      for (const plan of pendingPlans) {
+        try {
+          const generated = await planApi.generateReport(plan.pendingSyncPayload)
+          const reportId = resolveGeneratedReportId(generated)
+          const syncedAt = new Date().toISOString()
+          if (typeof reportRepository.completeDraftSync === 'function') {
+            await reportRepository.completeDraftSync(plan.planId, plan.pendingSyncPayload, reportId, syncedAt)
+          } else {
+            await reportRepository.savePlan({
+              ...plan,
+              reportId: (reportId || plan?.reportId || plan?.planId) ?? '',
+              report: { ...(plan?.report ?? {}), ...(reportId !== '' ? { id: reportId } : {}) },
+              syncStatus: 'SYNCED',
+              pendingSyncPayload: null,
+              syncedAt,
+              updatedAt: syncedAt
+            })
+          }
+          syncedCount += 1
+        } catch (error) {
+          failedCount += 1
+        }
+      }
+
+      return {
+        pendingCount: pendingPlans.length,
+        syncedCount,
+        failedCount
+      }
+    })().finally(() => { activeSync = null })
+    return activeSync
+  }
+
+  return {
+    syncPendingPlans
+  }
+}

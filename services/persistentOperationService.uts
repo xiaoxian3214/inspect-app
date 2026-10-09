@@ -1,0 +1,54 @@
+/**
+ * 创建文件删除等必须联网执行的持久操作服务。
+ */
+export function createPersistentOperationService(options) {
+  const requestQueueRepository = options.requestQueueRepository
+  const reportFileApi = options.reportFileApi
+  const isOnline = options.isOnline
+  const createId = typeof options.createId === 'function' ? options.createId : () => `task-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  let activeProcess = null
+
+  /**
+   * 将服务端图片删除操作写入持久队列，重复文件只保留一个任务。
+   */
+  async function enqueueFileDelete(fileId) {
+    const normalizedFileId = String(fileId ?? '').trim()
+    if (normalizedFileId === '') return null
+    return requestQueueRepository.enqueue({ id: createId(), taskType: 'FILE_DELETE', dedupeKey: `file-delete:${normalizedFileId}`, payload: { fileId: normalizedFileId }, priority: 60 })
+  }
+
+  /**
+   * 按任务类型执行单个持久操作。
+   */
+  async function executeTask(task) {
+    if (task?.taskType === 'FILE_DELETE') return reportFileApi.deleteInspectFile(task?.payload?.fileId)
+    throw new Error(`不支持的持久任务类型: ${task?.taskType ?? ''}`)
+  }
+
+  /**
+   * 在线串行执行全部可运行任务，并去重并发处理请求。
+   */
+  function processPending() {
+    if (activeProcess != null) return activeProcess
+    activeProcess = (async () => {
+      const tasks = await requestQueueRepository.listPending()
+      if (!(await isOnline())) return { pendingCount: tasks.length, completedCount: 0, failedCount: 0 }
+      let completedCount = 0
+      let failedCount = 0
+      for (const task of tasks) {
+        try {
+          await executeTask(task)
+          await requestQueueRepository.complete(task.id)
+          completedCount += 1
+        } catch (error) {
+          await requestQueueRepository.fail(task, error)
+          failedCount += 1
+        }
+      }
+      return { pendingCount: tasks.length, completedCount, failedCount }
+    })().finally(() => { activeProcess = null })
+    return activeProcess
+  }
+
+  return { enqueueFileDelete, processPending }
+}

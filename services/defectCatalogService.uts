@@ -1,0 +1,39 @@
+/**
+ * 创建疵点分类与严重等级的在线刷新、离线缓存服务。
+ */
+export function createDefectCatalogService(options) {
+  const defectApi = options.defectApi
+  const isOnline = options.isOnline
+  const readCache = options.readCache
+  const writeCache = options.writeCache
+
+  /**
+   * 离线返回最近缓存，联网时刷新分类树和严重等级并更新缓存。
+   */
+  async function loadCatalog() {
+    const cached = readCache() || { tree: [], levels: [] }
+    if (!(await isOnline())) return cached
+    let tree = Array.isArray(cached?.tree) ? cached.tree : []
+    let levels = Array.isArray(cached?.levels) ? cached.levels : []
+    let refreshed = false
+    try {
+      const freshTree = await defectApi.getDefectTree()
+      if (Array.isArray(freshTree) && freshTree.length > 0) {
+        tree = freshTree
+        refreshed = true
+      }
+    } catch (_) {}
+    try {
+      const freshLevels = await defectApi.getDefectLevels()
+      if (Array.isArray(freshLevels) && freshLevels.length > 0) {
+        levels = freshLevels
+        refreshed = true
+      }
+    } catch (_) {}
+    const result = { tree, levels }
+    if (refreshed) await writeCache(result)
+    return result
+  }
+
+  return { loadCatalog }
+}

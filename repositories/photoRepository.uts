@@ -1,0 +1,170 @@
+/**
+ * 安全还原照片数据库行中的完整媒体记录。
+ */
+function parsePhotoRow(row) {
+  try {
+    return JSON.parse(row?.jsonData ?? '{}')
+  } catch (_) {
+    return {}
+  }
+}
+
+/**
+ * 创建报告与照片 ID 组合的稳定本地主键。
+ */
+function buildPhotoKey(reportId, photoId) {
+  return `${String(reportId ?? '').trim()}::${String(photoId ?? '').trim()}`
+}
+
+/**
+ * 判断媒体记录是否仍需上传或重试。
+ */
+function isPendingPhoto(photo) {
+  if (String(photo?.fileId ?? '').trim() !== '') return false
+  const status = String(photo?.uploadStatus ?? 'pending').toLowerCase()
+  return status !== 'done' && status !== 'success' && status !== 'uploaded'
+}
+
+/**
+ * 创建手机本地照片与上传状态仓库。
+ */
+export function createPhotoRepository(database) {
+  /**
+   * 按报告 ID 读取全部本地媒体记录。
+   */
+  async function listByReportId(reportId) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    return database.readTable('photo')
+      .filter((row) => String(row?.reportId ?? '') === normalizedReportId)
+      .sort((left, right) => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+      .map(parsePhotoRow)
+  }
+
+  /**
+   * 读取指定报告中尚未完成上传的媒体记录。
+   */
+  async function listPendingByReportId(reportId) {
+    return (await listByReportId(reportId)).filter(isPendingPhoto)
+  }
+
+  /**
+   * 读取全部报告中仍需上传或重试的媒体记录。
+   */
+  async function listPending() {
+    return database.readTable('photo').map(parsePhotoRow).filter(isPendingPhoto)
+  }
+
+  /**
+   * 返回仍有本地图片待上传的全部报告 ID，并保持数据库中的首次出现顺序。
+   */
+  async function listPendingReportIds() {
+    const reportIds = []
+    const seen = new Set()
+    database.readTable('photo').forEach((row) => {
+      const reportId = String(row?.reportId ?? '').trim()
+      if (reportId === '' || seen.has(reportId) || !isPendingPhoto(parsePhotoRow(row))) return
+      seen.add(reportId)
+      reportIds.push(reportId)
+    })
+    return reportIds
+  }
+
+  /**
+   * 完整替换指定报告的媒体快照。
+   */
+  async function saveAll(reportId, photos) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    if (normalizedReportId === '') throw new Error('报告ID不能为空')
+    const source = Array.isArray(photos) ? photos : []
+    await database.transaction(async (transaction) => {
+      transaction.removeWhere('photo', (row) => String(row?.reportId ?? '') === normalizedReportId)
+      source.forEach((photo, index) => {
+        const sourcePhotoId = String(photo?.photoId ?? photo?.id ?? `local-${index}`)
+        transaction.upsert('photo', 'photoId', {
+          photoId: buildPhotoKey(normalizedReportId, sourcePhotoId),
+          sourcePhotoId,
+          defectId: photo?.defectId ?? '',
+          reportId: normalizedReportId,
+          ownerType: photo?.ownerType ?? '',
+          ownerId: (photo?.ownerId || photo?.itemId || photo?.defectId) ?? '',
+          localPath: photo?.localPath ?? '',
+          uploadStatus: photo?.uploadStatus || (photo?.fileId ? 'done' : 'pending'),
+          fileId: photo?.fileId ?? '',
+          sortNo: index,
+          md5: photo?.md5 ?? '',
+          jsonData: JSON.stringify(photo)
+        })
+      })
+    })
+    return source
+  }
+
+  /**
+   * 新增或更新单个本地媒体记录。
+   */
+  async function save(reportId, photo) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    if (normalizedReportId === '') throw new Error('报告ID不能为空')
+    const sourcePhotoId = String(photo?.photoId ?? photo?.id ?? '').trim()
+    if (sourcePhotoId === '') throw new Error('照片ID不能为空')
+    let saved = photo
+    await database.transaction(async (transaction) => {
+      const existing = transaction.read('photo').filter((row) => String(row?.reportId ?? '') === normalizedReportId)
+      const previous = existing.find((row) => String(row?.sourcePhotoId ?? '') === sourcePhotoId)
+      saved = { ...(previous != null ? parsePhotoRow(previous) : {}), ...photo }
+      transaction.upsert('photo', 'photoId', {
+        photoId: buildPhotoKey(normalizedReportId, sourcePhotoId),
+        sourcePhotoId,
+        defectId: saved?.defectId ?? '',
+        reportId: normalizedReportId,
+        ownerType: saved?.ownerType ?? '',
+        ownerId: (saved?.ownerId || saved?.itemId || saved?.defectId) ?? '',
+        localPath: saved?.localPath ?? '',
+        uploadStatus: saved?.uploadStatus || (saved?.fileId ? 'done' : 'pending'),
+        fileId: saved?.fileId ?? '',
+        sortNo: previous?.sortNo ?? existing.length,
+        md5: saved?.md5 ?? '',
+        jsonData: JSON.stringify(saved)
+      })
+    })
+    return saved
+  }
+
+  /**
+   * 将照片标记为上传成功并写入服务端文件信息。
+   */
+  async function markUploaded(reportId, photoId, remoteFile) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    const normalizedPhotoId = String(photoId ?? '').trim()
+    let uploaded = null
+    await database.transaction(async (transaction) => {
+      const previous = transaction.read('photo').find((row) => String(row?.reportId ?? '') === normalizedReportId && String(row?.sourcePhotoId ?? '') === normalizedPhotoId)
+      if (previous == null) throw new Error('本地照片不存在')
+      uploaded = { ...parsePhotoRow(previous), ...(remoteFile ?? {}), uploadStatus: 'done', uploadError: '', uploadedAt: new Date().toISOString() }
+      transaction.upsert('photo', 'photoId', {
+        ...previous,
+        localPath: uploaded.localPath ?? '',
+        uploadStatus: 'done',
+        fileId: uploaded.fileId ?? '',
+        jsonData: JSON.stringify(uploaded)
+      })
+    })
+    return uploaded
+  }
+
+  /**
+   * 删除指定报告中的单个本地媒体记录。
+   */
+  async function remove(reportId, photoId) {
+    const normalizedReportId = String(reportId ?? '').trim()
+    const normalizedPhotoId = String(photoId ?? '').trim()
+    await database.transaction(async (transaction) => {
+      transaction.removeWhere('photo', (row) => {
+        return String(row?.reportId ?? '') === normalizedReportId
+          && String(row?.sourcePhotoId ?? '') === normalizedPhotoId
+      })
+    })
+  }
+
+  return { listByReportId, listPendingByReportId, listPending, listPendingReportIds, saveAll, save, markUploaded, remove }
+}

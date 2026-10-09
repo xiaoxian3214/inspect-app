@@ -1,0 +1,54 @@
+/**
+ * 疵点分类最近使用历史的纯函数集合。
+ * 语义与 H5 detail.vue 的 loadRecentCategoryHistory / pushRecentCategoryHistory 保持一致：
+ * 归一化时剔除缺编码或缺描述的记录并回填 tier3Code，写入时按 defectCode 去重、
+ * 新记录置顶且最多保留 8 条。
+ */
+
+const RECENT_CATEGORY_LIMIT = 8
+
+/**
+ * 去除首尾空白后返回字符串，空值统一返回空串。
+ */
+function asTrimmedText(value) {
+  return String(value == null ? '' : value).trim()
+}
+
+/**
+ * 归一化本地存储中的最近使用分类：剔除缺编码或缺描述的记录，
+ * 缺失 tier3Code 时以 defectCode 兜底，并截断到最多 8 条。
+ */
+export function normalizeRecentCategories(rows) {
+  const source = Array.isArray(rows) ? rows : []
+  const normalized = []
+  for (const row of source) {
+    if (row == null || typeof row !== 'object') continue
+    const defectCode = asTrimmedText(row.defectCode)
+    const defectDesc = asTrimmedText(row.defectDesc)
+    if (defectCode === '' || defectDesc === '') continue
+    const tier3Code = asTrimmedText(row.tier3Code)
+    normalized.push({
+      tier1Code: asTrimmedText(row.tier1Code),
+      tier2Code: asTrimmedText(row.tier2Code),
+      tier3Code: tier3Code !== '' ? tier3Code : defectCode,
+      defectCode,
+      defectDesc
+    })
+  }
+  return normalized.slice(0, RECENT_CATEGORY_LIMIT)
+}
+
+/**
+ * 将新选中的分类写入历史头部：按 defectCode 去重后置顶，
+ * 缺编码或缺描述时忽略写入并返回原列表，结果最多保留 8 条。
+ */
+export function pushRecentCategory(list, category) {
+  const base = normalizeRecentCategories(list)
+  if (category == null || typeof category !== 'object') return base
+  const normalized = normalizeRecentCategories([category])
+  if (normalized.length === 0) return base
+  const next = normalized[0]
+  const deduped = base.filter((item) => item.defectCode !== next.defectCode)
+  deduped.unshift(next)
+  return deduped.slice(0, RECENT_CATEGORY_LIMIT)
+}

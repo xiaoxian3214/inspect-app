@@ -1,0 +1,13 @@
+export function createAuthApi(apiClient) {
+  async function login(payload) {
+    return apiClient.request({
+      url: '/api/auth/login',
+      method: 'POST',
+      data: payload,
+      key: `auth:login:${payload?.userName ?? ''}`,
+      priority: 100
+    })
+  }
+
+  return { login }
+}

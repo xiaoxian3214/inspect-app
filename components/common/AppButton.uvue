@@ -1,0 +1,45 @@
+<template>
+	<view class="app-button" :class="[variant, { block, selected, disabled }]" @click="pressButton"><AppIcon v-if="iconType !== ''" :type="iconType" :size="iconSize" :color="iconColor" /><text v-else class="button-label" :class="variant" :style="labelColor !== '' ? { color: labelColor } : {}"><slot /></text></view>
+</template>
+
+<script setup lang="uts">
+	import AppIcon from '../icons/AppIcon.uvue'
+	const props = defineProps({
+		variant: { type: String, default: 'outline' },
+		block: { type: Boolean, default: false },
+		selected: { type: Boolean, default: false },
+		disabled: { type: Boolean, default: false },
+		iconType: { type: String, default: '' },
+		iconSize: { type: Number, default: 24 },
+		iconColor: { type: String, default: '#334155' },
+		labelColor: { type: String, default: '' }
+	})
+	const emit = defineEmits(['press'])
+
+	/** 将原生视图的按压转发为业务操作，禁用时不触发事件。 */
+	function pressButton() { if (!props.disabled) emit('press') }
+</script>
+
+<style>
+	.app-button { min-height: 80rpx; padding: 0 24rpx; margin: 0; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; background-color: #ffffff; align-items: center; justify-content: center; }
+	.button-label { color: #64748b; font-size: 28rpx; font-weight: 500; text-align: center; }
+	.button-label.primary { color: #ffffff; font-size: 22rpx; }
+	.button-label.small { font-size: 22rpx; }
+	.button-label.soft { color: #15803d; font-size: 24rpx; }
+	.button-label.nav { color: #334155; font-size: 24rpx; }
+	.button-label.remove { color: #dc2626; font-size: 24rpx; }
+	.button-label.danger { color: #64748b; }
+	.app-button.disabled { opacity: 0.5; }
+	.app-button.block { width: 100%; margin-bottom: 24rpx; }
+	.app-button.small { min-height: 52rpx; padding: 0 18rpx; border-radius: 12rpx; font-size: 22rpx; }
+	.app-button.primary { min-height: 52rpx; padding: 0 16rpx; border-color: #03ae4f; border-radius: 12rpx; background-color: #03ae4f; color: #ffffff; font-size: 22rpx; }
+	.app-button.soft { min-height: 64rpx; border-color: #bbf7d0; border-radius: 16rpx; background-color: #f0fdf4; color: #15803d; font-size: 24rpx; }
+	.app-button.nav { min-height: 56rpx; padding: 0 20rpx; border-color: #cbd5e1; border-radius: 16rpx; color: #334155; font-size: 24rpx; }
+	.app-button.remove { min-height: 52rpx; padding: 0 20rpx; border-color: #fecaca; border-radius: 12rpx; background-color: #fef2f2; color: #dc2626; font-size: 24rpx; }
+	.app-button.danger { color: #64748b; }
+	.app-button.icon { width: 64rpx; height: 64rpx; min-height: 64rpx; padding: 0; border-width: 0; border-radius: 32rpx; background-color: #f8fafc; }
+	.app-button.camera { background-color: #ecfdf3; }
+	.app-button.result { width: 25%; min-height: 168rpx; padding: 16rpx 2rpx; border-width: 0; flex-direction: column; background-color: #ffffff; }
+	.app-button.selected { border-color: #03ae4f; }
+	.app-button.result.selected { border-width: 0; }
+</style>

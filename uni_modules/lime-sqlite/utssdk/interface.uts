@@ -1,0 +1,71 @@
+// @ts-nocheck
+/**
+ * interface.uts
+ * uts插件接口定义文件，按规范定义接口文件可以在HBuilderX中更好的做到语法提示
+ */
+
+/**
+ * myApi 异步函数的参数，在type里定义函数需要的参数以及api成功、失败的相关回调函数。
+ */
+
+export type DatabaseOptions = {
+	name : string
+	// path : string
+	success ?: (res : SQLiteSuccess) => void
+	fail ?: (res : SqliteFail) => void
+	complete ?: (res : any) => void
+}
+
+
+export type SqlOperationOptions = {
+	name : string
+	sql : string[]
+	success ?: (res : SQLiteSuccess) => void
+	fail ?: (res : SqliteFail) => void
+	complete ?: (res : any) => void
+}
+
+
+export type SqlTransactionOptions = {
+	name : string
+	operation : 'begin' | 'commit' | 'rollback',
+	success ?: (res : SQLiteSuccess) => void
+	fail ?: (res : SqliteFail) => void
+	complete ?: (res : any) => void
+}
+
+
+/**
+ * 错误码
+ * 根据uni错误码规范要求，建议错误码以90开头，以下是错误码示例：
+ * - 9010001 操作失败
+ * - 9010002 操作成功
+ */
+export type SqliteErrorCode = 9010001 | 9010002 | 9010003 | 9010004 | 9010005 | 9010006 | 9010007;
+
+// interface IUniError {
+// 	errMsg: string 
+// }
+
+/**
+ * myApi 的错误回调参数
+ */
+export interface SqliteFail {
+	errMsgs : any[]
+	errMsg: string
+	errSubject: string
+	errCode: SqliteErrorCode;
+};
+
+export interface SQLiteSuccess {
+	data : any[]
+	result: UTSJSONObject[]
+	errMsg : string
+}
+
+
+/* 异步函数定义 */
+// export type Sqlite = (options : SqliteOptions) => void
+
+/* 同步函数定义 */
+// export type SqliteSync = (paramA : boolean) => SqliteResult

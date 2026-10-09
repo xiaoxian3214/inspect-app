@@ -1,0 +1,67 @@
+const COMMENT_TARGET_TYPE = 'REPORT'
+
+/**
+ * 创建报告评论接口集合，端点与 H5 /api/reports/comments 保持一致。
+ * @param apiClient 统一请求客户端（负责鉴权、排队与响应解包）
+ */
+export function createReportCommentsApi(apiClient) {
+	/**
+	 * 按报告 ID 读取全部评论（含回复树），空 ID 直接返回空数组。
+	 */
+	async function listCommentsByReport(reportId) {
+		const normalizedReportId = String(reportId ?? '').trim()
+		if (normalizedReportId === '') return []
+		const data = await apiClient.request({
+			url: `/api/reports/comments/by-report/${encodeURIComponent(normalizedReportId)}`,
+			method: 'GET',
+			key: `report:comments-by-report:${normalizedReportId}`,
+			priority: 20
+		})
+		return Array.isArray(data) ? data : []
+	}
+
+	/**
+	 * 发布报告评论或楼层回复；参数校验与 H5 保持一致，目标默认为报告自身。
+	 */
+	async function createReportComment(options) {
+		const source = options != null && typeof options === 'object' ? options : {}
+		const reportId = String(source.reportId ?? '').trim()
+		const targetId = String(source.targetId ?? reportId ?? '').trim()
+		const content = String(source.content ?? '').trim()
+		if (reportId === '') throw new Error('缺少报告ID')
+		if (targetId === '') throw new Error('缺少目标ID')
+		if (content === '') throw new Error('评论内容不能为空')
+		const parentId = String(source.parentId ?? '').trim()
+		const data = await apiClient.request({
+			url: '/api/reports/comments',
+			method: 'POST',
+			key: `report:comment-create:${reportId}:${parentId}:${content}`,
+			priority: 10,
+			data: {
+				reportId,
+				targetType: COMMENT_TARGET_TYPE,
+				targetId,
+				parentId: parentId !== '' ? parentId : null,
+				content
+			}
+		})
+		return data ?? {}
+	}
+
+	/**
+	 * 删除指定评论；空 ID 直接抛错避免发出无效请求。
+	 */
+	async function deleteReportComment(commentId) {
+		const normalizedCommentId = String(commentId ?? '').trim()
+		if (normalizedCommentId === '') throw new Error('缺少评论ID')
+		const data = await apiClient.request({
+			url: `/api/reports/comments/${encodeURIComponent(normalizedCommentId)}`,
+			method: 'DELETE',
+			key: `report:comment-delete:${normalizedCommentId}`,
+			priority: 10
+		})
+		return data ?? {}
+	}
+
+	return { listCommentsByReport, createReportComment, deleteReportComment }
+}

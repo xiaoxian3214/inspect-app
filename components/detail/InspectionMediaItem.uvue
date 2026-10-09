@@ -1,0 +1,71 @@
+<template>
+	<view class="media-item" @click="previewMedia">
+		<InspectionMediaImage class="media-image" :media="media" />
+		<view v-if="isVideo" class="media-video-badge">
+			<view class="video-play-triangle"></view>
+			<text class="video-duration-text">{{ videoDurationLabel }}</text>
+		</view>
+		<view v-if="showStatusIndicator" class="media-status-light" :class="statusLightClass" @click.stop="retryMedia"></view>
+		<view v-if="removable" class="media-remove" @click.stop="removeMedia"><AppIcon type="close" :size="13" color="#ffffff" /></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed } from 'vue'
+	import AppIcon from '../icons/AppIcon.uvue'
+	import InspectionMediaImage from './InspectionMediaImage.uvue'
+	import { isVideoMedia } from '../../domain/photoUploadPolicy.uts'
+
+	const props = defineProps({
+		media: { type: Object, default: () => ({}) },
+		removable: { type: Boolean, default: true }
+	})
+	const emit = defineEmits(['preview-media', 'remove-media', 'retry-media'])
+
+	/** 按媒体记录判定当前格子是否为视频，用于叠加播放角标与时长文本。 */
+	const isVideo = computed(() => isVideoMedia(props.media))
+	/** 返回视频时长的 mm:ss 角标文本，时长未知时以 00:00 占位。 */
+	const videoDurationLabel = computed(() => {
+		const totalSeconds = Math.max(0, Math.round(Number(props.media?.durationSeconds ?? 0)))
+		const minutes = Math.floor(totalSeconds / 60)
+		const seconds = totalSeconds % 60
+		return `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds}`
+	})
+	/** 返回当前媒体上传状态的标准小写值。 */
+	const uploadStatus = computed(() => String(props.media?.uploadStatus || (props.media?.fileId ? 'done' : 'pending')).toLowerCase())
+	/** 判断媒体是否已经具备服务端文件 ID 或完成上传状态。 */
+	const isUploaded = computed(() => {
+		if (String(props.media?.fileId ?? '').trim() !== '') return true
+		return ['done', 'success', 'uploaded'].includes(uploadStatus.value)
+	})
+	/** 判断是否需要展示未完成上传的蓝色或黄色呼吸点。 */
+	const showStatusIndicator = computed(() => {
+		if (isUploaded.value) return false
+		return ['pending', 'uploading', 'retry_wait', 'failed', 'error', 'needs_attention'].includes(uploadStatus.value)
+	})
+	/** 上传中返回蓝色，其余未完成状态统一返回黄色。 */
+	const statusLightClass = computed(() => {
+		return uploadStatus.value === 'uploading' ? 'status-uploading' : 'status-pending'
+	})
+	/** 通知父组件打开当前媒体预览。 */
+	function previewMedia() { emit('preview-media', props.media) }
+	/** 通知父组件删除当前媒体。 */
+	function removeMedia() { emit('remove-media', props.media) }
+	/** 仅在上传失败时通知父组件重新进入上传队列。 */
+	function retryMedia() {
+		if (!['failed', 'error', 'needs_attention'].includes(uploadStatus.value)) return
+		emit('retry-media', props.media)
+	}
+</script>
+
+<style>
+	.media-item { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: 18rpx; background-color: #f1f5f9; }
+	.media-image { width: 100%; height: 100%; }
+	.media-video-badge { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; flex-direction: row; align-items: center; padding: 6rpx 10rpx; background-color: rgba(15, 23, 42, 0.55); }
+	.video-play-triangle { width: 0; height: 0; margin-right: 10rpx; border-top-width: 9rpx; border-top-color: transparent; border-bottom-width: 9rpx; border-bottom-color: transparent; border-left-width: 14rpx; border-left-color: #ffffff; }
+	.video-duration-text { color: #ffffff; font-size: 20rpx; }
+	.media-remove { position: absolute; top: 8rpx; right: 8rpx; width: 42rpx; height: 42rpx; border-radius: 21rpx; align-items: center; justify-content: center; background-color: rgba(15, 23, 42, 0.72); }
+	.media-status-light { position: absolute; top: 8rpx; left: 8rpx; width: 18rpx; height: 18rpx; border-width: 2rpx; border-color: rgba(255, 255, 255, 0.96); border-radius: 50%; z-index: 3; }
+	.media-status-light.status-uploading { background-color: #2563eb; box-shadow: 0 0 8rpx 3rpx rgba(37, 99, 235, 0.72); }
+	.media-status-light.status-pending { background-color: #f59e0b; box-shadow: 0 0 8rpx 3rpx rgba(245, 158, 11, 0.72); }
+</style>

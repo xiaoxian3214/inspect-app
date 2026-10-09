@@ -1,0 +1,23 @@
+import { createMemoryDatabase } from './memoryDatabase.uts'
+
+let databaseAdapter = null
+
+export function setDatabaseAdapter(adapter) {
+  databaseAdapter = adapter
+}
+
+export function getDatabase() {
+  if (databaseAdapter == null) databaseAdapter = createMemoryDatabase()
+  return databaseAdapter
+}
+
+export async function initializeDatabase() {
+  const database = getDatabase()
+  await database.open()
+  return database
+}
+
+export async function closeDatabase() {
+  if (databaseAdapter == null) return
+  await databaseAdapter.close()
+}

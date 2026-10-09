@@ -1,0 +1,171 @@
+/**
+ * 返回计划对象中用于远程操作和本地匹配的稳定计划 ID。
+ */
+export function getPlanOperationId(item) {
+  const candidates = [
+    item?.plan?.id,
+    item?.plan?.planId,
+    item?.planId,
+    item?.id,
+    item?.raw?.planId,
+    item?.raw?.id,
+    item?.reportId
+  ]
+  const found = candidates.find((value) => value !== undefined && value !== null && String(value).trim() !== '')
+  return found === undefined ? '' : String(found).trim()
+}
+
+/**
+ * 将页面状态值归一化为 H5 使用的数字状态。
+ */
+export function normalizeSearchStatus(status) {
+  if (typeof status === 'number') return status
+  const text = String(status ?? '').trim()
+  if (text === '0' || text === 'planned' || text === 'NEW' || text === 'DOWNLOADED') return 0
+  if (text === '1' || text === '2' || text === 'progress' || text === 'DRAFT' || text === 'IN_PROGRESS') return 1
+  if (text === '3' || text === 'report' || text === 'DONE' || text === 'COMPLETED') return 3
+  return -1
+}
+
+/**
+ * 把 yyyy-MM-dd 日期转换为本地当天边界对应的 ISO 字符串。
+ */
+export function toDateBoundaryIso(value, endOfDay: boolean = false) {
+  const dateText = String(value ?? '').trim()
+  if (dateText === '') return ''
+  const timeText = endOfDay ? '23:59:59.999' : '00:00:00.000'
+  const date = new Date(`${dateText}T${timeText}`)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString()
+}
+
+/**
+ * 根据关键字和筛选值构建与 H5 一致的搜索请求参数。
+ */
+export function buildSearchParams(keyword, filters: any = {}) {
+  const params = { keyword: String(keyword ?? '').trim() }
+  const normalizedStatus = normalizeSearchStatus(filters?.status)
+  const inspectType = String(filters?.inspectType ?? '').trim()
+  const startDate = toDateBoundaryIso(filters?.startDate, false)
+  const endDate = toDateBoundaryIso(filters?.endDate, true)
+  if (normalizedStatus >= 0) params.status = normalizedStatus
+  if (inspectType !== '') params.inspectType = inspectType
+  if (startDate !== '') params.startDate = startDate
+  if (endDate !== '') params.endDate = endDate
+  return params
+}
+
+/**
+ * 使用同 ID 的完整本地记录覆盖远程搜索记录，保留离线编辑状态。
+ */
+export function mergeRemoteWithLocal(remoteRecords, localPlans) {
+  const localById = new Map()
+  for (const localPlan of Array.isArray(localPlans) ? localPlans : []) {
+    const planId = getPlanOperationId(localPlan)
+    if (planId !== '') localById.set(planId, localPlan)
+  }
+  return (Array.isArray(remoteRecords) ? remoteRecords : []).map((record) => {
+    return localById.get(getPlanOperationId(record)) || record
+  })
+}
+
+/**
+ * 返回计划的检查类型编码，兼容远程、本地和 raw 包装结构。
+ */
+export function getItemInspectType(item) {
+  return String(
+    item?.plan?.inspectType
+    ?? item?.inspectType
+    ?? item?.raw?.inspectType
+    ?? item?.plan?.inspectTypeName
+    ?? item?.inspectTypeName
+    ?? ''
+  ).trim()
+}
+
+/**
+ * 返回计划的工厂号，供合并选择兼容性判断使用。
+ */
+export function getItemFactoryNo(item) {
+  return String(item?.plan?.factoryNo ?? item?.factoryNo ?? item?.raw?.factoryNo ?? '').trim()
+}
+
+/**
+ * 返回计划的货类，供合并选择兼容性判断使用。
+ */
+export function getItemGoodsClass(item) {
+  return String(item?.plan?.goodsClass ?? item?.goodsClass ?? item?.raw?.goodsClass ?? '').trim()
+}
+
+/**
+ * 判断计划是否满足 H5 合并流程的基础资格。
+ */
+export function isBaseMergeEligible(item, inspectType) {
+  const lockFlag = Number(item?.plan?.lockFlag ?? item?.lockFlag ?? item?.raw?.lockFlag ?? 0)
+  const status = normalizeSearchStatus(item?.status ?? item?.plan?.status ?? item?.raw?.status)
+  const mergeType = Number(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0)
+  const targetInspectType = String(inspectType ?? '').trim()
+  return lockFlag === 0
+    && status === 0
+    && mergeType !== 2
+    && targetInspectType !== ''
+    && getItemInspectType(item) === targetInspectType
+}
+
+/**
+ * 判断计划是否与已选合并锚点保持工厂号、货类和检查类型一致。
+ */
+export function isMergeSelectable(item, inspectType, anchorItem: any | null = null) {
+  if (!isBaseMergeEligible(item, inspectType)) return false
+  if (anchorItem == null) return true
+  return getItemFactoryNo(item) === getItemFactoryNo(anchorItem)
+    && getItemGoodsClass(item) === getItemGoodsClass(anchorItem)
+    && getItemInspectType(item) === getItemInspectType(anchorItem)
+}
+
+/**
+ * 返回计划所属的合并父计划 ID。
+ */
+export function getItemParentPlanId(item) {
+  return String(item?.plan?.parentPlanId ?? item?.parentPlanId ?? item?.raw?.parentPlanId ?? '').trim()
+}
+
+/**
+ * 合并远程和本地拆分预览记录，按计划 ID 去重并优先使用本地版本。
+ */
+export function buildSplitPreview(remoteRecords, localPlans, parentPlanId) {
+  const targetParentId = String(parentPlanId ?? '').trim()
+  const localById = new Map()
+  for (const localPlan of Array.isArray(localPlans) ? localPlans : []) {
+    const planId = getPlanOperationId(localPlan)
+    if (planId !== '') localById.set(planId, localPlan)
+  }
+  const result = []
+  const seenIds = new Set()
+  for (const item of [...(Array.isArray(remoteRecords) ? remoteRecords : []), ...(Array.isArray(localPlans) ? localPlans : [])]) {
+    if (getItemParentPlanId(item) !== targetParentId) continue
+    const planId = getPlanOperationId(item)
+    if (planId === '' || seenIds.has(planId)) continue
+    seenIds.add(planId)
+    result.push(localById.get(planId) || item)
+  }
+  return result
+}
+
+/**
+ * 从复制接口的不同返回结构中提取新计划 ID。
+ */
+export function extractCopiedPlanId(result) {
+  const candidates = [
+    result?.id,
+    result?.planId,
+    result?.reportId,
+    result?.plan?.id,
+    result?.plan?.planId,
+    result?.plan?.reportId,
+    result?.report?.id,
+    result?.report?.planId
+  ]
+  const found = candidates.find((value) => value !== undefined && value !== null && String(value).trim() !== '')
+  return found === undefined ? '' : String(found).trim()
+}

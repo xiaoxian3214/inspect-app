@@ -1,0 +1,75 @@
+{
+	"pages": [
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "登录"
+			}
+		},
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "验货工作台"
+			}
+		},
+		{
+			"path": "pages/report/list",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "验货任务",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/report/search",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "查询验货"
+			}
+		},
+		{
+			"path": "pages/report/detail",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "验货详情"
+			}
+		},
+		{
+			"path": "pages/report/camera",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "连续拍照"
+			}
+		},
+		{
+			"path": "pages/debug/database",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "本地数据表"
+			}
+		},
+		{
+			"path": "pages/debug/lime-sqlite",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "SQLite 插件测试"
+			}
+		},
+		{
+			"path": "pages/debug/xview-camera",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "相机插件测试"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "离线验货",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F4F6FA"
+	},
+	"uniIdRouter": {}
+}

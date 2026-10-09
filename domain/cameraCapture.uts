@@ -1,0 +1,73 @@
+/**
+ * 为每次自定义相机调用生成隔离的结果事件名称，避免多个页面互相接收照片。
+ */
+export function buildCameraCaptureEventName(requestId) {
+  return `inspection-camera-result:${String(requestId ?? '').trim()}`
+}
+
+/**
+ * 从相机页结果对象或路径数组中提取有效且不重复的本地文件路径。
+ */
+export function normalizeCameraResultPaths(payload) {
+  const source = Array.isArray(payload) ? payload : (Array.isArray(payload?.paths) ? payload.paths : [])
+  const paths = []
+  const seen = new Set()
+  source.forEach((path) => {
+    const normalizedPath = String(path ?? '').trim()
+    if (normalizedPath === '' || seen.has(normalizedPath)) return
+    seen.add(normalizedPath)
+    paths.push(normalizedPath)
+  })
+  return paths
+}
+
+/**
+ * 将新拍摄或相册选择的路径追加到连拍列表，并按最大数量保持首次出现顺序。
+ */
+export function appendCapturePaths(currentPaths, incomingPaths, maxCount = 9) {
+  const normalizedMaxCount = Math.max(1, Number(maxCount ?? 9))
+  return normalizeCameraResultPaths([
+    ...(Array.isArray(currentPaths) ? currentPaths : []),
+    ...(Array.isArray(incomingPaths) ? incomingPaths : [])
+  ]).slice(0, normalizedMaxCount)
+}
+
+/**
+ * 归一化相机页确认结果为带媒体类型的媒体条目列表。
+ * 兼容三种入参：{items:[{path,mediaKind}]} 新协议、{paths,mediaKinds} 等长数组协议、纯路径数组；
+ * mediaKind 仅显式 'video' 被视为视频，其余（缺失或未知值）一律归一为 'image'，
+ * 不按扩展名推断，避免把重命名文件误判为视频。
+ * @param payload 相机页 uni.$emit 的结果载荷
+ * @returns 去重保序的 {path, mediaKind} 列表
+ */
+export function normalizeCameraCaptureMedia(payload) {
+  const entries = []
+  if (Array.isArray(payload)) {
+    payload.forEach((path) => entries.push({ path: path, mediaKind: '' }))
+  } else if (Array.isArray(payload?.items)) {
+    payload.items.forEach((item) => {
+      if (typeof item === 'string') {
+        entries.push({ path: item, mediaKind: '' })
+      } else if (item != null) {
+        entries.push({ path: item?.path, mediaKind: item?.mediaKind })
+      }
+    })
+  } else if (Array.isArray(payload?.paths)) {
+    const mediaKinds = Array.isArray(payload?.mediaKinds) ? payload.mediaKinds : []
+    payload.paths.forEach((path, index) => {
+      entries.push({ path: path, mediaKind: mediaKinds[index] })
+    })
+  }
+  const mediaList = []
+  const seen = new Set()
+  entries.forEach((entry) => {
+    const normalizedPath = String(entry?.path ?? '').trim()
+    if (normalizedPath === '' || seen.has(normalizedPath)) return
+    seen.add(normalizedPath)
+    mediaList.push({
+      path: normalizedPath,
+      mediaKind: String(entry?.mediaKind ?? '').trim().toLowerCase() === 'video' ? 'video' : 'image'
+    })
+  })
+  return mediaList
+}

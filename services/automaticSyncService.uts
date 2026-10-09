@@ -1,0 +1,94 @@
+/**
+ * 创建全局自动同步服务，按“持久操作、图片上传、草稿同步”的顺序恢复离线数据。
+ */
+export function createAutomaticSyncService(options) {
+  const getSession = options.getSession
+  const isOnline = options.isOnline
+  const processPendingOperations = options.processPendingOperations
+  const listPendingPhotoPlanIds = options.listPendingPhotoPlanIds
+  const listNextPhotoRetryAt = options.listNextPhotoRetryAt
+  const uploadPendingPhotos = options.uploadPendingPhotos
+  const refreshDraftPhotos = options.refreshDraftPhotos
+  const syncPendingPlans = options.syncPendingPlans
+  let activeSync = null
+  let retryTimer = null
+  let state = { phase: 'idle', planId: '' }
+  const listeners = new Set()
+
+  /** 向正在展示的页面发布自动同步阶段及当前图片归属计划。 */
+  function publishState(phase, planId = '') {
+    state = { phase, planId }
+    listeners.forEach((listener) => listener(state))
+  }
+
+  /** 订阅同步状态并立即接收当前状态，返回页面销毁时使用的取消函数。 */
+  function subscribe(listener) {
+    listeners.add(listener)
+    listener(state)
+    return () => listeners.delete(listener)
+  }
+
+  /** 返回当前自动同步阶段，供页面恢复时读取。 */
+  function getState() { return state }
+
+  /** 按最早的图片重试时间安排下一轮自动同步；新的同步请求会替换旧计时器。 */
+  function schedulePhotoRetry(retryAt) {
+    if (retryTimer != null) { clearTimeout(retryTimer); retryTimer = null }
+    const timestamp = Date.parse(String(retryAt ?? ''))
+    if (!(timestamp > 0)) return
+    retryTimer = setTimeout(() => { retryTimer = null; syncWhenOnline().catch((error) => console.warn('图片定时重试失败', error)) }, Math.max(0, timestamp - Date.now()))
+  }
+
+  /**
+   * 在已登录且联网时依次处理持久操作、全部待上传图片和普通草稿。
+   */
+  async function performSync() {
+    if (typeof getSession === 'function' && getSession() == null) {
+      return { online: false, skipped: 'no-session', uploadedPhotoCount: 0, failedPhotoCount: 0, syncedCount: 0, failedCount: 0 }
+    }
+    if (!(await isOnline())) {
+      return { online: false, skipped: 'offline', uploadedPhotoCount: 0, failedPhotoCount: 0, syncedCount: 0, failedCount: 0 }
+    }
+
+    publishState('syncing')
+    await processPendingOperations()
+    const planIds = await listPendingPhotoPlanIds()
+    let uploadedPhotoCount = 0
+    let failedPhotoCount = 0
+    for (const planId of planIds) {
+      publishState('uploading', planId)
+      try {
+        const uploadResult = await uploadPendingPhotos(planId)
+        uploadedPhotoCount += Number(uploadResult?.uploadedCount ?? 0)
+        failedPhotoCount += Number(uploadResult?.failedCount ?? 0)
+        await refreshDraftPhotos(planId)
+      } catch (_) {
+        failedPhotoCount += 1
+      }
+      publishState('uploaded', planId)
+    }
+
+    publishState('syncing')
+    const draftResult = await syncPendingPlans()
+    if (typeof listNextPhotoRetryAt === 'function') schedulePhotoRetry(await listNextPhotoRetryAt())
+    return {
+      online: true,
+      uploadedPhotoCount,
+      failedPhotoCount,
+      syncedCount: Number(draftResult?.syncedCount ?? 0),
+      failedCount: Number(draftResult?.failedCount ?? 0)
+    }
+  }
+
+  /**
+   * 请求执行自动同步，并复用正在运行的任务避免网络恢复与页面操作重复提交。
+   */
+  function syncWhenOnline() {
+    if (activeSync != null) return activeSync
+    if (retryTimer != null) { clearTimeout(retryTimer); retryTimer = null }
+    activeSync = performSync().finally(() => { activeSync = null; publishState('idle') })
+    return activeSync
+  }
+
+  return { syncWhenOnline, subscribe, getState }
+}

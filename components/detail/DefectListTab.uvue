@@ -1,0 +1,48 @@
+<template>
+	<view class="tab-page">
+		<view class="defects-summary"><view class="summary-item"><text class="summary-label">{{ t('致命缺陷') }}</text><text class="summary-value critical">{{ defectCounts.critical }}</text></view><view class="summary-item"><text class="summary-label">{{ t('主要缺陷') }}</text><text class="summary-value major">{{ defectCounts.major }}</text></view><view class="summary-item"><text class="summary-label">{{ t('次要缺陷') }}</text><text class="summary-value minor">{{ defectCounts.minor }}</text></view></view>
+		<view v-if="defects.length === 0" class="empty-state"><text class="empty-icon">✓</text><text class="empty-text">{{ t('暂无疵点记录') }}</text></view>
+		<view v-else class="defects-list">
+			<view v-for="group in defectGroups" :key="group.key" class="defect-group">
+				<view class="defect-group-title"><text>{{ group.label }}（{{ group.items.length }}）</text><text v-if="group.affectedTotal > 0" class="actual-total">实际发现：{{ group.affectedTotal }}</text></view>
+				<view v-for="(defect, index) in group.items" :key="defect.id || defect.defectId || `${group.key}-${index}`" class="defect-card" @click="openDefect(defect)">
+					<InspectionMediaImage v-if="firstPhoto(defect)" class="defect-cover" :media="firstPhoto(defect)" /><view v-else class="defect-cover placeholder"><text class="placeholder-text">{{ t('暂无图片') }}</text></view>
+					<view class="defect-main"><view class="defect-head"><text class="severity" :class="severityClass(defect)">{{ severityLabel(defect) }}</text><text class="defect-time">{{ formatTime(defect.createdAt || defect.updateDate || defect.updatedAt) }}</text></view><text class="defect-code">{{ t(defect.defectCode ?? '未填写编码') }}</text><text v-if="defect.defectDesc" class="defect-desc">{{ defect.defectDesc }}</text><view class="defect-meta"><text v-if="isCommon(defect)" class="defect-meta-text common-label">{{ t('普遍性疵点') }}</text><text v-else-if="defect.quantity || defect.defectCount" class="defect-meta-text">受影响数量：{{ defect.quantity || defect.defectCount }}个</text><text v-if="photoCount(defect) > 0" class="defect-meta-text">{{ photoCount(defect) }} 张图片</text></view></view>
+					<view class="delete-action" @click.stop="removeDefect(defect)"><text class="delete-action-text">{{ t('删除') }}</text></view>
+				</view>
+			</view>
+		</view>
+		<view class="add-button" @click="addDefect"><text class="add-button-text">{{ t('＋ 添加疵点') }}</text></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import InspectionMediaImage from './InspectionMediaImage.uvue'
+	const props = defineProps({ defects: { type: Array, default: () => [] }, defectCounts: { type: Object, default: () => ({ critical: 0, major: 0, minor: 0 }) }, defectGroups: { type: Array, default: () => [] } })
+	const emit = defineEmits(['add-defect', 'open-defect', 'edit-defect', 'remove-defect'])
+	/** 返回疵点严重等级标准值。 */
+	function severityValue(defect) { const text = `${String(defect?.type ?? defect?.defectType ?? '').toLowerCase()} ${String(defect?.typeLabel ?? '').toLowerCase()}`; if (text.includes('critical') || text.includes('致命') || text.includes('极严重')) return 'CRITICAL'; if (text.includes('major') || text.includes('主要') || text.includes('严重')) return 'MAJOR'; return 'MINOR' }
+	/** 返回疵点严重等级中文名称。 */
+	function severityLabel(defect) { const value = severityValue(defect); return value === 'CRITICAL' ? '致命缺陷' : (value === 'MAJOR' ? '主要缺陷' : '次要缺陷') }
+	/** 返回严重等级样式类。 */
+	function severityClass(defect) { return severityValue(defect).toLowerCase() }
+	/** 返回疵点图片数量。 */
+	function photoCount(defect) { return Array.isArray(defect?.photos) ? defect.photos.length : 0 }
+	/** 返回疵点首张媒体记录。 */
+	function firstPhoto(defect) { const photos = Array.isArray(defect?.photos) ? defect.photos : []; return photos.length > 0 ? photos[0] : null }
+	/** 判断疵点是否为普遍性疵点。 */
+	function isCommon(defect) { return Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1 }
+	/** 将疵点时间格式化为 H5 卡片短时间。 */
+	function formatTime(value) { if (!value) return ''; const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value); const pad = (number) => String(number).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}` }
+	/** 请求父页新增疵点。 */
+	function addDefect() { emit('add-defect') }
+	/** 请求父页打开已有疵点。 */
+	function openDefect(defect) { emit('open-defect', defect); emit('edit-defect', defect) }
+	/** 请求父页二次确认后删除疵点。 */
+	function removeDefect(defect) { emit('remove-defect', defect) }
+</script>
+
+<style>
+	.tab-page { padding: 22rpx; }.defects-summary { margin-bottom: 22rpx; flex-direction: row; }.summary-item { flex: 1; margin: 0 6rpx; padding: 24rpx 10rpx; align-items: center; border-radius: 20rpx; background-color: #ffffff; }.summary-label { color: #64748b; font-size: 22rpx; }.summary-value { margin-top: 10rpx; font-size: 42rpx; font-weight: 700; }.summary-value.critical { color: #dc2626; }.summary-value.major { color: #f59e0b; }.summary-value.minor { color: #3b82f6; }.empty-state { padding: 90rpx 20rpx; align-items: center; }.empty-icon { color: #03ae4f; font-size: 70rpx; }.empty-text { margin-top: 15rpx; color: #94a3b8; font-size: 26rpx; }.defect-group { margin-bottom: 24rpx; }.defect-group-title { padding: 0 5rpx 14rpx; flex-direction: row; align-items: center; justify-content: space-between; color: #475569; font-size: 25rpx; font-weight: 600; }.actual-total { color: #0f766e; font-size: 22rpx; font-weight: 500; }.defect-card { position: relative; margin-bottom: 16rpx; padding: 22rpx; flex-direction: row; border-radius: 22rpx; background-color: #ffffff; }.defect-cover { width: 150rpx; height: 150rpx; border-radius: 18rpx; background-color: #f8fafc; }.defect-cover.placeholder { align-items: center; justify-content: center; }.placeholder-text { color: #94a3b8; font-size: 21rpx; }.defect-main { flex: 1; min-width: 0; margin-left: 20rpx; }.defect-head { flex-direction: row; align-items: center; justify-content: space-between; }.severity { padding: 7rpx 14rpx; border-radius: 14rpx; color: #3b82f6; font-size: 20rpx; background-color: #dbeafe; }.severity.major { color: #f59e0b; background-color: #fef3c7; }.severity.critical { color: #dc2626; background-color: #fee2e2; }.defect-time { color: #94a3b8; font-size: 20rpx; }.defect-code { margin-top: 13rpx; color: #1e293b; font-size: 27rpx; font-weight: 600; }.defect-desc { margin-top: 5rpx; color: #64748b; font-size: 23rpx; }.defect-meta { margin-top: 14rpx; flex-direction: row; flex-wrap: wrap; }.defect-meta-text { margin-right: 18rpx; color: #64748b; font-size: 21rpx; }.common-label { color: #0f766e; }.delete-action { position: absolute; right: 18rpx; bottom: 14rpx; }.delete-action-text { color: #ef4444; font-size: 21rpx; }.add-button { height: 88rpx; border-radius: 22rpx; align-items: center; justify-content: center; background-color: #03ae4f; }.add-button-text { color: #ffffff; font-size: 28rpx; font-weight: 600; }
+</style>

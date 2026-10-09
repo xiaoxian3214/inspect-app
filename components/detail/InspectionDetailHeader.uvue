@@ -1,0 +1,65 @@
+<template>
+	<view class="detail-header">
+		<TopSafeArea background-color="#03ae4f" />
+		<view class="nav-row">
+			<view class="nav-button" @click="emitBack"><AppIcon type="back" :size="22" color="#ffffff" /></view>
+			<text class="nav-title">{{ t(headerTitle) }}</text>
+			<OfflineSyncStatus class="sync-entry" :is-online="isOnline" :is-syncing="syncing" :is-uploading="uploading" :pending-count="pendingSyncCount" :failed-count="failedSyncCount" :queue-items="syncQueueItems" />
+		</view>
+		<view class="tabs">
+			<view v-for="tab in tabs" :key="tab.key" class="tab" :class="{ active: activeTab === tab.key }" @click="changeTab(tab.key)">
+				<text class="tab-icon">{{ tab.icon }}</text>
+				<text class="tab-text">{{ t(tab.label) }}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+	import TopSafeArea from '../common/TopSafeArea.uvue'
+	import AppIcon from '../icons/AppIcon.uvue'
+	import OfflineSyncStatus from '../sync/OfflineSyncStatus.uvue'
+
+	const props = defineProps({
+		detail: { type: Object, default: () => ({}) },
+		activeTab: { type: String, default: 'checklist' },
+		progress: { type: Number, default: 0 },
+		isOnline: { type: Boolean, default: true },
+		syncing: { type: Boolean, default: false },
+		uploading: { type: Boolean, default: false },
+		pendingSyncCount: { type: Number, default: 0 },
+		failedSyncCount: { type: Number, default: 0 },
+		syncQueueItems: { type: Array, default: () => [] }
+	})
+	const emit = defineEmits(['back', 'change-tab'])
+	const tabs = [
+		{ key: 'checklist', label: '清单', icon: '☷' },
+		{ key: 'defects', label: '疵点', icon: '⚠' },
+		{ key: 'info', label: '订单信息', icon: '▤' },
+		{ key: 'local', label: '本地数据', icon: '▦' }
+	]
+
+	/** 返回与 H5 一致的详情头部货号或计划编号。 */
+	const headerTitle = computed(() => String(props.detail?.plan?.subGoodsNo ?? props.detail?.plan?.planNo ?? props.detail?.planNo ?? props.detail?.plan?.clientOrderNo ?? '验货详情'))
+
+	/** 通知页面返回任务列表。 */
+	function emitBack() { emit('back') }
+	/** 通知页面切换详情业务标签。 */
+	function changeTab(tabKey) { emit('change-tab', tabKey) }
+</script>
+
+<style>
+	.detail-header { background-color: #03ae4f; }
+	.nav-row { height: 96rpx; padding: 0 32rpx; flex-direction: row; align-items: center; }
+	.nav-button { width: 68rpx; height: 68rpx; align-items: center; justify-content: center; }
+	.nav-title { flex: 1; color: #ffffff; font-size: 32rpx; font-weight: 600; text-align: center; }
+	.sync-entry { width: 68rpx; align-items: center; justify-content: center; }
+	.tabs { height: 102rpx; flex-direction: row; }
+	.tab { flex: 1; align-items: center; justify-content: center; opacity: 0.85; border-bottom-width: 6rpx; border-bottom-color: transparent; }
+	.tab-icon { color: #ffffff; font-size: 32rpx; }
+	.tab-text { margin-top: 5rpx; color: #ffffff; font-size: 24rpx; }
+	.tab.active { opacity: 1; border-bottom-color: #ffffff; }
+	.tab-text { font-weight: 700; }
+</style>

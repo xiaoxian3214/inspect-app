@@ -1,0 +1,139 @@
+<template>
+	<view class="page">
+		<xview-camera-view
+			ref="cameraRef"
+			class="camera-view"
+			:facing="facing"
+			:flash="flashMode"
+			photo-format="jpg"
+			resolution="high"
+			grid="draw_3X3"
+			:save-to-album="false"
+			@onCameraOpened="handleCameraOpened"
+			@onPictureTaken="handlePictureTaken"
+			@onVideoTakenStart="handleVideoStarted"
+			@onVideoTakenEnd="handleVideoTaken"
+			@onCameraTakenError="handleCameraError"
+			@onCameraError="handleCameraError"
+		/>
+
+		<view class="top-overlay">
+			<TopSafeArea background-color="transparent" />
+			<view class="nav-row">
+				<text class="nav-button" @click="goBack">←</text>
+				<text class="nav-title">xview-camera-view 测试</text>
+				<text class="nav-button" @click="switchFacing">切换</text>
+			</view>
+		</view>
+
+		<view class="status-panel">
+			<text class="status-text">{{ statusMessage }}</text>
+		</view>
+
+		<view v-if="capturedPath !== '' || capturedVideoPath !== ''" class="preview-panel">
+			<image v-if="capturedPath !== ''" class="preview-media" :src="capturedPath" mode="aspectFill" />
+			<video v-if="capturedVideoPath !== ''" class="preview-media" :src="capturedVideoPath" :controls="true" />
+		</view>
+
+		<view class="controls">
+			<text class="small-button" @click="toggleFlash">闪光灯 {{ flashMode }}</text>
+			<text class="shutter" @click="takePhoto">拍照</text>
+			<text class="small-button" :class="recording ? 'recording' : ''" @click="toggleVideo">{{ recording ? '停止录像' : '开始录像' }}</text>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
+
+	type CameraViewElement = ComponentPublicInstance
+
+	export default {
+		components: { TopSafeArea },
+		data() {
+			return {
+				facing: 'back',
+				flashMode: 'off',
+				recording: false,
+				capturedPath: '',
+				capturedVideoPath: '',
+				statusMessage: '相机初始化中'
+			}
+		},
+		methods: {
+			/** 获取相机组件实例，并在实例可用时执行指定原生方法。 */
+			callCamera(action: (camera: CameraViewElement) => void) {
+				const cameraRef = this.$refs['cameraRef'] as CameraViewElement | null
+				if (cameraRef == null) { this.statusMessage = '相机组件尚未就绪'; return }
+				action(cameraRef)
+			},
+			/** 调用插件拍照方法，并等待 onPictureTaken 返回本地路径。 */
+			takePhoto() {
+				this.statusMessage = '正在拍照'
+				this.callCamera((camera) => camera.$callMethod('takePhoto'))
+			},
+			/** 在开始录像和停止录像之间切换，单次测试最长录像 30 秒。 */
+			toggleVideo() {
+				if (this.recording) this.callCamera((camera) => camera.$callMethod('stopVideo'))
+				else this.callCamera((camera) => camera.$callMethod('startVideo', 30000))
+			},
+			/** 切换前后摄像头，并通过 setFacing 同步插件原生预览。 */
+			switchFacing() {
+				this.facing = this.facing === 'back' ? 'front' : 'back'
+				this.callCamera((camera) => camera.$callMethod('setFacing', this.facing))
+				this.statusMessage = `已切换为${this.facing === 'back' ? '后置' : '前置'}摄像头`
+			},
+			/** 在关闭、开启和自动闪光之间循环，并同步插件参数。 */
+			toggleFlash() {
+				this.flashMode = this.flashMode === 'off' ? 'on' : (this.flashMode === 'on' ? 'auto' : 'off')
+				this.callCamera((camera) => camera.$callMethod('setFlash', this.flashMode))
+			},
+			/** 记录相机成功打开事件，允许用户开始拍摄。 */
+			handleCameraOpened(event) {
+				this.statusMessage = `相机已打开：${String(event?.detail?.facing ?? this.facing)}`
+			},
+			/** 保存插件拍照事件返回的本地图片路径并显示缩略预览。 */
+			handlePictureTaken(event) {
+				this.capturedPath = String(event?.detail?.path ?? '')
+				this.capturedVideoPath = ''
+				this.statusMessage = this.capturedPath === '' ? '拍照完成但路径为空' : `拍照成功：${this.capturedPath}`
+			},
+			/** 标记录像已经由原生插件正式启动。 */
+			handleVideoStarted() {
+				this.recording = true
+				this.statusMessage = '正在录像，最长 30 秒'
+			},
+			/** 保存录像完成事件返回的本地视频路径并恢复控制状态。 */
+			handleVideoTaken(event) {
+				this.recording = false
+				this.capturedVideoPath = String(event?.detail?.path ?? '')
+				this.capturedPath = ''
+				this.statusMessage = this.capturedVideoPath === '' ? '录像完成但路径为空' : `录像成功：${this.capturedVideoPath}`
+			},
+			/** 展示相机打开或拍摄失败的错误码与原生错误信息。 */
+			handleCameraError(event) {
+				this.recording = false
+				this.statusMessage = `相机错误 ${String(event?.detail?.code ?? '')}：${String(event?.detail?.message ?? '未知错误')}`
+			},
+			/** 返回上一页面，组件销毁时由插件释放相机资源。 */
+			goBack() { uni.navigateBack() }
+		}
+	}
+</script>
+
+<style>
+	.page { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background-color: #000000; }
+	.camera-view { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+	.top-overlay { position: absolute; top: 0; right: 0; left: 0; background-color: rgba(0, 0, 0, 0.35); }
+	.nav-row { height: 92rpx; padding: 0 24rpx; flex-direction: row; align-items: center; justify-content: space-between; }
+	.nav-button { min-width: 90rpx; color: #ffffff; font-size: 26rpx; font-weight: 600; }
+	.nav-title { color: #ffffff; font-size: 29rpx; font-weight: 700; }
+	.status-panel { position: absolute; top: 190rpx; right: 24rpx; left: 24rpx; padding: 14rpx 18rpx; border-radius: 14rpx; background-color: rgba(0, 0, 0, 0.45); }
+	.status-text { color: #ffffff; font-size: 21rpx; line-height: 1.4; }
+	.preview-panel { position: absolute; right: 24rpx; bottom: 190rpx; width: 190rpx; height: 250rpx; border-width: 4rpx; border-color: #ffffff; border-radius: 16rpx; overflow: hidden; background-color: #111827; }
+	.preview-media { width: 100%; height: 100%; }
+	.controls { position: absolute; right: 0; bottom: 0; left: 0; height: 170rpx; padding: 0 30rpx 24rpx; flex-direction: row; align-items: center; justify-content: space-between; background-color: rgba(0, 0, 0, 0.5); }
+	.small-button { width: 190rpx; padding: 18rpx 10rpx; border-radius: 30rpx; color: #ffffff; font-size: 22rpx; text-align: center; background-color: rgba(255, 255, 255, 0.2); }
+	.small-button.recording { background-color: #dc2626; }
+	.shutter { width: 116rpx; height: 116rpx; border-width: 8rpx; border-color: #ffffff; border-radius: 62rpx; color: #111827; font-size: 24rpx; font-weight: 700; text-align: center; line-height: 100rpx; background-color: #ffffff; }
+</style>

@@ -1,0 +1,166 @@
+<template>
+	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
+		<view class="sheet-panel" @click.stop>
+			<text class="sheet-title">{{ t(mode === 2 ? '复制合并验货' : '复制当前验货') }}</text>
+			<view class="info-card">
+				<view class="info-row"><text class="info-label">{{ t('订单号') }}</text><text class="info-value">{{ orderNo }}</text></view>
+				<view class="info-row"><text class="info-label">{{ t('产品名称') }}</text><text class="info-value">{{ productName }}</text></view>
+				<view class="info-row"><text class="info-label">{{ t('供应商') }}</text><text class="info-value">{{ supplierName }}</text></view>
+			</view>
+
+			<view class="section">
+				<text class="section-label">{{ t('验货类型') }}</text>
+				<picker :range="inspectTypeNames" :value="inspectTypeIndex" @change="changeInspectType">
+					<view class="picker-value">{{ t(selectedInspectTypeName ?? '请选择验货类型') }}</view>
+				</picker>
+			</view>
+			<view class="section">
+				<text class="section-label">{{ t('清单模板') }}</text>
+				<picker :range="templateNames" :value="templateIndex" @change="changeTemplate">
+					<view class="picker-value">{{ t(selectedTemplateName ?? '请选择清单') }}</view>
+				</picker>
+			</view>
+			<view v-if="created" class="success-box">
+				<text class="success-title">{{ t('复制成功') }}</text>
+				<text class="success-text">{{ t('新验货计划可立即下载到本地。') }}</text>
+			</view>
+
+			<view class="sheet-actions">
+				<button class="action-button secondary" :disabled="submitting" @click="closeSheet">{{ t('关闭') }}</button>
+				<button v-if="!created" class="action-button primary" :disabled="submitting || selectedInspectType === '' || selectedTemplateId === ''" @click="confirmCopy">
+					{{ t(submitting ? '复制中...' : '创建副本') }}
+				</button>
+				<button v-else class="action-button primary" :disabled="submitting" @click="downloadCopy">
+					{{ t(submitting ? '下载中...' : '下载到本地') }}
+				</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		mode: { type: Number, default: 1 },
+		item: { type: Object, default: () => ({}) },
+		inspectTypeOptions: { type: Array, default: () => [] },
+		templates: { type: Array, default: () => [] },
+		selectedInspectType: { type: String, default: '' },
+		selectedTemplateId: { type: String, default: '' },
+		created: { type: Boolean, default: false },
+		submitting: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['close', 'update-inspect-type', 'update-template', 'confirm', 'download'])
+
+	/**
+	 * 返回当前复制源计划主体。
+	 */
+	const plan = computed(() => (props.item?.plan || props.item) ?? {})
+
+	/**
+	 * 返回复制源订单号。
+	 */
+	const orderNo = computed(() => (plan.value?.clientOrderNo || plan.value?.domeNo) ?? '未分组')
+
+	/**
+	 * 返回复制源产品名称。
+	 */
+	const productName = computed(() => (plan.value?.goodsName || plan.value?.goodsCname) ?? '未命名产品')
+
+	/**
+	 * 返回复制源供应商名称。
+	 */
+	const supplierName = computed(() => plan.value?.factoryName ?? '-')
+
+	/**
+	 * 返回验货类型名称数组供原生 picker 使用。
+	 */
+	const inspectTypeNames = computed(() => props.inspectTypeOptions.map((item) => String(item?.label ?? '')))
+
+	/**
+	 * 返回当前验货类型的 picker 索引。
+	 */
+	const inspectTypeIndex = computed(() => Math.max(0, props.inspectTypeOptions.findIndex((item) => String(item?.value ?? '') === props.selectedInspectType)))
+
+	/**
+	 * 返回当前已选验货类型名称。
+	 */
+	const selectedInspectTypeName = computed(() => props.inspectTypeOptions.find((item) => String(item?.value ?? '') === props.selectedInspectType)?.label ?? '')
+
+	/**
+	 * 返回清单模板名称数组供原生 picker 使用。
+	 */
+	const templateNames = computed(() => props.templates.map((item) => String(item?.name ?? '')))
+
+	/**
+	 * 返回当前清单模板的 picker 索引。
+	 */
+	const templateIndex = computed(() => Math.max(0, props.templates.findIndex((item) => String(item?.id ?? '') === props.selectedTemplateId)))
+
+	/**
+	 * 返回当前已选清单模板名称。
+	 */
+	const selectedTemplateName = computed(() => props.templates.find((item) => String(item?.id ?? '') === props.selectedTemplateId)?.name ?? '')
+
+	/**
+	 * 关闭复制弹层。
+	 */
+	function closeSheet() {
+		emit('close')
+	}
+
+	/**
+	 * 根据 picker 索引更新复制验货类型。
+	 */
+	function changeInspectType(event) {
+		const index = Number(event?.detail?.value ?? 0)
+		const option = props.inspectTypeOptions[index]
+		if (option != null) emit('update-inspect-type', option)
+	}
+
+	/**
+	 * 根据 picker 索引更新复制清单模板。
+	 */
+	function changeTemplate(event) {
+		const index = Number(event?.detail?.value ?? 0)
+		const option = props.templates[index]
+		if (option != null) emit('update-template', option)
+	}
+
+	/**
+	 * 提交复制计划请求。
+	 */
+	function confirmCopy() {
+		emit('confirm')
+	}
+
+	/**
+	 * 下载复制成功的新计划到本地。
+	 */
+	function downloadCopy() {
+		emit('download')
+	}
+</script>
+
+<style>
+	.sheet-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.42); }
+	.sheet-panel { width: 100%; max-height: 88vh; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
+	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }
+	.info-card { margin-top: 24rpx; padding: 8rpx 24rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; }
+	.info-row { flex-direction: row; justify-content: space-between; padding: 18rpx 0; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.info-label { color: #64748b; font-size: 25rpx; }
+	.info-value { max-width: 440rpx; color: #0f172a; font-size: 25rpx; text-align: right; }
+	.section { margin-top: 28rpx; }
+	.section-label { color: #334155; font-size: 28rpx; font-weight: 600; }
+	.picker-value { height: 80rpx; margin-top: 16rpx; padding: 0 24rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; color: #334155; font-size: 27rpx; line-height: 80rpx; }
+	.success-box { margin-top: 24rpx; padding: 22rpx; border-radius: 18rpx; background-color: #ecfdf5; }
+	.success-title { color: #166534; font-size: 28rpx; font-weight: 700; }
+	.success-text { margin-top: 6rpx; color: #15803d; font-size: 24rpx; }
+	.sheet-actions { flex-direction: row; margin-top: 32rpx; }
+	.action-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.action-button.secondary { color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
+	.action-button.primary { color: #ffffff; background-color: #16a34a; }
+</style>

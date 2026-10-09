@@ -1,0 +1,53 @@
+/**
+ * 返回当前详情主计划的子货号，保持与 H5 getSubGoodsNo 一致。
+ */
+export function getMediaSubGoodsNo(detail) {
+  return String(detail?.plan?.subGoodsNo ?? '').trim()
+}
+
+/**
+ * 解析普通或合并验货检查项图片对应的服务端业务 ID。
+ */
+export function resolveChecklistMediaBizId(detail, item, sonPlanId = '') {
+  const rawItemId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').trim()
+  const itemId = rawItemId.includes('__') ? rawItemId.split('__')[0] : rawItemId
+  const childPlanId = String(sonPlanId ?? item?.sonPlanId ?? '').trim()
+  if (itemId === '' || childPlanId === '') return itemId
+  const rows = Array.isArray(detail?.itemResults) ? detail.itemResults : []
+  const itemStandardItemId = String(item?.standardItemId ?? '').trim()
+  const matched = rows.find((row) => {
+    if (String(row?.sonPlanId ?? '').trim() !== childPlanId) return false
+    const rowId = String(row?.id ?? row?.itemResultId ?? '').trim()
+    const baseItemResultId = String(row?.baseItemResultId ?? '').trim()
+    const rowStandardItemId = String(row?.standardItemId ?? '').trim()
+    if (baseItemResultId !== '' && baseItemResultId === itemId) return true
+    if (itemStandardItemId !== '' && rowStandardItemId !== '' && itemStandardItemId === rowStandardItemId) return true
+    return rowId !== '' && rowId === `${itemId}_${childPlanId}`
+  })
+	const matchedId = String(matched?.id ?? matched?.itemResultId ?? '').trim()
+	return matchedId !== '' ? matchedId : `${itemId}_${childPlanId}`
+}
+
+/**
+ * 构建与 H5 检查项媒体上传完全一致的四个业务参数。
+ */
+export function buildChecklistMediaMetadata(detail, item, sonPlanId = '', sortNo = 1) {
+  return {
+    bizId: resolveChecklistMediaBizId(detail, item, sonPlanId),
+    bizType: 'checkResult',
+    subGoodsNo: getMediaSubGoodsNo(detail),
+    sortNo: Math.max(1, Number(sortNo ?? 1))
+  }
+}
+
+/**
+ * 构建与 H5 疵点媒体上传完全一致的四个业务参数。
+ */
+export function buildDefectMediaMetadata(detail, defectId, sortNo = 1) {
+  return {
+    bizId: String(defectId ?? '').trim(),
+    bizType: 'defect',
+    subGoodsNo: getMediaSubGoodsNo(detail),
+    sortNo: Math.max(1, Number(sortNo ?? 1))
+  }
+}

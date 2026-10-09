@@ -1,0 +1,151 @@
+/**
+ * 将列表页签转换为后端计划状态参数。
+ */
+export function resolveApiStatusByTab(tabKey) {
+  if (tabKey === 'progress') return 1
+  if (tabKey === 'report') return 3
+  return 0
+}
+
+/**
+ * 判断计划是否为无需独立同步的合并子计划。
+ */
+function isMergedChildPlan(plan) {
+  const source = plan?.plan != null && typeof plan.plan === 'object' ? plan.plan : plan
+  if (Number(source?.mergeType ?? 0) !== 2) return false
+  const parentPlanId = String(source?.parentPlanId ?? plan?.parentPlanId ?? '').trim()
+  const ownId = String(source?.id ?? source?.planId ?? plan?.planId ?? plan?.id ?? '').trim()
+  return parentPlanId !== '' && parentPlanId !== ownId
+}
+
+/**
+ * 判断本地计划是否属于云同步入口应处理的脏数据。
+ */
+function isPlanPendingSync(plan) {
+  if (plan == null || typeof plan !== 'object') return false
+  if (Number(plan?.status ?? plan?.plan?.status ?? 0) === 3) return false
+  if (isMergedChildPlan(plan)) return false
+  if (plan?.pendingSyncPayload == null) return false
+
+  const payloadStatus = String(
+    (plan?.pendingSyncPayload?.status
+    || plan?.pendingSyncPayload?.plan?.status)
+    ?? ''
+  ).toUpperCase()
+  if (payloadStatus === '3' || payloadStatus === 'COMPLETED' || payloadStatus === 'DONE' || payloadStatus === 'SUBMITTED') {
+    return false
+  }
+  return plan?.syncStatus === 'DIRTY' || !plan?.syncStatus
+}
+
+/**
+ * 创建本地优先的验货计划列表服务。
+ */
+export function createPlanListService(options) {
+  const reportRepository = options.reportRepository
+  const planApi = options.planApi
+  const planViewModel = options.planViewModel
+
+  /**
+   * 统计三个列表页签的本地计划数量。
+   */
+  function buildCounts(localPlans) {
+    return {
+      planned: localPlans.filter((item) => planViewModel.isPlanInTab(item, 'planned')).length,
+      progress: localPlans.filter((item) => planViewModel.isPlanInTab(item, 'progress')).length,
+      report: localPlans.filter((item) => planViewModel.isPlanInTab(item, 'report')).length
+    }
+  }
+
+  /**
+   * 统计真正可由云同步入口处理的本地脏计划数量。
+   */
+  function resolvePendingSyncCount(localPlans) {
+    return localPlans.filter(isPlanPendingSync).length
+  }
+
+  /**
+   * 找出本地计划最近一次下载或更新时间。
+   */
+  function resolveLatestDownloadedAt(localPlans) {
+    let latest = ''
+    for (const item of localPlans) {
+      const candidate = String(item?.downloadedAt ?? item?.updatedAt ?? '')
+      if (candidate !== '' && (latest === '' || candidate > latest)) latest = candidate
+    }
+    return latest
+  }
+
+  /**
+   * 加载指定页签列表，并让本地计划覆盖同 ID 远程计划。
+   */
+  async function loadList(params) {
+    const tabKey = params?.tabKey ?? 'planned'
+    const localPlans = await reportRepository.listPlanSummaries()
+    let remoteResult = { records: [], total: 0 }
+
+    if (params?.online === true) {
+      remoteResult = await planApi.searchPlans({
+        status: resolveApiStatusByTab(tabKey),
+        inspectorId: params?.inspectorId ?? ''
+      }, params?.page ?? 1, params?.pageSize ?? 100)
+    }
+
+    const merged = planViewModel.mergePlansLocalFirst(localPlans, remoteResult?.records ?? [])
+    const items = merged.filter((item) => planViewModel.isPlanInTab(item, tabKey))
+    return {
+      items,
+      groups: planViewModel.groupPlans(items),
+      total: Math.max(items.length, Number(remoteResult?.total ?? 0)),
+      localCount: localPlans.filter((item) => planViewModel.isPlanInTab(item, tabKey)).length
+    }
+  }
+
+  /**
+   * 读取本地计划摘要，供列表页面覆盖远程同 ID 数据但保留远程缓存。
+   */
+  async function listPlanSummaries() {
+    return reportRepository.listPlanSummaries()
+  }
+
+  /**
+   * 按 H5 查询参数加载指定页签的单页远程计划，不修改页面已缓存的其他页签数据。
+   */
+  async function loadRemotePage(params) {
+    const tabKey = params?.tabKey ?? 'planned'
+    return planApi.searchPlans({
+      status: resolveApiStatusByTab(tabKey),
+      inspectorId: params?.inspectorId ?? ''
+    }, params?.page ?? 1, params?.pageSize ?? 100)
+  }
+
+  /**
+   * 获取三个页签的本地数量。
+   */
+  async function getLocalCounts() {
+    const localPlans = await reportRepository.listPlans()
+    return buildCounts(localPlans)
+  }
+
+  /**
+   * 获取首页抽屉和云同步入口使用的本地概览。
+   */
+  async function getOverview() {
+    const localPlans = await reportRepository.listPlans()
+    const counts = buildCounts(localPlans)
+    return {
+      ...counts,
+      total: localPlans.length,
+      pendingSyncCount: resolvePendingSyncCount(localPlans),
+      latestDownloadedAt: resolveLatestDownloadedAt(localPlans)
+    }
+  }
+
+  return {
+    loadList,
+    listPlanSummaries,
+    loadRemotePage,
+    getLocalCounts,
+    getOverview
+  }
+}

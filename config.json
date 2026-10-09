@@ -1,0 +1,5 @@
+{
+  "linkFlags": [
+    "-lsqlite3"
+  ]
+}

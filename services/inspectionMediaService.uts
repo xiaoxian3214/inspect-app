@@ -1,0 +1,142 @@
+/**
+ * 创建手机本地媒体保存与按网络质量并发上传的服务。
+ * 上传策略（重试分类、退避调度、并发数）通过 photoUploadPolicy 注入，便于测试与替换。
+ */
+export function createInspectionMediaService(options) {
+  const photoRepository = options.photoRepository
+  const reportFileApi = options.reportFileApi
+  const isOnline = options.isOnline
+  const photoUploadPolicy = options.photoUploadPolicy ?? {}
+  const getNetworkType = typeof options.getNetworkType === 'function'
+    ? options.getNetworkType
+    : async () => 'unknown'
+  const createId = typeof options.createId === 'function'
+    ? options.createId
+    : () => `photo-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const activeUploads = new Map()
+
+  /**
+   * 将手机本地文件立即保存为 pending 照片记录，确保离线拍摄可恢复。
+   */
+  async function addLocalPhoto(planId, localPath, metadata: any = {}) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    const normalizedPath = String(localPath ?? '').trim()
+    if (normalizedPlanId === '') throw new Error('计划ID不能为空')
+    if (normalizedPath === '') throw new Error('本地文件路径不能为空')
+    const photo = {
+      ...metadata,
+      photoId: String(metadata?.photoId || createId()),
+      reportId: normalizedPlanId,
+      localPath: normalizedPath,
+      uploadStatus: 'pending',
+      uploadError: '',
+      createdAt: metadata?.createdAt || new Date().toISOString()
+    }
+    await photoRepository.save(normalizedPlanId, photo)
+    return photo
+  }
+
+  /**
+   * 上传单张照片或视频并按策略归类失败结果：
+   * 参数非法直接标记 needs_attention；可重试失败写入 retry_wait 与下次触发时间；
+   * 视频记录额外透传 fileType='video' 与 15 分钟兜底超时，交由上传通道按视频通道处理。
+   * 返回是否上传成功，供并发 worker 累计结果。
+   */
+  async function uploadSinglePhoto(normalizedPlanId, photo) {
+    let uploadParams = null
+    try {
+      uploadParams = photoUploadPolicy.buildValidatedUploadParams(normalizedPlanId, photo)
+    } catch (error) {
+      await photoRepository.save(normalizedPlanId, {
+        ...photo,
+        uploadStatus: 'needs_attention',
+        uploadError: error?.message ?? '图片上传参数无效',
+        nextRetryAt: ''
+      })
+      return false
+    }
+    const isVideo = photoUploadPolicy.isVideoMedia(photo)
+    uploadParams.fileType = isVideo ? 'video' : 'image'
+    uploadParams.uploadTimeoutMs = photoUploadPolicy.resolveUploadTimeoutMs(photo)
+    const previousRetryCount = Math.max(0, Number(photo?.retryCount ?? 0))
+    try {
+      await photoRepository.save(normalizedPlanId, { ...photo, uploadStatus: 'uploading', uploadError: '', nextRetryAt: '' })
+      const remote = await reportFileApi.uploadInspectFile(photo.localPath, uploadParams)
+      await photoRepository.markUploaded(normalizedPlanId, photo.photoId || photo.id, remote)
+      return true
+    } catch (error) {
+      const failure = photoUploadPolicy.classifyUploadFailure(error, previousRetryCount, Date.now())
+      await photoRepository.save(normalizedPlanId, {
+        ...photo,
+        uploadStatus: failure.status,
+        uploadError: failure.message,
+        retryCount: previousRetryCount + 1,
+        nextRetryAt: failure.nextRetryAt ?? ''
+      })
+      return false
+    }
+  }
+
+  /**
+   * 上传指定报告中已到达重试时间的待处理媒体：
+   * 未到 nextRetryAt 的 retry_wait 记录本轮跳过；图片池并发数按当前网络质量决定，
+   * 视频池固定串行（大文件逐条上传），两池并行互不阻塞，单条失败不影响其余媒体。
+   */
+  async function performPendingPhotoUpload(planId) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (!(await isOnline())) throw new Error('当前无网络，无法上传图片')
+    const pendingPhotos = await photoRepository.listPendingByReportId(normalizedPlanId)
+    const duePhotos = pendingPhotos.filter((photo) => photoUploadPolicy.isPhotoUploadRetryReady(photo, Date.now()))
+    let uploadedCount = 0
+    let failedCount = 0
+    if (duePhotos.length > 0) {
+      const networkType = await getNetworkType()
+      const imagePhotos = duePhotos.filter((photo) => !photoUploadPolicy.isVideoMedia(photo))
+      const videoPhotos = duePhotos.filter((photo) => photoUploadPolicy.isVideoMedia(photo))
+      /**
+       * 以共享游标方式在单条媒体列表上按 workerCount 并发上传并累计成功/失败数。
+       */
+      const runUploadPool = async (photos, workerCount) => {
+        let cursor = 0
+        const runWorker = async () => {
+          while (cursor < photos.length) {
+            const photo = photos[cursor]
+            cursor += 1
+            if (await uploadSinglePhoto(normalizedPlanId, photo)) uploadedCount += 1
+            else failedCount += 1
+          }
+        }
+        const normalizedWorkerCount = Math.min(workerCount, photos.length)
+        const workers = []
+        for (let index = 0; index < normalizedWorkerCount; index += 1) {
+          workers.push(runWorker())
+        }
+        await Promise.all(workers)
+      }
+      const imageConcurrency = Math.max(1, photoUploadPolicy.resolveUploadConcurrency({ networkType }))
+      const videoConcurrency = Math.max(1, Number(photoUploadPolicy.VIDEO_UPLOAD_CONCURRENCY) ?? 1)
+      await Promise.all([runUploadPool(imagePhotos, imageConcurrency), runUploadPool(videoPhotos, videoConcurrency)])
+    }
+    return { pendingCount: duePhotos.length, uploadedCount, failedCount }
+  }
+
+  /**
+   * 去重同一计划的并发上传请求，避免网络恢复与手动同步重复上传图片。
+   */
+  function uploadPendingPhotos(planId) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    if (activeUploads.has(normalizedPlanId)) return activeUploads.get(normalizedPlanId)
+    const task = performPendingPhotoUpload(normalizedPlanId).finally(() => activeUploads.delete(normalizedPlanId))
+    activeUploads.set(normalizedPlanId, task)
+    return task
+  }
+
+  /**
+   * 返回指定报告的全部本地和服务端媒体记录。
+   */
+  async function listPhotos(planId) {
+    return photoRepository.listByReportId(planId)
+  }
+
+  return { addLocalPhoto, uploadPendingPhotos, listPhotos }
+}
