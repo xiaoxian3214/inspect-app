@@ -4,7 +4,7 @@
 			<view class="sheet-handle"></view>
 			<view class="sheet-head">
 				<AppButton variant="icon" icon-type="close" :icon-size="22" icon-color="#475569" @press="closeSheet" />
-				<text class="sheet-title">{{ modalTitle }}</text>
+				<text class="sheet-title">{{ t(modalTitle) }}</text>
 				<AppButton variant="icon camera" icon-type="camera" :icon-size="25" icon-color="#1a5f3f" @press="addPhoto" />
 			</view>
 
@@ -19,7 +19,7 @@
 				<view v-if="itemType === 'Measurements'" class="type-section">
 					<text class="section-title">{{ t('测量数据') }}</text>
 					<view class="group-card">
-						<view class="group-head"><text>规格组 {{ measurementIndex + 1 }} / {{ draft.measurements.length }}</text><AppButton v-if="draft.measurements.length > 1" variant="remove" @press="removeMeasurement(measurementIndex)">{{ t('删除当前组') }}</AppButton></view>
+						<view class="group-head"><text>{{ t('规格组 {current} / {total}', { current: measurementIndex + 1, total: draft.measurements.length }) }}</text><AppButton v-if="draft.measurements.length > 1" variant="remove" @press="removeMeasurement(measurementIndex)">{{ t('删除当前组') }}</AppButton></view>
 						<view v-for="attr in specAttributes" :key="attr.attrId" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.measurements[measurementIndex]?.[attr.attrId]" :placeholder="t('请输入{name}', { name: attr.attrName })" @input="updateMeasurement(measurementIndex, attr.attrId, $event)" /></view>
 					</view>
 					<view class="group-navigation"><AppButton variant="nav" :disabled="measurementIndex === 0" @press="previousMeasurement">{{ t('上一组') }}</AppButton><AppButton variant="nav" :disabled="measurementIndex >= draft.measurements.length - 1" @press="nextMeasurement">{{ t('下一组') }}</AppButton></view>
@@ -30,7 +30,7 @@
 				<view v-else-if="itemType === 'Text'" class="type-section">
 					<text class="section-title">{{ t('文本检查内容') }}</text>
 					<view class="group-card">
-						<view class="group-head"><text>文本组 {{ textGroupIndex + 1 }} / {{ draft.textGroups.length }}</text><AppButton v-if="draft.textGroups.length > 1" variant="remove" @press="removeTextGroup(textGroupIndex)">{{ t('删除当前组') }}</AppButton></view>
+						<view class="group-head"><text>{{ t('文本组 {current} / {total}', { current: textGroupIndex + 1, total: draft.textGroups.length }) }}</text><AppButton v-if="draft.textGroups.length > 1" variant="remove" @press="removeTextGroup(textGroupIndex)">{{ t('删除当前组') }}</AppButton></view>
 						<view v-for="attr in specAttributes" :key="attr.attrId" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.textGroups[textGroupIndex]?.[attr.attrId]" :placeholder="t('请输入{name}', { name: attr.attrName })" @input="updateTextField(textGroupIndex, attr.attrId, $event)" /></view>
 					</view>
 					<view class="group-navigation"><AppButton variant="nav" :disabled="textGroupIndex === 0" @press="previousTextGroup">{{ t('上一组') }}</AppButton><AppButton variant="nav" :disabled="textGroupIndex >= draft.textGroups.length - 1" @press="nextTextGroup">{{ t('下一组') }}</AppButton></view>
@@ -39,7 +39,7 @@
 
 				<view v-else-if="itemType === 'Barcodes'" class="type-section">
 					<text class="section-title">{{ t('条码数据') }}</text>
-					<view v-for="(barcode, index) in draft.barcodeItems" :key="index" class="group-card"><view class="group-head"><text>{{ barcode.name || `条码 ${index + 1}` }}</text><AppButton variant="small" @press="openBarcodeEditor(index)">{{ t('编辑') }}</AppButton></view><view class="value-row"><text class="value-label">{{ t('条码信息') }}</text><input class="value-input" :value="barcode.code" :placeholder="t('输入或扫描条码')" @input="updateBarcode(index, $event)" /><AppButton variant="primary" @press="scanBarcode(index)">{{ t('扫描条码') }}</AppButton></view><view class="value-row"><text class="value-label">{{ t('扫码格式') }}</text><text>{{ barcode.format || '-' }}</text></view></view>
+					<view v-for="(barcode, index) in draft.barcodeItems" :key="index" class="group-card"><view class="group-head"><text>{{ barcode.name || t('条码 {index}', { index: index + 1 }) }}</text><AppButton variant="small" @press="openBarcodeEditor(index)">{{ t('编辑') }}</AppButton></view><view class="value-row"><text class="value-label">{{ t('条码信息') }}</text><input class="value-input" :value="barcode.code" :placeholder="t('输入或扫描条码')" @input="updateBarcode(index, $event)" /><AppButton variant="primary" @press="scanBarcode(index)">{{ t('扫描条码') }}</AppButton></view><view class="value-row"><text class="value-label">{{ t('扫码格式') }}</text><text>{{ barcode.format || '-' }}</text></view></view>
 					<AppButton block @press="openBarcodeEditor(-1)">{{ t('＋ 增加条码') }}</AppButton>
 				</view>
 
@@ -57,9 +57,9 @@
 					<InspectionMediaGrid :photos="checkPointPhotos" add-label="上传检查点图片" @capture-media="addCheckPointPhoto" @remove-media="removePhoto" @preview-media="previewPhoto" @retry-media="retryPhoto" /></view></view>
 
 				<view v-if="defects.length" class="defects-section">
-					<text class="section-title">关联疵点（{{ defects.length }}）</text>
+					<text class="section-title">{{ t('关联疵点（{count}）', { count: defects.length }) }}</text>
 					<view v-for="(defect, index) in defects" :key="defect.id || defect.defectId || index" class="defect-item" @click="openDefect(defect)">
-						<text class="defect-severity-tag" :class="`severity-${normalizeSeverity(defect.type)}`">{{ getSeverityLabel(defect.type) }}</text>
+						<text class="defect-severity-tag" :class="`severity-${normalizeSeverity(defect.type)}`">{{ t(getSeverityLabel(defect.type)) }}</text>
 						<text class="defect-category">{{ (defect.defectCode || defect.categoryName) ?? '-' }}</text>
 						<text class="defect-quantity">× {{ defect.quantity ?? 1 }}</text>
 						<AppIcon type="arrowRight" :size="16" color="#94a3b8" />
@@ -73,7 +73,7 @@
 				<view class="result-circles-row">
 					<view v-for="option in resultOptions" :key="option.value" class="result-circle" :class="[option.value, { active: draft.result === option.value }]" @click="confirmResult(option.value)">
 						<view class="circle-icon" :class="[option.value, { active: draft.result === option.value }]"><AppIcon :type="option.icon" :size="30" :color="draft.result === option.value ? '#ffffff' : option.color" /></view>
-						<text class="circle-text" :class="{ active: draft.result === option.value }">{{ option.label }}</text>
+						<text class="circle-text" :class="{ active: draft.result === option.value }">{{ t(option.label) }}</text>
 					</view>
 				</view>
 			</view>
@@ -125,7 +125,7 @@
 	/** 返回 H5 规格和文本检查项使用的属性定义。 */
 	const specAttributes = computed(() => Array.isArray(props.item?.specAttributes) && props.item.specAttributes.length > 0 ? props.item.specAttributes : [{ attrId: 'value', attrName: itemType.value === 'Text' ? '文本内容' : '测量值' }])
 	/** 返回包含检查项类型的弹框标题。 */
-	const modalTitle = computed(() => { const typeLabels = { Measurements: '规格', Barcodes: '条码', Text: '文本', Standard: '标准' }; return `${(props.item?.itemName || props.item?.name) ?? '检查项详情'} (${typeLabels[itemType.value] ?? '标准'})` })
+	const modalTitle = computed(() => { const typeLabels = { Measurements: '规格', Barcodes: '条码', Text: '文本', Standard: '标准' }; return `${(props.item?.itemName || props.item?.name) ?? t('检查项详情')} (${t(typeLabels[itemType.value] ?? '标准')})` })
 	/** 返回当前检查结果的中文标签。 */
 	const currentResultLabel = computed(() => { const option = resultOptions.find((item) => item.value === draft.value.result); return option ? option.label.replace('检查 - ', '') : '' })
 

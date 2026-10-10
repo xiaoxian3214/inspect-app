@@ -1,7 +1,7 @@
 <template>
 	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
 		<view class="sheet-panel" @click.stop>
-			<text class="sheet-title">{{ t(stage === 'type' ? '选择合并验货类型' : '确认合并验货') }}</text>
+			<text class="sheet-title">{{ t(stage === 'type' ? '选择合并验货类型' : '确认合并以下验货数据') }}</text>
 
 			<view v-if="stage === 'type'" class="section">
 				<text class="section-label">{{ t('验货类型') }}</text>
@@ -14,13 +14,21 @@
 			</view>
 
 			<view v-else>
-				<text class="summary-text">已选择 {{ selectedItems.length }} 条计划</text>
-				<scroll-view class="preview-list" scroll-y="true">
-					<view v-for="item in selectedItems" :key="getItemId(item)" class="preview-item">
-						<text class="preview-title">{{ getItemTitle(item) }}</text>
-						<text class="preview-subtitle">{{ getItemSubtitle(item) }}</text>
+				<text class="summary-text">{{ t('已选择 {count} 条计划', { count: selectedItems.length }) }}</text>
+				<view class="merge-table">
+					<view class="merge-table-header">
+						<text class="merge-table-cell merge-table-header-cell">{{ t('单号') }}</text>
+						<text class="merge-table-cell merge-table-header-cell">{{ t('款号#批次') }}</text>
+						<text class="merge-table-cell merge-table-header-cell">{{ t('产品名称') }}</text>
 					</view>
-				</scroll-view>
+					<scroll-view class="merge-table-body" scroll-y="true">
+						<view v-for="row in previewRows" :key="row.key" class="merge-table-row">
+							<text class="merge-table-cell">{{ row.orderNo }}</text>
+							<text class="merge-table-cell">{{ row.itemBatch }}</text>
+							<text class="merge-table-cell">{{ row.productName }}</text>
+						</view>
+					</scroll-view>
+				</view>
 				<view class="section">
 					<text class="section-label">{{ t('清单模板') }}</text>
 					<picker :range="templateNames" :value="templateIndex" @change="changeTemplate">
@@ -49,6 +57,7 @@
 
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
+	import { getMergePreviewRow } from '../../domain/searchViewModel.uts'
 	import { computed } from 'vue'
 
 	const props = defineProps({
@@ -79,27 +88,14 @@
 	 */
 	const selectedTemplateName = computed(() => props.templates.find((item) => String(item?.id ?? '') === props.selectedTemplateId)?.name ?? '')
 
+	/** 将已选计划转换为稳定 ID 与 H5 三列展示字段，供原生表格渲染。 */
+	const previewRows = computed(() => props.selectedItems.map((item) => ({ key: getItemId(item), ...getMergePreviewRow(item) })))
+
 	/**
 	 * 从计划对象中读取稳定计划 ID。
 	 */
 	function getItemId(item) {
 		return String(item?.plan?.id ?? item?.plan?.planId ?? item?.planId ?? item?.id ?? '')
-	}
-
-	/**
-	 * 返回合并预览的订单和货号标题。
-	 */
-	function getItemTitle(item) {
-		const plan = (item?.plan || item) ?? {}
-		return `${(plan?.clientOrderNo || plan?.domeNo) ?? '未分组'} · ${(plan?.subGoodsNo || plan?.goodsNo) ?? '-'}`
-	}
-
-	/**
-	 * 返回合并预览的产品和供应商摘要。
-	 */
-	function getItemSubtitle(item) {
-		const plan = (item?.plan || item) ?? {}
-		return `${(plan?.goodsName || plan?.goodsCname) ?? '未命名产品'} / ${plan?.factoryName ?? '-'}`
 	}
 
 	/**
@@ -154,14 +150,18 @@
 	.section { margin-top: 30rpx; }
 	.section-label { color: #334155; font-size: 28rpx; font-weight: 600; }
 	.chip-list { flex-direction: row; flex-wrap: wrap; margin-top: 20rpx; }
-	.chip { margin-right: 16rpx; margin-bottom: 16rpx; padding: 16rpx 24rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 32rpx; }
+	.chip { background-color: #f5f5f5; border:2rpx solid #ccc;  margin-right: 16rpx; margin-bottom: 16rpx; padding: 24rpx 36rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; }
 	.chip.active { border-color: #16a34a; background-color: #f0fdf4; }
 	.chip-text { color: #475569; font-size: 26rpx; }
 	.summary-text { display: block; margin-top: 24rpx; color: #166534; font-size: 28rpx; font-weight: 600; }
-	.preview-list { max-height: 360rpx; margin-top: 18rpx; }
-	.preview-item { padding: 20rpx; margin-bottom: 12rpx; border-radius: 16rpx; background-color: #f8fafc; }
-	.preview-title { color: #0f172a; font-size: 27rpx; font-weight: 600; }
-	.preview-subtitle, .empty-text { margin-top: 8rpx; color: #64748b; font-size: 24rpx; }
+	.merge-table { margin-top: 18rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; overflow: hidden; }
+	.merge-table-header, .merge-table-row { flex-direction: row; align-items: center; }
+	.merge-table-header { background-color: #f8fafc; }
+	.merge-table-body { max-height: 360rpx; }
+	.merge-table-row { min-height: 74rpx; border-top-width: 2rpx; border-top-color: #f1f5f9; }
+	.merge-table-cell { flex: 1; min-width: 0; padding: 18rpx 10rpx; color: #334155; font-size: 24rpx; line-height: 34rpx; }
+	.merge-table-header-cell { color: #0f172a; font-weight: 700; }
+	.empty-text { margin-top: 8rpx; color: #64748b; font-size: 24rpx; }
 	.picker-value { height: 80rpx; margin-top: 16rpx; padding: 0 24rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; color: #334155; font-size: 27rpx; line-height: 80rpx; }
 	.success-box { margin-top: 24rpx; padding: 22rpx; border-radius: 18rpx; background-color: #ecfdf5; }
 	.success-title { color: #166534; font-size: 28rpx; font-weight: 700; }

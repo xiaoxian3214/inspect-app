@@ -36,8 +36,8 @@
 						<view v-for="(item, index) in queueItems" :key="item.id || index" class="sync-detail-item" :class="{ failed: isFailedItem(item) }">
 							<text class="sync-detail-tag">[{{ item.syncType }}]</text>
 							<view class="sync-detail-info">
-							<text class="sync-detail-content">{{ t(item.content) }}</text>
-							<text v-if="item.meta" class="sync-detail-meta">{{ t(item.meta) }}</text>
+							<text class="sync-detail-content">{{ item.content }}</text>
+							<text v-if="item.meta" class="sync-detail-meta">{{ item.meta }}</text>
 							</view>
 						</view>
 					</scroll-view>

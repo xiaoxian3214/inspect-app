@@ -5,6 +5,67 @@ import { loadUtsModule } from './load-uts-module.mjs'
 const memoryModule = await loadUtsModule('database/memoryDatabase.uts')
 const repositoryModule = await loadUtsModule('repositories/reportRepository.uts')
 
+/** 同一合并报告的成员立即读取共享照片，但待上传任务只归原拍摄成员所有。 */
+test('merged members see locally captured photos before a draft snapshot is saved', async () => {
+  const database = memoryModule.createMemoryDatabase()
+  const reports = repositoryModule.createReportRepository(database)
+  const { createPhotoRepository } = await loadUtsModule('repositories/photoRepository.uts')
+  const { createInspectionDetailService } = await loadUtsModule('services/inspectionDetailService.uts')
+  const viewModel = await loadUtsModule('domain/detailViewModel.uts')
+  const photos = createPhotoRepository(database)
+  const inspectionPlans = [
+    { id: 'parent-1', parentPlanId: 'parent-1', mergeType: 2, goodsName: '主产品' },
+    { id: 'child-1', parentPlanId: 'parent-1', mergeType: 2, goodsName: '子产品' }
+  ]
+  await reports.savePlans(inspectionPlans.map((plan) => ({
+    report: { id: 'report-shared' }, inspectionPlans, plan, planId: plan.id,
+    standardItems: [{ id: 'section-1', children: [{ id: 'item-1', itemName: '外观' }] }],
+    checklistData: { 'item-1': { photos: [] } }
+  })))
+  await reports.savePlan({ planId: 'other-1', plan: { id: 'other-1', goodsName: '其他产品' }, report: { id: 'report-other' } })
+  await photos.save('child-1', {
+    photoId: 'photo-1', ownerType: 'checklist', ownerId: 'item-1',
+    localPath: '/local/one.jpg', uploadStatus: 'pending'
+  })
+  const detail = createInspectionDetailService({
+    reportRepository: reports, listPhotos: photos.listByReportId,
+    planApi: { getPlanDetail: async () => assert.fail('离线不应请求详情') },
+    isOnline: async () => false, viewModel
+  })
+
+  const parentDetail = await detail.loadDetail('parent-1')
+  assert.equal(parentDetail.checklistData['item-1'].photos[0].localPath, '/local/one.jpg')
+  assert.deepEqual(await photos.listByReportId('other-1'), [])
+  assert.deepEqual((await photos.listPendingByReportId('parent-1')).map((photo) => photo.photoId), [])
+  assert.deepEqual((await photos.listPendingByReportId('child-1')).map((photo) => photo.photoId), ['photo-1'])
+
+  await detail.saveDraft('parent-1', parentDetail)
+  assert.equal(database.readTable('photo').filter((row) => row.sourcePhotoId === 'photo-1').length, 1)
+  await photos.save('parent-1', { ...(await photos.listByReportId('parent-1'))[0], uploadStatus: 'retry_wait' })
+  assert.equal(database.readTable('photo').filter((row) => row.sourcePhotoId === 'photo-1').length, 1)
+  assert.equal((await photos.listPendingByReportId('child-1'))[0].uploadStatus, 'retry_wait')
+  await photos.markUploaded('child-1', 'photo-1', { fileId: 'file-1' })
+  assert.equal((await detail.loadDetail('parent-1')).checklistData['item-1'].photos[0].fileId, 'file-1')
+  await photos.remove('parent-1', 'photo-1')
+  assert.equal((await photos.listByReportId('child-1')).length, 0)
+})
+
+/** 重新创建仓库读取历史下载行时，兼容平铺供应商及验货类型名称。 */
+test('restores legacy card fields from persisted report JSON after login', async () => {
+  const database = memoryModule.createMemoryDatabase()
+  const repository = repositoryModule.createReportRepository(database)
+  await repository.savePlan({
+    planId: 'plan-1', supplierName: '工厂乙', inspectTypeName: '最终验货', domeNo: '合同乙',
+    plan: { id: 'plan-1', inspectType: 'FINAL' }
+  })
+
+  const [summary] = await repositoryModule.createReportRepository(database).listPlanSummaries()
+  assert.equal(summary.plan.factoryName, '工厂乙')
+  assert.equal(summary.plan.inspectType, 'FINAL')
+  assert.equal(summary.plan.inspectTypeName, '最终验货')
+  assert.equal(summary.plan.domeNo, '合同乙')
+})
+
 test('stores H5 detail fields in report checklist defect and photo tables', async () => {
   const database = memoryModule.createMemoryDatabase()
   const repository = repositoryModule.createReportRepository(database)

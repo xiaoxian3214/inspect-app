@@ -5,6 +5,16 @@ import { loadUtsModule } from './load-uts-module.mjs'
 
 const previewModule = await loadUtsModule('domain/planDownloadPreview.uts')
 
+/** 复制当前验货的信息区仅展示 H5 的七个计划字段。 */
+test('copy current preview keeps H5 seven fields and values', () => {
+  const fields = previewModule.buildCopyPlanFields({ plan: {
+    clientOrderNo: 'PO-1', subGoodsNo: 'SKU-1', goodsName: '鞋子',
+    requiredQuantity: 0, sampleSize: 2, factoryName: '工厂', deliveryDate: '2026-10-10'
+  } })
+  assert.deepEqual(fields.map((field) => field.label), ['订单号', '款号', '产品名称', '总数量', '样品数量', '供应商', '计划日期'])
+  assert.deepEqual(fields.map((field) => field.value), ['PO-1', 'SKU-1', '鞋子', 0, 2, '工厂', '2026-10-10'])
+})
+
 test('shows every H5 download field in order from a nested plan', () => {
   const fields = previewModule.buildDownloadPlanFields({
     plan: {
@@ -53,25 +63,31 @@ test('download confirmation renders all fields in a scrollable native sheet and 
   const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
   const details = await readFile('components/inspection/PlanDownloadDetails.uvue', 'utf8')
 
-  assert.match(card, /<PlanDownloadDetails[^>]*:item="props\.item"[^>]*@select-template="changeDownloadTemplate"/s)
+  assert.match(card, /<PlanDownloadDetails[^>]*:item="props\.item"[^>]*@open-template="openDownloadTemplateSheet"/s)
   assert.match(card, /import PlanDownloadDetails from/)
   assert.match(card, /class="copy-modal download-modal"/)
   assert.match(card, /\.download-modal\s*\{[^}]*height:\s*85%/)
-  assert.match(card, /function changeDownloadTemplate\(index\)/)
+  assert.match(card, /<OptionSelectSheet[^>]*:visible="showDownloadTemplateSheet"[^>]*:options="downloadTemplateOptions"[^>]*@confirm="selectDownloadTemplate"/)
+  assert.match(card, /function selectDownloadTemplate\(option\)/)
   assert.match(card, /downloadTemplateName\.value !== '' \? downloadTemplateName\.value : '请选择清单'/)
   assert.match(details, /<scroll-view[^>]*scroll-y="true"/)
   assert.match(details, /v-for="field in fields"/)
   assert.match(details, /buildDownloadPlanFields\(props\.item\)/)
-  assert.match(details, /<picker[^>]*@change="selectTemplate"/)
+  assert.match(details, /class="section" @click="openTemplateOptions"/)
+  assert.match(details, /class="select-value"/)
+  assert.match(details, /emit\('open-template'\)/)
+  assert.doesNotMatch(details, /<picker\b/)
   assert.match(details, /清单/)
 })
 
 test('merged download previews group members and downloads the parent as one report', async () => {
   const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
   const details = await readFile('components/inspection/PlanDownloadDetails.uvue', 'utf8')
+  const table = await readFile('components/inspection/PlanMemberTable.uvue', 'utf8')
   assert.match(card, /planApi\.searchPlans\(\{ parentPlanId \}/)
   assert.match(card, /:merged-items="downloadMergedItems"/)
   assert.match(card, /const downloadPlanId = isMerged\.value && parentPlanId !== '' \? parentPlanId : planId/)
   assert.match(details, /此合并验货包含以下验货/)
-  assert.match(details, /v-for="member in mergedItems"/)
+  assert.match(details, /<PlanMemberTable :items="mergedItems" :loading="mergedLoading"/)
+  assert.match(table, /v-for="row in rows"[\s\S]*?row\.orderNo[\s\S]*?row\.itemBatch[\s\S]*?row\.productName/)
 })

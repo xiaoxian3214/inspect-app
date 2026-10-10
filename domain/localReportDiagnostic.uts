@@ -1,0 +1,34 @@
+/** 提取本地报告的精简诊断信息，避免将照片和完整清单塞进剪贴板。 */
+export function buildLocalReportDiagnostic(row) {
+  const jsonData = String(row?.jsonData ?? '')
+  let detail = {}
+  let jsonParseError = false
+  try {
+    detail = jsonData === '' ? {} : JSON.parse(jsonData)
+  } catch (_) {
+    jsonParseError = true
+  }
+  const plan = detail?.plan != null && typeof detail.plan === 'object' ? detail.plan : {}
+  const standardItems = Array.isArray(detail?.standardItems) ? detail.standardItems : []
+  const inspectionPlans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : []
+  const checklistLeafCount = standardItems.reduce((count, section) => {
+    return count + (Array.isArray(section?.children) ? section.children.length : 0)
+  }, 0)
+  return JSON.stringify({
+    reportId: String(row?.reportId ?? ''),
+    status: row?.status ?? '',
+    downloadAt: row?.downloadAt ?? '',
+    planId: String(plan?.id ?? plan?.planId ?? ''),
+    reportEntityId: String(detail?.report?.id ?? ''),
+    inspectionPlanIds: inspectionPlans.map((item) => String(item?.id ?? item?.planId ?? '')),
+    standardItemsCount: standardItems.length,
+    checklistLeafCount,
+    itemResultsCount: Array.isArray(detail?.itemResults) ? detail.itemResults.length : 0,
+    checklistItemsCount: Array.isArray(detail?.checklistItems) ? detail.checklistItems.length : 0,
+    hasPlanDisplayFields: [plan?.goodsName, plan?.goodsCname, plan?.subGoodsNo, plan?.planNo, plan?.clientOrderNo]
+      .some((value) => value !== undefined && value !== null && String(value).trim() !== ''),
+    hasListCard: detail?.listCard != null,
+    jsonLength: jsonData.length,
+    jsonParseError
+  }, null, 2)
+}

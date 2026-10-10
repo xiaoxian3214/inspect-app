@@ -467,6 +467,19 @@ export function normalizeInspectionDetail(source, requestedPlanId: string = '') 
   }
 }
 
+/** 判断下载记录是否具备离线验货所需的产品信息和可渲染清单定义。 */
+export function isInspectionDetailComplete(detail) {
+  if (detail == null || typeof detail !== 'object') return false
+  const rebuilt = buildStandardItemsFromItemResults(detail?.itemResults ?? [])
+  const hasChecklist = (Array.isArray(detail?.standardItems) && detail.standardItems.length > 0)
+    || (Array.isArray(detail?.checklistItems) && detail.checklistItems.length > 0)
+    || rebuilt.some((section) => Array.isArray(section?.children) && section.children.length > 0)
+  if (!hasChecklist) return false
+  const plan = resolveDetailPlan(detail, detail?.planId)
+  return [plan?.goodsName, plan?.goodsCname, plan?.subGoodsNo, plan?.planNo, plan?.clientOrderNo]
+    .some((value) => value !== undefined && value !== null && String(value).trim() !== '')
+}
+
 /** 根据照片 ID、服务端文件 ID 或本地/服务端路径识别同一张媒体。 */
 function isSameDetailPhoto(left, right) {
   const leftId = String(left?.photoId ?? left?.id ?? '').trim()

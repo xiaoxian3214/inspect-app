@@ -4,7 +4,7 @@
 			<view class="category-head">
 				<view class="category-back" @click="goBack"><text>{{ step > 1 ? '‹' : '×' }}</text></view>
 				<view class="category-title-wrap">
-					<text class="category-title">{{ stepTitle }}</text>
+					<text class="category-title">{{ t(stepTitle) }}</text>
 					<text class="category-path">{{ selectedPath }}</text>
 				</view>
 				<view class="category-placeholder"></view>
@@ -130,7 +130,7 @@
 			defectCode: String(item?.code ?? ''),
 			defectDesc: String(item?.name ?? '')
 		}
-		try { await saveRecentCategory(category) } catch (error) { uni.showToast({ title: error?.message ?? '最近分类保存失败', icon: 'none' }); return }
+		try { await saveRecentCategory(category) } catch (error) { uni.showToast({ title: error?.message ?? t('最近分类保存失败'), icon: 'none' }); return }
 		emit('select', category)
 	}
 	/** 直接应用最近使用的完整三级分类。 */

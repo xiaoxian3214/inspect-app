@@ -6,12 +6,12 @@
 			<view class="camera-header">
 				<view class="header-action" @click="cancelCapture"><AppIcon type="close" :size="24" color="#ffffff" /></view>
 				<text class="camera-title">{{ t('连续拍照') }}</text>
-				<view class="header-action" @click="toggleFlash"><text class="header-action-text">{{ flashLabel }}</text></view>
+				<view class="header-action" @click="toggleFlash"><text class="header-action-text">{{ t(flashLabel) }}</text></view>
 			</view>
 			<view v-if="!cameraReady" class="camera-state">
 				<view v-if="cameraErrorMessage === ''" class="camera-loading-dot"></view>
 				<text class="camera-state-title">{{ t(cameraErrorMessage === '' ? '相机启动中...' : '相机无法启动') }}</text>
-				<text v-if="cameraErrorMessage !== ''" class="camera-state-message">{{ cameraErrorMessage }}</text>
+				<text v-if="cameraErrorMessage !== ''" class="camera-state-message">{{ t(cameraErrorMessage) }}</text>
 			</view>
 			<view v-if="videoRecording" class="recording-indicator">
 				<view class="recording-dot"></view>
@@ -211,7 +211,7 @@
 	}
 	/** 调用 CameraX 或 AVCapturePhotoOutput 拍摄一张照片，并记录按下快门时的设备姿态。 */
 	function takePhoto() {
-		if (!cameraReady.value || nativeCameraRef.value == null) { uni.showToast({ title: cameraErrorMessage.value ?? '相机仍在启动，请稍候', icon: 'none' }); return }
+		if (!cameraReady.value || nativeCameraRef.value == null) { uni.showToast({ title: t(cameraErrorMessage.value ?? '相机仍在启动，请稍候'), icon: 'none' }); return }
 		if (capturing.value || remainingCount.value <= 0) return
 		pendingCaptureRotation = thumbnailRotation.value
 		capturing.value = true
@@ -219,7 +219,7 @@
 	}
 	/** 调用原生录像输出开始录制视频，实际开始时机由 videorecordingstarted 事件确认。 */
 	function startVideoRecording() {
-		if (!cameraReady.value || nativeCameraRef.value == null) { uni.showToast({ title: cameraErrorMessage.value ?? '相机仍在启动，请稍候', icon: 'none' }); return }
+		if (!cameraReady.value || nativeCameraRef.value == null) { uni.showToast({ title: t(cameraErrorMessage.value ?? '相机仍在启动，请稍候'), icon: 'none' }); return }
 		if (videoRecording.value || remainingCount.value <= 0) return
 		pendingCaptureRotation = thumbnailRotation.value
 		nativeCameraRef.value?.$callMethod('startVideo', MAX_VIDEO_DURATION_SECONDS * 1000)
@@ -308,8 +308,8 @@
 		}
 		uni.navigateBack()
 	}
-	/** 保存并显示原生相机权限、配置或拍摄错误，使黑屏时仍有明确反馈。 */
-	function handleCameraError(error) { cameraReady.value = false; capturing.value = false; videoRecording.value = false; stopRecordingTimer(); cameraErrorMessage.value = (error?.detail?.message || error?.detail?.errMsg || error?.errMsg) ?? '无法使用相机，请检查系统相机权限'; uni.showToast({ title: cameraErrorMessage.value, icon: 'none' }) }
+	/** 展示原生相机错误并终止当前拍摄状态。 */
+	function handleCameraError(error) { cameraReady.value = false; capturing.value = false; videoRecording.value = false; stopRecordingTimer(); cameraErrorMessage.value = (error?.detail?.message || error?.detail?.errMsg || error?.errMsg) ?? '无法使用相机，请检查系统相机权限'; uni.showToast({ title: t(cameraErrorMessage.value), icon: 'none' }) }
 	/** 页面显示时恢复姿态监听并启动原生相机会话。 */
 	function handlePageShow() { cameraActive.value = true; nativeCameraRef.value?.$callMethod('reopen'); startThumbnailOrientationTracking() }
 	/** 页面隐藏时停止姿态监听和原生会话，避免后台继续占用摄像头。 */

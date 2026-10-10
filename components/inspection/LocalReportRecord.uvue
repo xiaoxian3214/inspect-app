@@ -2,14 +2,16 @@
 	<view class="record">
 		<view class="record-heading">
 			<text class="record-title">{{ row.productName ? row.productName : row.reportId }}</text>
-			<text class="record-status">状态 {{ row.status }}</text>
+			<text class="record-status">{{ t('状态 {status}', { status: row.status }) }}</text>
 		</view>
-		<text class="record-meta">计划 ID：{{ row.reportId }}</text>
-		<text class="record-meta">订单号：{{ row.orderNo ? row.orderNo : '-' }}</text>
-		<text class="record-meta">下载时间：{{ row.downloadAt ? row.downloadAt : '-' }}</text>
+		<text class="record-meta">{{ t('计划 ID：{id}', { id: row.reportId }) }}</text>
+		<text class="record-meta">{{ t('订单号：{number}', { number: row.orderNo ? row.orderNo : '-' }) }}</text>
+		<text class="record-meta">{{ t('下载时间：{time}', { time: row.downloadAt ? row.downloadAt : '-' }) }}</text>
 		<view class="record-actions">
-			<text class="record-action" @click="toggleRawData">{{ t(expanded ? '收起完整 SQLite 数据' : '查看完整 SQLite 数据') }}</text>
-			<text class="record-action" @click="copyRawData">{{ t('复制 JSON') }}</text>
+			<view class="record-action" @click="toggleRawData"><text class="record-action-text">{{ t(expanded ? '收起完整 SQLite 数据' : '查看完整 SQLite 数据') }}</text></view>
+			<view class="record-action" @click="copyDiagnostic"><text class="record-action-text">{{ t('复制诊断 JSON') }}</text></view>
+			<view v-if="expanded" class="record-action" @click="copyRawData"><text class="record-action-text">{{ t('复制完整 JSON') }}</text></view>
+			<view v-if="expanded" class="record-action" @click="shareRawData"><text class="record-action-text">{{ t('分享完整 JSON 文件') }}</text></view>
 		</view>
 		<text v-if="expanded" class="record-json">{{ rawData }}</text>
 	</view>
@@ -17,6 +19,7 @@
 
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
+	import { buildLocalReportDiagnostic } from '../../domain/localReportDiagnostic.uts'
 	import { computed, ref } from 'vue'
 
 	const props = defineProps({ row: { type: Object, required: true } })
@@ -28,9 +31,39 @@
 	/** 展开或收起当前计划的完整 SQLite 原始行。 */
 	function toggleRawData() { expanded.value = !expanded.value }
 
-	/** 将当前计划的完整数据库行复制到系统剪贴板。 */
+	/** 复制无需照片和清单内容的短诊断，方便排查离线详情及剪贴板容量问题。 */
+	function copyDiagnostic() {
+		uni.setClipboardData({
+			data: buildLocalReportDiagnostic(props.row),
+			success: () => uni.showToast({ title: t('诊断 JSON 已复制'), icon: 'success' }),
+			fail: (error) => uni.showToast({ title: t('复制失败，请重试'), icon: 'none' })
+		})
+	}
+
+	/** 展开后尝试复制完整数据库行，失败时提示改用文件分享。 */
 	function copyRawData() {
-		uni.setClipboardData({ data: rawData.value, success: () => uni.showToast({ title: t('已复制本地数据'), icon: 'success' }) })
+		uni.setClipboardData({
+			data: rawData.value,
+			success: () => uni.showToast({ title: t('已复制本地数据'), icon: 'success' }),
+			fail: (error) => uni.showToast({ title: t('复制失败，请分享完整 JSON 文件'), icon: 'none' })
+		})
+	}
+
+	/** 将完整报告行写入 App 本地文件并调用系统分享，避免大文本剪贴板限制。 */
+	function shareRawData() {
+		const reportId = String(props.row?.reportId ?? 'report').replace(/[^a-zA-Z0-9_-]/g, '_')
+		const filePath = `${uni.env.USER_DATA_PATH}/inspection-report-${reportId}.json`
+		uni.getFileSystemManager().writeFile({
+			filePath,
+			data: rawData.value,
+			encoding: 'utf-8',
+			success: () => uni.shareWithSystem({
+				type: 'file',
+				filePaths: [filePath],
+				fail: (error) => uni.showToast({ title: t('分享文件失败，请重试'), icon: 'none' })
+			}),
+			fail: (error) => uni.showToast({ title: t('保存文件失败，请重试'), icon: 'none' })
+		})
 	}
 </script>
 
@@ -40,7 +73,8 @@
 	.record-title { flex: 1; color: #0f172a; font-size: 16px; font-weight: 600; }
 	.record-status { margin-left: 8px; color: #166534; font-size: 12px; }
 	.record-meta { margin-top: 7px; color: #64748b; font-size: 12px; }
-	.record-actions { flex-direction: row; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top-width: 1px; border-top-color: #e2e8f0; }
-	.record-action { color: #15803d; font-size: 13px; }
+	.record-actions { flex-direction: row; flex-wrap: wrap; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top-width: 1px; border-top-color: #e2e8f0; }
+	.record-action { min-height: 44px; justify-content: center; margin-right: 10px; }
+	.record-action-text { color: #15803d; font-size: 13px; }
 	.record-json { margin-top: 12px; padding: 10px; border-radius: 8px; color: #334155; background-color: #f1f5f9; font-size: 11px; }
 </style>

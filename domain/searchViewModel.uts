@@ -73,14 +73,19 @@ export function mergeRemoteWithLocal(remoteRecords, localPlans) {
  * 返回计划的检查类型编码，兼容远程、本地和 raw 包装结构。
  */
 export function getItemInspectType(item) {
-  return String(
-    item?.plan?.inspectType
-    ?? item?.inspectType
-    ?? item?.raw?.inspectType
-    ?? item?.plan?.inspectTypeName
-    ?? item?.inspectTypeName
-    ?? ''
-  ).trim()
+  return firstNonEmptyText([
+    item?.plan?.inspectType, item?.inspectType, item?.raw?.inspectType,
+    item?.plan?.inspectTypeName, item?.inspectTypeName, item?.raw?.inspectTypeName
+  ], '').trim()
+}
+
+/** 为卡片显示验货类型名称；拆分生成的 plan 缺少类型时保留原卡片的名称或编码。 */
+export function getPlanInspectTypeLabel(item) {
+  return firstNonEmptyText([
+    item?.plan?.inspectTypeName, item?.plan?.inspectType,
+    item?.inspectTypeName, item?.inspectType,
+    item?.raw?.inspectTypeName, item?.raw?.inspectType
+  ], '验货')
 }
 
 /**
@@ -123,11 +128,115 @@ export function isMergeSelectable(item, inspectType, anchorItem: any | null = nu
     && getItemInspectType(item) === getItemInspectType(anchorItem)
 }
 
+/** 返回 H5 分组全选目标：未选时取最大兼容组，已有锚点时只取同条件计划。 */
+export function getMergeGroupTargets(group, inspectType, selectedItems = []) {
+  const items = Array.isArray(group?.items) ? group.items : []
+  if (selectedItems.length > 0) {
+    const anchor = selectedItems[0]
+    return items.filter((item) => getPlanOperationId(item) !== '' && isMergeSelectable(item, inspectType, anchor))
+  }
+  const buckets = new Map()
+  for (const item of items) {
+    if (getPlanOperationId(item) === '' || !isBaseMergeEligible(item, inspectType)) continue
+    const key = `${getItemFactoryNo(item)}||${getItemGoodsClass(item)}||${getItemInspectType(item)}`
+    if (!buckets.has(key)) buckets.set(key, [])
+    buckets.get(key).push(item)
+  }
+  let largest = []
+  for (const bucket of buckets.values()) {
+    if (bucket.length > largest.length) largest = bucket
+  }
+  return largest
+}
+
+/** 按 H5 合并响应结构提取用于后续下载的父计划 ID，兼容直接返回 ID。 */
+export function getMergedPlanId(result) {
+  if (typeof result === 'string' || typeof result === 'number') return String(result).trim()
+  const data = result?.data
+  const candidates = [
+    result?.id, result?.planId, result?.reportId,
+    typeof data === 'string' || typeof data === 'number' ? data : null,
+    data?.id, data?.planId, data?.reportId, result?.parentPlanId
+  ]
+  const found = candidates.find((value) => value !== undefined && value !== null && String(value).trim() !== '')
+  return found === undefined ? '' : String(found).trim()
+}
+
+/** 从候选字段中取第一个非空文本，避免接口空字符串覆盖后备展示值。 */
+function firstNonEmptyText(values, fallback) {
+  const found = values.find((value) => value !== undefined && value !== null && String(value).trim() !== '')
+  return found === undefined ? fallback : String(found)
+}
+
+/** 生成 H5 合并确认表格的单号、款号#批次和产品名称三列。 */
+export function getMergePreviewRow(item) {
+  const plan = item?.plan ?? item ?? {}
+  const orderNo = firstNonEmptyText([plan?.clientOrderNo, item?.clientOrderNo, plan?.domeNo, item?.domeNo, item?.planNo], '未分组')
+  const itemNo = firstNonEmptyText([plan?.subGoodsNo, item?.subGoodsNo], '-')
+  const batchNo = firstNonEmptyText([plan?.batchNo, item?.batchNo], '-')
+  const productName = firstNonEmptyText([plan?.goodsName, item?.goodsName, plan?.goodsCname, item?.goodsCname, item?.productName], '-')
+  return { orderNo, itemBatch: `${itemNo}#${batchNo}`, productName }
+}
+
+/** 合并成功后仅更新来源卡片的合并标记和父计划 ID，不修改未参与的列表记录。 */
+export function markMergedSourcePlans(items, sourcePlanIds, mergedPlanId) {
+  const sourceIds = new Set(sourcePlanIds.map((id) => String(id)))
+  return items.map((item) => {
+    if (!sourceIds.has(getPlanOperationId(item))) return item
+    return {
+      ...item,
+      mergeType: 2,
+      parentPlanId: mergedPlanId,
+      plan: { ...(item?.plan ?? {}), mergeType: 2, parentPlanId: mergedPlanId },
+      raw: { ...(item?.raw ?? {}), mergeType: 2, parentPlanId: mergedPlanId }
+    }
+  })
+}
+
+/** 仅允许未锁定、已定计划且已合并的成员执行拆分。 */
+export function isSplitAvailable(item) {
+  const lockFlag = Number(item?.plan?.lockFlag ?? item?.lockFlag ?? item?.raw?.lockFlag ?? 0)
+  const mergeType = Number(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0)
+  const status = normalizeSearchStatus(item?.status ?? item?.plan?.status ?? item?.raw?.status)
+  return mergeType === 2 && lockFlag === 0 && status === 0
+}
+
+/** 拆分成功后同步来源卡片的合并类型，保持其他计划对象不变。 */
+export function markSplitSourcePlans(items, sourcePlanIds) {
+  const sourceIds = new Set(sourcePlanIds.map((id) => String(id)))
+  return items.map((item) => {
+    if (!sourceIds.has(getPlanOperationId(item))) return item
+    return {
+      ...item,
+      mergeType: 1,
+      plan: { ...(item?.plan ?? {}), mergeType: 1 },
+      raw: { ...(item?.raw ?? {}), mergeType: 1 }
+    }
+  })
+}
+
+/** 搜索结果中将已释放的计划及同一合并组成员一起恢复为未锁定状态。 */
+export function markReleasedGroupPlans(items, releasedIds, parentPlanId) {
+  const ids = new Set((releasedIds ?? []).map((id) => String(id)))
+  const parentId = String(parentPlanId ?? '').trim()
+  return items.map((item) => {
+    if (!ids.has(getPlanOperationId(item)) && (parentId === '' || getItemParentPlanId(item) !== parentId)) return item
+    return {
+      ...item,
+      lockFlag: 0,
+      downloadedAt: '',
+      lockStatus: '',
+      plan: { ...(item?.plan ?? {}), lockFlag: 0 },
+      raw: { ...(item?.raw ?? {}), lockFlag: 0 }
+    }
+  })
+}
+
 /**
- * 返回计划所属的合并父计划 ID。
+ * 返回计划所属的合并父计划 ID；嵌套字段为空时回退到平铺或原始字段。
  */
 export function getItemParentPlanId(item) {
-  return String(item?.plan?.parentPlanId ?? item?.parentPlanId ?? item?.raw?.parentPlanId ?? '').trim()
+  return firstNonEmptyText([item?.plan?.parentPlanId, item?.parentPlanId, item?.raw?.parentPlanId], '').trim()
 }
 
 /**

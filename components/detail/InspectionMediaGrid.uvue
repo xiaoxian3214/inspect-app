@@ -16,13 +16,14 @@
 		<view v-if="canAdd" class="media-cell">
 			<view class="media-add" :class="{ disabled }" @click="captureMedia">
 				<AppIcon type="camera" :size="31" color="#03a84e" />
-				<text>{{ addLabel }}</text>
+				<text>{{ t(addLabel) }}</text>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
 	import { computed } from 'vue'
 	import AppIcon from '../icons/AppIcon.uvue'
 	import InspectionMediaItem from './InspectionMediaItem.uvue'

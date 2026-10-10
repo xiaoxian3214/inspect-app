@@ -13,22 +13,24 @@
 			<view class="result-toolbar">
 				<view class="result-toolbar-left"><text class="result-title">{{ t('搜索结果') }}</text><view class="result-divider"></view></view>
 				<button class="toolbar-btn" @click="openFilterModal">{{ t('筛选') }}</button>
-				<button class="toolbar-btn merge" @click="openMergeFlow">{{ t('合并') }}</button>
 			</view>
-		</view>
-
-		<view v-if="mergeMode" class="merge-mode-bar">
-			<view><text class="merge-mode-title">{{ t('选择需要合并的计划') }}</text><text class="merge-mode-subtitle">{{ mergeInspectType }} · {{ t('已选 {count} 条', { count: mergeSelectedItems.length }) }}</text></view>
-			<view class="merge-mode-actions"><text class="merge-mode-cancel" @click="cancelMergeMode">{{ t('取消') }}</text><button class="merge-mode-confirm" :disabled="mergeSelectedItems.length < 2" @click="openMergeConfirm">{{ t('下一步') }}</button></view>
 		</view>
 
 		<scroll-view class="content" scroll-y="true">
 			<view v-if="searching" class="loading">{{ t('搜索中...') }}</view>
-			<view v-else-if="errorMessage !== '' && results.length === 0" class="empty"><text class="empty-icon">!</text><text class="empty-text">{{ errorMessage }}</text></view>
+			<view v-else-if="errorMessage !== '' && results.length === 0" class="empty"><text class="empty-icon">!</text><text class="empty-text">{{ t(errorMessage) }}</text></view>
 			<view v-else-if="results.length === 0 && searched" class="empty"><text class="empty-icon">{{ t('查') }}</text><text class="empty-text">{{ t('未找到相关计划') }}</text></view>
 			<view v-else-if="results.length > 0" class="results">
 				<view v-for="group in groupedResults" :key="group.groupKey" class="plan-group">
-					<view class="order-header"><text class="order-no">{{ group.clientOrderNo }}</text></view>
+					<view class="order-header">
+						<text class="order-no">{{ group.clientOrderNo }}</text>
+						<checkbox-group v-if="mergeMode" class="group-select-all" :class="{ selected: isGroupAllSelected(group), disabled: !canGroupSelectAll(group) }" @change="toggleGroupSelectAll(group)" @click.stop>
+							<label class="group-select-label">
+								<checkbox v-if="canGroupSelectAll(group)" class="group-checkbox" value="all" :checked="isGroupAllSelected(group)" :disabled="!canGroupSelectAll(group)" color="#16a34a" />
+								<text v-if="!canGroupSelectAll(group)" class="group-disabled-mark">—</text>
+							</label>
+						</checkbox-group>
+					</view>
 					<view class="supplier-row"><text class="supplier-name">{{ group.supplierName }}</text><text class="order-date">{{ formatDate(group.orderDate) }}</text></view>
 					<InspectionPlanCard
 						v-for="item in group.items"
@@ -48,6 +50,7 @@
 						:selection-disabled="mergeMode && !isMergeSelectableItem(item)"
 						@merge-toggle="toggleMergeSelect"
 						@action-unlock="handleUnlock"
+						@action-reset="handleReset"
 						@action-copy="openCopyCurrent"
 						@action-copy-merged="openCopyMerged"
 						@action-split="openSplitPreview"
@@ -67,13 +70,21 @@
 				</view>
 				<button v-else class="load-more-btn" :disabled="true">{{ t('已全部加载') }}</button>
 			</view>
-			<view class="content-space"></view>
+			<view class="content-space" :class="{ 'merge-space': mergeMode }"></view>
 		</scroll-view>
+		<view v-if="mergeMode" class="merge-action-bar">
+			<button class="merge-action-btn cancel" @click="cancelMergeMode">{{ t('取消') }}</button>
+			<button class="merge-action-btn confirm" :class="{ disabled: mergeSelectedItems.length < 2 || operationSubmitting }" :disabled="mergeSelectedItems.length < 2 || operationSubmitting" @click="openMergeConfirm">{{ t('合并验货') }}（{{ mergeSelectedItems.length }}）</button>
+		</view>
+		<view v-if="results.length > 0 && !searching && !mergeMode" class="fab" @click="showActionMenu">
+			<AppIcon type="plus" :size="32" color="#ffffff" />
+		</view>
+		<BottomActionSheet :visible="showMenu" :actions="searchFabActions" :show-icons="true" @select="handleFabAction" @cancel="hideActionMenu" />
 
 		<SearchFilterSheet :visible="showFilterModal" :draft="draftFilters" :status-options="filterStatusOptions" :inspect-type-options="filterInspectTypeOptions" :loading-types="optionsLoading" @close="closeFilterModal" @clear="clearDraftFilters" @update-status="updateDraftStatus" @update-inspect-type="updateDraftInspectType" @update-start-date="updateDraftStartDate" @update-end-date="updateDraftEndDate" @confirm="applyFilters" />
 		<MergePlanSheet :visible="showMergeSheet" :stage="mergeSheetStage" :inspect-type-options="inspectTypeOptions" :selected-inspect-type="mergeInspectType" :selected-items="mergeSelectedItems" :templates="templateOptions" :selected-template-id="mergeTemplateId" :merged-plan-id="mergedPlanId" :submitting="operationSubmitting" @close="closeMergeSheet" @update-inspect-type="setMergeInspectType" @start-selection="startMergeSelection" @update-template="setMergeTemplate" @confirm-merge="confirmMerge" @download="downloadMergedPlan" />
 		<SplitPlanSheet :visible="showSplitSheet" :preview-items="splitPreviewItems" :result-items="splitResultItems" :downloaded-ids="splitDownloadedIds" :submitting="operationSubmitting" @close="closeSplitSheet" @confirm="confirmSplit" @download="downloadSplitItem" />
-		<CopyPlanSheet :visible="showCopySheet" :mode="copyMode" :item="copyTarget" :inspect-type-options="inspectTypeOptions" :templates="templateOptions" :selected-inspect-type="copyInspectType" :selected-template-id="copyTemplateId" :created="copyCreated" :submitting="operationSubmitting" @close="closeCopySheet" @update-inspect-type="setCopyInspectType" @update-template="setCopyTemplate" @confirm="confirmCopy" @download="downloadCopiedPlan" />
+		<CopyPlanSheet :visible="showCopySheet" :mode="copyMode" :item="copyTarget" :inspect-type-options="inspectTypeOptions" :templates="templateOptions" :merged-items="copyMergedItems" :merged-loading="copyMergedLoading" :selected-inspect-type="copyInspectType" :selected-template-id="copyTemplateId" :selected-template-name="copyTemplateName" :created="copyCreated" :submitting="operationSubmitting" @close="closeCopySheet" @update-inspect-type="setCopyInspectType" @update-template="setCopyTemplate" @confirm="confirmCopy" @download="downloadCopiedPlan" />
 	</view>
 </template>
 
@@ -82,6 +93,7 @@
 	import { computed, onMounted, ref } from 'vue'
 	import { onLoad } from '@dcloudio/uni-app'
 	import InspectionPlanCard from '../../components/inspection/InspectionPlanCard.uvue'
+	import BottomActionSheet from '../../components/common/BottomActionSheet.uvue'
 	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
 	import SearchFilterSheet from '../../components/search/SearchFilterSheet.uvue'
 	import MergePlanSheet from '../../components/search/MergePlanSheet.uvue'
@@ -89,8 +101,8 @@
 	import CopyPlanSheet from '../../components/search/CopyPlanSheet.uvue'
 	import AppIcon from '../../components/icons/AppIcon.uvue'
 	import { getPlanUniqueId, groupPlans, normalizePlanStatus } from '../../domain/planViewModel.uts'
-	import { buildSearchParams, buildSplitPreview, extractCopiedPlanId, getItemInspectType, getItemParentPlanId, getPlanOperationId, isBaseMergeEligible, isMergeSelectable, mergeRemoteWithLocal } from '../../domain/searchViewModel.uts'
-	import { getCurrentSession, initializeRuntime, planApi, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
+	import { buildSearchParams, buildSplitPreview, extractCopiedPlanId, getMergeGroupTargets, getMergedPlanId, getItemInspectType, getItemParentPlanId, getPlanOperationId, isBaseMergeEligible, isMergeSelectable, isSplitAvailable, markMergedSourcePlans, markReleasedGroupPlans, markSplitSourcePlans, mergeRemoteWithLocal } from '../../domain/searchViewModel.uts'
+	import { getCurrentSession, initializeRuntime, isNetworkOnline, planApi, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
 
 	const keyword = ref('')
 	const results = ref([])
@@ -105,6 +117,8 @@
 	const searchPageSize = 100
 	const searchTotal = ref(0)
 	const showFilterModal = ref(false)
+	const showMenu = ref(false)
+	const searchFabActions = [{ key: 'merge', label: '合并验货', icon: 'merge' }]
 	const optionsLoading = ref(false)
 	const inspectTypeOptions = ref([])
 	const templateOptions = ref([])
@@ -126,12 +140,24 @@
 	const showCopySheet = ref(false)
 	const copyTarget = ref({})
 	const copyMode = ref(1)
+	const copyMergedItems = ref([])
+	const copyMergedLoading = ref(false)
 	const copyInspectType = ref('')
 	const copyTemplateId = ref('')
 	const copyTemplateName = ref('')
 	const copyCreated = ref(false)
 	const copiedPlanId = ref('')
 	const operationSubmitting = ref(false)
+
+	/** 打开右下角悬浮按钮的合并验货操作菜单。 */
+	function showActionMenu() { showMenu.value = true }
+	/** 关闭悬浮操作菜单。 */
+	function hideActionMenu() { showMenu.value = false }
+	/** 从悬浮菜单选择合并验货后进入类型选择流程。 */
+	function handleFabAction(action) {
+		hideActionMenu()
+		if (action?.key === 'merge') openMergeFlow()
+	}
 
 	/** 返回搜索筛选支持的 H5 状态选项。 */
 	const filterStatusOptions = computed(() => [{ value: '', label: '全部' }, { value: 'planned', label: '已定计划' }, { value: 'progress', label: '进行中' }, { value: 'report', label: '报告' }])
@@ -197,7 +223,7 @@
 			searchTotal.value = Number(response?.total ?? results.value.length)
 			searched.value = true
 		} catch (error) {
-			errorMessage.value = error?.message ?? '查询失败，请检查网络'
+			errorMessage.value = error?.message ?? t('查询失败，请检查网络')
 			if (!paging) results.value = []
 		} finally { searching.value = false; loadingMoreResults.value = false }
 	}
@@ -250,7 +276,7 @@
 			await loadInspectTypeOptions()
 			if (mergeInspectType.value === '' && inspectTypeOptions.value.length > 0) mergeInspectType.value = String(inspectTypeOptions.value[inspectTypeOptions.value.length - 1]?.value ?? '')
 			mergeSheetStage.value = 'type'; showMergeSheet.value = true
-		} catch (error) { uni.showToast({ title: error?.message ?? '加载验货类型失败', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: error?.message ?? t('加载验货类型失败'), icon: 'none' }) }
 	}
 	/** 更新合并流程选择的验货类型。 */
 	function setMergeInspectType(value) { mergeInspectType.value = String(value ?? '') }
@@ -264,6 +290,28 @@
 	function isMergeChecked(item) { const id = getPlanOperationId(item); return mergeSelectedItems.value.some((selected) => getPlanOperationId(selected) === id) }
 	/** 判断计划是否满足当前合并类型和首条计划的兼容性规则。 */
 	function isMergeSelectableItem(item) { return isMergeChecked(item) || isMergeSelectable(item, mergeInspectType.value, getMergeAnchorItem()) }
+	/** 返回订单组内与合并锚点兼容的最大可选集合。 */
+	function getGroupTargetItems(group) { return getMergeGroupTargets(group, mergeInspectType.value, mergeSelectedItems.value) }
+	/** 判断订单组是否存在可全选任务。 */
+	function canGroupSelectAll(group) { return getGroupTargetItems(group).length > 0 }
+	/** 判断当前订单组兼容任务是否均已选中。 */
+	function isGroupAllSelected(group) {
+		const targets = getGroupTargetItems(group)
+		return targets.length > 0 && targets.every((item) => isMergeChecked(item))
+	}
+	/** 全选或取消订单组内兼容任务，保留其他组已选项。 */
+	function toggleGroupSelectAll(group) {
+		if (!mergeMode.value) return
+		const targets = getGroupTargetItems(group)
+		if (targets.length === 0) return
+		const targetIds = new Set(targets.map((item) => getPlanOperationId(item)))
+		if (isGroupAllSelected(group)) {
+			mergeSelectedItems.value = mergeSelectedItems.value.filter((item) => !targetIds.has(getPlanOperationId(item)))
+			return
+		}
+		const selectedIds = new Set(mergeSelectedItems.value.map((item) => getPlanOperationId(item)))
+		mergeSelectedItems.value = [...mergeSelectedItems.value, ...targets.filter((item) => !selectedIds.has(getPlanOperationId(item)))]
+	}
 	/** 按 H5 合并规则添加或移除当前计划。 */
 	function toggleMergeSelect(item) {
 		const planId = getPlanOperationId(item)
@@ -279,7 +327,7 @@
 	async function openMergeConfirm() {
 		if (mergeSelectedItems.value.length < 2) return
 		try { await loadTemplateOptions(); if (mergeTemplateId.value === '' && templateOptions.value.length > 0) setMergeTemplate(templateOptions.value[0]); mergeSheetStage.value = 'confirm'; showMergeSheet.value = true }
-		catch (error) { uni.showToast({ title: error?.message ?? '加载清单失败', icon: 'none' }) }
+		catch (error) { uni.showToast({ title: error?.message ?? t('加载清单失败'), icon: 'none' }) }
 	}
 	/** 更新合并计划下载使用的清单模板。 */
 	function setMergeTemplate(option) { mergeTemplateId.value = String(option?.id ?? ''); mergeTemplateName.value = String(option?.name ?? '') }
@@ -288,30 +336,32 @@
 		if (operationSubmitting.value || mergeSelectedItems.value.length < 2) return
 		const anchor = mergeSelectedItems.value[0]
 		if (!mergeSelectedItems.value.every((item) => isMergeSelectable(item, mergeInspectType.value, anchor))) { uni.showToast({ title: t('存在不满足合并条件的任务'), icon: 'none' }); return }
+		const sourcePlanIds = mergeSelectedItems.value.map((item) => getPlanOperationId(item))
 		operationSubmitting.value = true
 		try {
-			const response = await planOperationService.mergePlans(mergeSelectedItems.value.map((item) => getPlanOperationId(item)))
-			const copiedPlanId = extractCopiedPlanId(response)
-			mergedPlanId.value = copiedPlanId !== '' ? copiedPlanId : String(response?.parentPlanId ?? '')
+			const response = await planOperationService.mergePlans(sourcePlanIds)
+			mergedPlanId.value = getMergedPlanId(response)
 			if (mergedPlanId.value === '') throw new Error('合并成功但未返回计划ID')
+			results.value = markMergedSourcePlans(results.value, sourcePlanIds, mergedPlanId.value)
+			localPlans.value = markMergedSourcePlans(localPlans.value, sourcePlanIds, mergedPlanId.value)
 			uni.showToast({ title: t('合并成功'), icon: 'success' })
-		} catch (error) { uni.showToast({ title: error?.message ?? '合并失败', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: error?.message ?? t('合并失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
 	/** 下载合并成功的新计划并刷新本地与远程回显。 */
 	async function downloadMergedPlan() {
 		if (mergedPlanId.value === '' || operationSubmitting.value) return
+		if (mergeTemplateId.value === '') { uni.showToast({ title: t('请选择清单'), icon: 'none' }); return }
 		operationSubmitting.value = true
-		try { await planOperationService.downloadToLocal(mergedPlanId.value, { templateId: mergeTemplateId.value, templateName: mergeTemplateName.value }); await refreshLocalOverlay(); showMergeSheet.value = false; mergeMode.value = false; mergeSelectedItems.value = []; uni.showToast({ title: t('已下载到本地'), icon: 'success' }) }
-		catch (error) { uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' }) }
+		try { await planOperationService.downloadToLocal(mergedPlanId.value, { templateId: mergeTemplateId.value, templateName: mergeTemplateName.value }, [], mergeSelectedItems.value); await refreshLocalOverlay(); showMergeSheet.value = false; mergeMode.value = false; mergeSelectedItems.value = []; uni.showToast({ title: t('已下载到本地'), icon: 'success' }) }
+		catch (error) { uni.showToast({ title: error?.message ?? t('下载失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
 
-	/** 判断计划是否允许执行 H5 拆分流程。 */
-	function isSplitAvailable(item) { const plan = (item?.plan || item) ?? {}; return Number(plan?.mergeType ?? item?.mergeType ?? 0) === 2 && Number(plan?.lockFlag ?? item?.lockFlag ?? 0) === 0 && normalizePlanStatus(item) === 0 }
 	/** 加载同一合并组明细并打开拆分预览弹层。 */
 	async function openSplitPreview(item) {
 		if (!isSplitAvailable(item)) { uni.showToast({ title: t('仅支持未锁定的已定合并计划拆分'), icon: 'none' }); return }
+		if (!(await isNetworkOnline())) { uni.showToast({ title: t('拆分验货需要联网，请连接网络后重试'), icon: 'none' }); return }
 		operationSubmitting.value = true
 		try {
 			const planId = getPlanOperationId(item); const candidateParentId = getItemParentPlanId(item); const parentPlanId = candidateParentId !== '' ? candidateParentId : planId
@@ -320,25 +370,32 @@
 			splitPreviewItems.value = buildSplitPreview(response?.records ?? [], localPlans.value, parentPlanId)
 			if (splitPreviewItems.value.length === 0) splitPreviewItems.value = [item]
 			splitResultItems.value = []; splitDownloadedIds.value = []; showSplitSheet.value = true
-		} catch (error) { uni.showToast({ title: error?.message ?? '加载拆分预览失败', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: error?.message ?? t('加载拆分预览失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
-	/** 从拆分接口的多种返回结构中提取计划数组。 */
-	function normalizeOperationItems(response) { if (Array.isArray(response)) return response; if (Array.isArray(response?.records)) return response.records; if (Array.isArray(response?.plans)) return response.plans; if (Array.isArray(response?.data)) return response.data; return [] }
 	/** 调用拆分接口并展示可逐项下载的结果。 */
 	async function confirmSplit() {
 		if (splitTargetPlanId.value === '' || operationSubmitting.value) return
+		if (!(await isNetworkOnline())) { uni.showToast({ title: t('拆分验货需要联网，请连接网络后重试'), icon: 'none' }); return }
 		operationSubmitting.value = true
-		try { const response = await planOperationService.splitPlan(splitTargetPlanId.value); splitResultItems.value = normalizeOperationItems(response); if (splitResultItems.value.length === 0) splitResultItems.value = splitPreviewItems.value; await performSearch(searchPage.value, true); uni.showToast({ title: t('拆分成功'), icon: 'success' }) }
-		catch (error) { uni.showToast({ title: error?.message ?? '拆分失败', icon: 'none' }) }
+		try {
+			await planOperationService.splitPlan(splitTargetPlanId.value)
+			const sourceIds = splitPreviewItems.value.map((item) => getPlanOperationId(item))
+			splitResultItems.value = markSplitSourcePlans(splitPreviewItems.value, sourceIds)
+			results.value = markSplitSourcePlans(results.value, sourceIds)
+			localPlans.value = markSplitSourcePlans(localPlans.value, sourceIds)
+			uni.showToast({ title: t('拆分成功'), icon: 'success' })
+		}
+		catch (error) { uni.showToast({ title: error?.message ?? t('拆分失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
 	/** 下载指定拆分结果并立即刷新本地已下载状态。 */
 	async function downloadSplitItem(item) {
 		const planId = getPlanOperationId(item); if (planId === '' || operationSubmitting.value) return
+		if (!(await isNetworkOnline())) { uni.showToast({ title: t('下载验货需要联网，请连接网络后重试'), icon: 'none' }); return }
 		operationSubmitting.value = true
-		try { const plan = (item?.plan || item) ?? {}; await planOperationService.downloadToLocal(planId, { templateId: plan?.templateId ?? '', templateName: plan?.templateName ?? '' }); splitDownloadedIds.value = Array.from(new Set([...splitDownloadedIds.value, planId])); await refreshLocalOverlay(); uni.showToast({ title: t('已下载到本地'), icon: 'success' }) }
-		catch (error) { uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' }) }
+		try { const plan = (item?.plan || item) ?? {}; await planOperationService.downloadToLocal(planId, { templateId: plan?.templateId ?? item?.templateId ?? '', templateName: plan?.templateName ?? item?.templateName ?? '' }, [], [item]); splitDownloadedIds.value = Array.from(new Set([...splitDownloadedIds.value, planId])); await refreshLocalOverlay(); uni.showToast({ title: t('已下载到本地'), icon: 'success' }) }
+		catch (error) { uni.showToast({ title: error?.message ?? t('下载失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
 	/** 关闭拆分弹层并清理当前拆分上下文。 */
@@ -355,8 +412,24 @@
 			copyTarget.value = item; copyMode.value = mode; copyCreated.value = false; copiedPlanId.value = ''
 			const currentType = getItemInspectType(item)
 			copyInspectType.value = inspectTypeOptions.value.some((option) => String(option?.value ?? '') === currentType) ? currentType : String(inspectTypeOptions.value[0]?.value ?? '')
-			setCopyTemplate(templateOptions.value[0] ?? {}); showCopySheet.value = true
-		} catch (error) { uni.showToast({ title: error?.message ?? '加载复制选项失败', icon: 'none' }) }
+			const sourcePlan = item?.plan ?? item
+			const existingTemplateId = String(sourcePlan?.templateId ?? item?.templateId ?? '')
+			setCopyTemplate(templateOptions.value.find((option) => String(option?.id ?? '') === existingTemplateId) ?? { id: existingTemplateId, name: sourcePlan?.templateName ?? item?.templateName ?? '' })
+			copyMergedItems.value = []
+			showCopySheet.value = true
+			if (mode === 2) loadCopyMergedItems(item)
+		} catch (error) { uni.showToast({ title: error?.message ?? t('加载复制选项失败'), icon: 'none' }) }
+	}
+	/** 查询复制合并验货的成员；失败时保留当前卡片供用户确认。 */
+	async function loadCopyMergedItems(item) {
+		const parentPlanId = getItemParentPlanId(item) || getPlanOperationId(item)
+		copyMergedLoading.value = true
+		try {
+			const response = await planApi.searchPlans({ parentPlanId }, 1, searchPageSize)
+			const members = response?.records ?? []
+			copyMergedItems.value = members.length > 0 ? members : [item]
+		} catch (error) { copyMergedItems.value = [item]; uni.showToast({ title: error?.message ?? t('加载合并验货成员失败'), icon: 'none' }) }
+		finally { copyMergedLoading.value = false }
 	}
 	/** 更新复制流程选择的验货类型。 */
 	function setCopyInspectType(option) { copyInspectType.value = String(option?.value ?? option ?? '') }
@@ -378,7 +451,7 @@
 			}
 			if (copiedPlanId.value === '') throw new Error('复制成功但未返回新计划ID')
 			copyCreated.value = true; uni.showToast({ title: t('复制验货成功'), icon: 'success' })
-		} catch (error) { uni.showToast({ title: error?.message ?? '复制验货失败', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: error?.message ?? t('复制验货失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
 	/** 下载复制成功的新计划并立即刷新本地列表覆盖。 */
@@ -386,27 +459,33 @@
 		if (copiedPlanId.value === '' || operationSubmitting.value) return
 		operationSubmitting.value = true
 		try { await planOperationService.downloadToLocal(copiedPlanId.value, { templateId: copyTemplateId.value, templateName: copyTemplateName.value }); await refreshLocalOverlay(); showCopySheet.value = false; uni.showToast({ title: t('已下载到本地'), icon: 'success' }) }
-		catch (error) { uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' }) }
+		catch (error) { uni.showToast({ title: error?.message ?? t('下载失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
 	/** 关闭复制弹层并清理复制结果状态。 */
-	function closeCopySheet() { showCopySheet.value = false; copyCreated.value = false; copiedPlanId.value = '' }
+	function closeCopySheet() { showCopySheet.value = false; copyCreated.value = false; copiedPlanId.value = ''; copyMergedItems.value = [] }
 
-	/** 使用原生确认框询问用户是否继续解锁。 */
-	function confirmUnlockAction() {
-		return new Promise((resolve) => { uni.showModal({ title: t('解锁验货任务'), content: t('当前验货会恢复到已定计划状态。请确认需要解锁该任务？'), success: (result) => resolve(result.confirm === true), fail: () => resolve(false) }) })
+	/** 使用原生确认框询问是否释放当前任务；重置会删除云端报告。 */
+	function confirmReleaseAction(reset) {
+		return new Promise((resolve) => { uni.showModal({ title: t(reset ? '重置验货任务' : '解锁验货任务'), content: t(reset ? '您确定需要重置该验货任务？' : '当前验货会恢复到已定计划状态。请确认需要解锁该任务？'), success: (result) => resolve(result.confirm === true), fail: () => resolve(false) }) })
 	}
-	/** 解锁计划、清理关联本地记录并即时恢复搜索结果状态。 */
-	async function handleUnlock(item) {
-		if (!await confirmUnlockAction()) return
+	/** 经用户确认释放合并组，清理本地成员并同步搜索卡片锁状态。 */
+	async function handleRelease(item, reset) {
+		if (operationSubmitting.value || !await confirmReleaseAction(reset)) return
 		operationSubmitting.value = true
 		try {
-			const response = await planOperationService.unlockPlan(item); const removedIds = new Set(response?.removedIds ?? [])
-			results.value = results.value.map((current) => removedIds.has(getPlanOperationId(current)) ? { ...current, status: 0, downloadedAt: '', lockStatus: '', plan: { ...(current?.plan ?? {}), status: 0, lockFlag: 0 } } : current)
-			await loadLocalPlans(); uni.showToast({ title: t('解锁成功'), icon: 'success' })
-		} catch (error) { uni.showToast({ title: error?.message ?? '解锁失败', icon: 'none' }) }
+			const response = reset ? await planOperationService.resetPlan(item) : await planOperationService.unlockPlan(item)
+			results.value = markReleasedGroupPlans(results.value, response?.removedIds, response?.parentPlanId)
+			mergeSelectedItems.value = markReleasedGroupPlans(mergeSelectedItems.value, response?.removedIds, response?.parentPlanId)
+			await loadLocalPlans()
+			uni.showToast({ title: t(reset ? '重置成功' : '解锁成功'), icon: 'success' })
+		} catch (error) { uni.showToast({ title: error?.message ?? t(reset ? '重置失败' : '解锁失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
+	/** 解锁当前卡片及其合并组成员。 */
+	async function handleUnlock(item) { await handleRelease(item, false) }
+	/** 重置当前卡片及其合并组成员。 */
+	async function handleReset(item) { await handleRelease(item, true) }
 
 	/** 卡片下载或本地状态变化后重新加载本地记录并覆盖当前结果。 */
 	async function handleCardRefresh() { await refreshLocalOverlay() }
@@ -424,7 +503,7 @@
 <style>
 	.page { flex: 1; background-color: #f5f5f5; }
 	.sticky-top-area { background-color: #ffffff; box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05); }
-	.header, .result-toolbar, .result-toolbar-left, .supplier-row, .pagination-actions, .merge-mode-bar, .merge-mode-actions { flex-direction: row; align-items: center; }
+	.header, .result-toolbar, .result-toolbar-left, .supplier-row, .pagination-actions { flex-direction: row; align-items: center; }
 	.header { padding: 24rpx 32rpx; }
 	.back-btn { width: 76rpx; height: 76rpx; color: #03ae4f; font-size: 48rpx; text-align: center; line-height: 76rpx; }
 	.search-input { flex: 1; height: 84rpx; padding: 0 32rpx; border-radius: 42rpx; background-color: #f5f5f5; font-size: 30rpx; color: #0f172a; }
@@ -436,19 +515,25 @@
 	.result-title { color: #1e293b; font-size: 30rpx; font-weight: 700; }
 	.result-divider { flex: 1; height: 2rpx; margin-left: 20rpx; background-color: #cbd5e1; }
 	.toolbar-btn { min-width: 116rpx; height: 64rpx; margin-left: 14rpx; padding: 0 22rpx; color: #0f172a; background-color: #ffffff; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; font-size: 26rpx; }
-	.toolbar-btn.merge { color: #166534; border-color: #86efac; background-color: #f0fdf4; }
-	.merge-mode-bar { justify-content: space-between; padding: 18rpx 28rpx; background-color: #ecfdf5; border-bottom-width: 2rpx; border-bottom-color: #bbf7d0; }
-	.merge-mode-title { color: #166534; font-size: 28rpx; font-weight: 700; }
-	.merge-mode-subtitle { display: block; margin-top: 4rpx; color: #15803d; font-size: 23rpx; }
-	.merge-mode-cancel { margin-right: 18rpx; color: #64748b; font-size: 26rpx; }
-	.merge-mode-confirm { height: 64rpx; padding: 0 24rpx; border-radius: 16rpx; color: #ffffff; background-color: #16a34a; font-size: 25rpx; }
+	.merge-action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; flex-direction: row; padding: 20rpx 28rpx 40rpx; border-top-width: 2rpx; border-top-color: #e5e7eb; background-color: #ffffff; }
+	.merge-action-btn { height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.merge-action-btn.cancel { width: 200rpx; margin-right: 20rpx; border-width: 2rpx; border-color: #e5e7eb; color: #334155; background-color: #ffffff; }
+	.merge-action-btn.confirm { flex: 1; color: #ffffff; background-color: #03ae4f; }
+	.merge-action-btn.confirm.disabled { background-color: #9ca3af; }
+	.fab { position: fixed; right: 20px; bottom: 40px; width: 60px; height: 60px; border-radius: 30px; align-items: center; justify-content: center; background-color: #05b552; box-shadow: 0 8px 16px rgba(5, 181, 82, 0.32); z-index: 1200; }
 	.content { flex: 1; padding: 28rpx 32rpx; }
 	.loading, .empty { align-items: center; padding: 100rpx 40rpx; color: #666666; }
 	.empty-icon { font-size: 80rpx; }
 	.empty-text { margin-top: 24rpx; color: #64748b; font-size: 28rpx; text-align: center; }
 	.results { padding-bottom: 24rpx; }
 	.plan-group { margin-bottom: 28rpx; border-radius: 32rpx; overflow: hidden; background-color: #ffffff; box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05); }
-	.order-header { padding: 20rpx 28rpx; background-color: #f5f5f5; }
+	.order-header { padding: 20rpx 28rpx; background-color: #f5f5f5; flex-direction: row; align-items: center; justify-content: space-between; }
+	.group-select-all { width: 68rpx; height: 68rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 18rpx; background-color: #ffffff; align-items: center; justify-content: center; box-shadow: 0 3rpx 8rpx rgba(15, 23, 42, 0.08); }
+	.group-select-all.selected { border-color: #22c55e; background-color: #ecfdf5; }
+	.group-select-all.disabled { border-color: #94a3b8; background-color: #cbd5e1; }
+	.group-select-label { width: 68rpx; height: 68rpx; align-items: center; justify-content: center; }
+	.group-checkbox { width: 42rpx; height: 42rpx; }
+	.group-disabled-mark { color: #475569; font-size: 36rpx; font-weight: 700; line-height: 42rpx; }
 	.order-no { color: #0f172a; font-size: 36rpx; font-weight: 600; }
 	.supplier-row { justify-content: space-between; padding: 20rpx 28rpx 4rpx; background-color: #ffffff; }
 	.supplier-name, .order-date { color: #64748b; font-size: 24rpx; }
@@ -464,4 +549,5 @@
 	.page-nav-btn { color: #ffffff; background-color: #00b050; }
 	.load-more-btn { color: #94a3b8; background-color: #e2e8f0; }
 	.content-space { height: 36rpx; }
+	.content-space.merge-space { height: 180rpx; }
 </style>

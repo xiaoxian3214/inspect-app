@@ -7,6 +7,7 @@ const detailViewModel = await loadUtsModule('domain/detailViewModel.uts')
 
 function createViewModel() {
   return {
+    isInspectionDetailComplete: detailViewModel.isInspectionDetailComplete,
     normalizeInspectionDetail: (source, planId) => ({ ...source, planId, normalized: true, checklistItems: source.checklistItems || [], defects: source.defects || [], photos: source.photos || [], progress: source.progress || 0 }),
     buildGeneratePayload: (detail) => ({ planId: detail.planId, finishFlag: '0' })
   }

@@ -1,0 +1,63 @@
+<template>
+	<view class="member-table">
+		<view class="member-header">
+			<text class="member-cell member-heading cell-divider">{{ localizedHeaders ? t('单号') : 'Order' }}</text>
+			<text class="member-cell member-heading cell-divider">{{ localizedHeaders ? t('款号#批次') : 'Item' }}</text>
+			<text class="member-cell member-heading" :class="{ 'cell-divider': downloadable }">{{ localizedHeaders ? t('产品名称') : 'Name' }}</text>
+			<text v-if="downloadable" class="member-action member-heading">{{ t('操作') }}</text>
+		</view>
+		<scroll-view class="member-body" scroll-y="true">
+			<text v-if="loading" class="member-message">{{ t('加载中...') }}</text>
+			<text v-else-if="rows.length === 0" class="member-message">{{ t('暂无可选的验货单据') }}</text>
+			<view v-else>
+				<view v-for="row in rows" :key="row.key" class="member-row">
+					<text class="member-cell cell-divider">{{ row.orderNo }}</text>
+					<text class="member-cell cell-divider">{{ row.itemBatch }}</text>
+					<text class="member-cell" :class="{ 'cell-divider': downloadable }">{{ row.productName }}</text>
+					<view v-if="downloadable" class="member-action">
+						<button class="member-download" :disabled="submitting || isDownloaded(row.item)" @click="downloadItem(row.item)">{{ t(isDownloaded(row.item) ? '已下载' : '下载') }}</button>
+					</view>
+				</view>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed } from 'vue'
+	import { t } from '../../i18n/index.uts'
+	import { getMergePreviewRow, getPlanOperationId } from '../../domain/searchViewModel.uts'
+
+	const props = defineProps({
+		items: { type: Array, default: () => [] },
+		loading: { type: Boolean, default: false },
+		localizedHeaders: { type: Boolean, default: false },
+		downloadable: { type: Boolean, default: false },
+		downloadedIds: { type: Array, default: () => [] },
+		submitting: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['download'])
+
+	/** 按 H5 的 Order、Item、Name 三列整理成员，并保留逐项下载的原始计划。 */
+	const rows = computed(() => props.items.map((item, index) => ({ key: `${getPlanOperationId(item)}:${index}`, item, ...getMergePreviewRow(item) })))
+
+	/** 判断拆分结果是否已下载，避免重复提交同一成员。 */
+	function isDownloaded(item) { return props.downloadedIds.includes(getPlanOperationId(item)) }
+
+	/** 将拆分成员原始计划交给页面执行离线下载。 */
+	function downloadItem(item) { emit('download', item) }
+</script>
+
+<style>
+	.member-table { border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; overflow: hidden; background-color: #ffffff; }
+	.member-header, .member-row { flex-direction: row; align-items: stretch; }
+	.member-header { background-color: #f8fafc; }
+	.member-body { border:2rpx solid #e5e7eb;}
+	.member-row { min-height: 72rpx; border-top-width: 2rpx; border-top-color: #cbd5e1; border-bottom:1rpx solid #cbd5e1;}
+	.member-cell { flex: 1; min-width: 0; padding: 16rpx 10rpx; color: #334155; font-size: 28rpx; line-height: 34rpx;  }
+	.cell-divider { border-right-width: 2rpx; border-right-color: #cbd5e1; }
+	.member-heading { color: #0f172a; font-weight: 700; }
+	.member-action { width: 112rpx; padding: 8rpx 4rpx; align-items: center; justify-content: center; color: #334155; font-size: 24rpx; }
+	.member-download { width: 104rpx; height: 62rpx; margin: 0; padding: 0; border-radius: 12rpx; color: #ffffff; background-color: #16a34a; font-size: 22rpx; }
+	.member-message { padding: 24rpx; color: #64748b; font-size: 25rpx; text-align: center; }
+</style>

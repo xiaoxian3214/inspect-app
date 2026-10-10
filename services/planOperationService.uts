@@ -29,22 +29,44 @@ export function createPlanOperationService(options) {
   }
 
   /**
-   * 下载指定计划的完整离线数据并事务性保存到本地。
+   * 下载指定计划并保存本地，转交预期成员与原卡片供下载服务校验和补齐字段。
    */
-  async function downloadToLocal(planId, payload) {
-    return planDownloadService.downloadToLocal(planId, payload ?? {})
+  async function downloadToLocal(planId, payload, expectedPlanIds = [], sourceItems = []) {
+    return planDownloadService.downloadToLocal(planId, payload ?? {}, expectedPlanIds, sourceItems)
+  }
+
+  /** 分页查询合并父计划成员，包含尚未下载或未回传 parentPlanId 的远程卡片。 */
+  async function getMergedMemberIds(parentPlanId) {
+    const memberIds = new Set()
+    const pageSize = 100
+    let page = 1
+    while (true) {
+      const response = await planApi.searchPlans({ parentPlanId }, page, pageSize)
+      const records = Array.isArray(response?.records) ? response.records : []
+      for (const record of records) {
+        const recordParentId = searchViewModel.getItemParentPlanId(record)
+        if (recordParentId !== '' && recordParentId !== parentPlanId) continue
+        const recordId = searchViewModel.getPlanOperationId(record)
+        if (recordId !== '') memberIds.add(recordId)
+      }
+      if (records.length === 0 || page * pageSize >= Number(response?.total ?? records.length)) break
+      page += 1
+    }
+    return memberIds
   }
 
   /**
-   * 解锁或重置计划，并清理当前计划或同一合并组的全部本地记录。
+   * 解锁或重置计划；释放后用本地与云端成员 ID 清理整个合并组及列表缓存。
    */
   async function releasePlan(item, reportDeleteFlag = 0) {
     const planId = searchViewModel.getPlanOperationId(item)
     if (planId === '') throw new Error('计划ID缺失，无法执行操作')
     const mergeType = Number(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0)
-    const parentPlanId = mergeType === 2 ? searchViewModel.getItemParentPlanId(item) : ''
+    const parentPlanId = mergeType === 2 ? (searchViewModel.getItemParentPlanId(item) || planId) : ''
     const removeIdSet = new Set([planId])
     if (parentPlanId !== '') {
+      const remoteMemberIds = await getMergedMemberIds(parentPlanId)
+      for (const memberId of remoteMemberIds) removeIdSet.add(memberId)
       const localPlans = await reportRepository.listPlans()
       for (const localPlan of localPlans) {
         if (searchViewModel.getItemParentPlanId(localPlan) !== parentPlanId) continue

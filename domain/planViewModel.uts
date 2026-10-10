@@ -1,3 +1,4 @@
+/** 将远程与本地计划状态统一为列表使用的数字状态。 */
 export function normalizePlanStatus(itemOrStatus) {
   const rawStatus = itemOrStatus != null && typeof itemOrStatus === 'object'
     ? (itemOrStatus.status ?? itemOrStatus.plan?.status)
@@ -28,6 +29,7 @@ export function getPlanUniqueId(item) {
     ?? ''
 }
 
+/** 判断计划状态是否属于指定列表页签。 */
 export function isPlanInTab(item, tabKey) {
   const status = normalizePlanStatus(item)
   if (tabKey === 'planned') return status === 0
@@ -36,11 +38,52 @@ export function isPlanInTab(item, tabKey) {
   return true
 }
 
+/** 用嵌套或平铺卡片的非空字段补全本地计划，保留下载记录状态与详情。 */
+export function fillMissingPlanCardFields(localRecord, sourceItem) {
+  if (sourceItem == null) return localRecord
+  const sourcePlan = sourceItem?.plan ?? sourceItem
+  const localPlan = localRecord?.plan ?? {}
+  const fields = [
+    'clientOrderNo', 'domeNo', 'factoryName', 'goodsName', 'goodsCname',
+    'subGoodsNo', 'goodsNo', 'batchNo', 'createDate', 'deliveryDate',
+    'inspectType', 'inspectTypeName', 'goodsFlag', 'produceNo', 'modelNo',
+    'inspectorId', 'inspectorName', 'mergeType', 'parentPlanId'
+  ]
+  const completedPlan = { ...localPlan }
+  let changed = false
+  for (const field of fields) {
+    const currentValue = completedPlan[field]
+    const nestedValue = sourcePlan?.[field]
+    const flatValue = sourceItem?.[field] !== undefined && sourceItem?.[field] !== null && sourceItem?.[field] !== ''
+      ? sourceItem[field] : sourceItem?.raw?.[field]
+    const sourceValue = nestedValue !== undefined && nestedValue !== null && nestedValue !== '' ? nestedValue : flatValue
+    if (currentValue !== undefined && currentValue !== null && currentValue !== '') continue
+    if (sourceValue === undefined || sourceValue === null || sourceValue === '') continue
+    completedPlan[field] = sourceValue
+    changed = true
+  }
+  if (!completedPlan.factoryName) {
+    const supplierName = [sourcePlan?.supplierName, sourceItem?.supplierName, sourceItem?.raw?.supplierName]
+      .find((value) => value !== undefined && value !== null && value !== '')
+    if (supplierName) {
+      completedPlan.factoryName = supplierName
+      changed = true
+    }
+  }
+  return changed ? { ...localRecord, plan: completedPlan } : localRecord
+}
+
+/** 本地计划优先；本地摘要缺少展示字段时从同 ID 远程卡片补齐。 */
 export function mergePlansLocalFirst(localPlans, remotePlans) {
   const localList = Array.isArray(localPlans) ? localPlans : []
   const remoteList = Array.isArray(remotePlans) ? remotePlans : []
   const localIds = new Set(localList.map(getPlanUniqueId).filter((id) => id !== ''))
-  const merged = [...localList]
+  const remoteById = new Map()
+  for (const remotePlan of remoteList) {
+    const id = getPlanUniqueId(remotePlan)
+    if (id !== '' && !remoteById.has(id)) remoteById.set(id, remotePlan)
+  }
+  const merged = localList.map((localPlan) => fillMissingPlanCardFields(localPlan, remoteById.get(getPlanUniqueId(localPlan))))
 
   for (const remotePlan of remoteList) {
     const id = getPlanUniqueId(remotePlan)
@@ -48,6 +91,22 @@ export function mergePlansLocalFirst(localPlans, remotePlans) {
     merged.push(remotePlan)
   }
   return merged
+}
+
+/** 根据释放 ID 和合并父计划 ID 过滤缓存，兼容嵌套父 ID 为空的平铺成员。 */
+export function filterReleasedPlans(plans, releasedIds, parentPlanId = '') {
+  const ids = new Set((Array.isArray(releasedIds) ? releasedIds : []).map((id) => String(id ?? '').trim()))
+  const parentId = String(parentPlanId ?? '').trim()
+  const remaining = []
+  for (const item of Array.isArray(plans) ? plans : []) {
+    const planId = String(getPlanUniqueId(item) ?? '').trim()
+    if (planId !== '' && ids.has(planId)) continue
+    const itemParentId = [item?.plan?.parentPlanId, item?.parentPlanId, item?.raw?.parentPlanId]
+      .map((value) => String(value ?? '').trim()).find((value) => value !== '') ?? ''
+    if (parentId !== '' && itemParentId === parentId) continue
+    remaining.push(item)
+  }
+  return remaining
 }
 
 /** 将计划按客户订单号分组，并保留各组的供应商与日期信息。 */

@@ -119,7 +119,7 @@
 	/** 返回 H5 疵点严重等级中文名称。 */
 	function severityLabel(defect) { const raw = `${String(defect?.type ?? defect?.defectType ?? '').toLowerCase()} ${String(defect?.typeLabel ?? '').toLowerCase()}`; if (raw.includes('critical') || raw.includes('致命') || raw.includes('极严重')) return '致命缺陷'; if (raw.includes('major') || raw.includes('主要') || raw.includes('严重')) return '主要缺陷'; return '次要缺陷' }
 	/** 拼接清单行内的疵点摘要。 */
-	function defectSummary(defect) { const common = Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1; const quantity = Number(defect?.quantity ?? defect?.defectCount ?? 0); return [severityLabel(defect), `${defect?.defectCode ?? '-'}${defect?.defectDesc ? `:${defect.defectDesc}` : ''}`, common ? '普遍性疵点' : (quantity > 0 ? `${quantity}个受影响数量` : ''), defect?.description ?? defect?.remark ?? '-'].filter((text) => String(text ?? '').trim() !== '').join('-') }
+	function defectSummary(defect) { const common = Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1; const quantity = Number(defect?.quantity ?? defect?.defectCount ?? 0); return [t(severityLabel(defect)), `${defect?.defectCode ?? '-'}${defect?.defectDesc ? `:${defect.defectDesc}` : ''}`, common ? t('普遍性疵点') : (quantity > 0 ? t('{count}个受影响数量', { count: quantity }) : ''), defect?.description ?? defect?.remark ?? '-'].filter((text) => String(text ?? '').trim() !== '').join('-') }
 	/** 返回疵点包含的图片数量。 */
 	function defectPhotoCount(defect) { return Array.isArray(defect?.photos) ? defect.photos.length : 0 }
 	/** 返回疵点第一张图片路径。 */

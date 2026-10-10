@@ -1,0 +1,67 @@
+<template>
+	<view v-if="visible" class="option-overlay" @click.stop="closeSheet">
+		<view class="option-panel" @click.stop>
+			<text class="option-title">{{ t(title) }}</text>
+			<scroll-view class="option-list" scroll-y="true">
+				<text v-if="options.length === 0" class="option-empty">{{ t(emptyText) }}</text>
+				<view v-for="option in options" :key="String(option.value)" class="option-row" :class="{ selected: String(option.value) === draftValue }" @click="chooseOption(option)">
+					<text class="option-name">{{ option.label }}</text>
+					<text class="option-mark">{{ String(option.value) === draftValue ? '✓' : '' }}</text>
+				</view>
+			</scroll-view>
+			<view class="option-actions">
+				<button class="option-button cancel" @click="closeSheet">{{ t('取消') }}</button>
+				<button class="option-button confirm" :disabled="selectedOption == null" @click="confirmSelection">{{ t('确定') }}</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed, ref, watch } from 'vue'
+	import { t } from '../../i18n/index.uts'
+
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		title: { type: String, default: '' },
+		emptyText: { type: String, default: '暂无可选清单' },
+		options: { type: Array, default: () => [] },
+		selectedValue: { type: String, default: '' }
+	})
+	const emit = defineEmits(['close', 'confirm'])
+	const draftValue = ref('')
+
+	/** 每次打开选项弹层时同步当前已选值，取消不会改变业务状态。 */
+	watch(() => props.visible, (visible) => { if (visible) draftValue.value = props.selectedValue })
+
+	/** 返回当前草稿值对应的真实选项，供确认按钮校验。 */
+	const selectedOption = computed(() => props.options.find((option) => String(option?.value ?? '') === draftValue.value) ?? null)
+
+	/** 暂存用户点选的清单或检查类型。 */
+	function chooseOption(option) { draftValue.value = String(option?.value ?? '') }
+
+	/** 关闭选择弹层且不修改父组件已选值。 */
+	function closeSheet() { emit('close') }
+
+	/** 将已确认的完整选项交给复制流程更新 ID 与名称。 */
+	function confirmSelection() {
+		if (selectedOption.value == null) return
+		emit('confirm', selectedOption.value)
+	}
+</script>
+
+<style>
+	.option-overlay { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 3200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.48); }
+	.option-panel { width: 100%; padding: 32rpx 28rpx 48rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
+	.option-title { color: #111827; font-size: 34rpx; font-weight: 700; text-align: center; }
+	.option-list { max-height: 640rpx; margin-top: 24rpx; }
+	.option-row { min-height: 88rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 18rpx 24rpx; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.option-row.selected { background-color: #ecfdf5; }
+	.option-name { flex: 1; color: #334155; font-size: 28rpx; }
+	.option-mark { width: 42rpx; color: #16a34a; font-size: 32rpx; font-weight: 700; text-align: center; }
+	.option-empty { padding: 36rpx 0; color: #94a3b8; font-size: 26rpx; text-align: center; }
+	.option-actions { flex-direction: row; margin-top: 24rpx; }
+	.option-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 29rpx; }
+	.option-button.cancel { color: #334155; background-color: #f1f5f9; }
+	.option-button.confirm { color: #ffffff; background-color: #16a34a; }
+</style>

@@ -1,0 +1,2937 @@
+{
+    "code": 200,
+    "message": "操作成功",
+    "data": {
+        "report": {
+            "id": "2050557914086678530",
+            "planId": "2042087883799576577",
+            "overallResult": "PENDING",
+            "overallRemarks": "测试数据",
+            "criticalFound": 0,
+            "majorFound": 0,
+            "minorFound": 0,
+            "reviewStatus": 0,
+            "reviewerId": null,
+            "reviewerName": null,
+            "reviewDate": null,
+            "reviewComments": null,
+            "inspectorId": "11928",
+            "inspectorName": "曾贤伟",
+            "inspectionDate": null,
+            "reportContent": null,
+            "pdfUrl": null,
+            "createDate": "2026-05-02 20:47:58",
+            "createBy": "system",
+            "updateDate": "2026-05-02 20:47:58",
+            "updateBy": "system"
+        },
+        "itemResults": [
+            {
+                "id": "2050557914107650049",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": null,
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 20:47:58",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Kiểm tra thông tin thùng ngoài",
+                    "en": "Check outer carton information",
+                    "zh": "检查外箱相关信息"
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra thùng ngoài",
+                    "en": "Outer Carton",
+                    "zh": "外箱检查"
+                },
+                "parentItemId": null,
+                "sonPlanId": null,
+                "sortOrder": 1,
+                "localizedItemName": "外箱检查",
+                "localizedItemDescription": "检查外箱相关信息",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914116038658",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "CEA22C76-FA48-4F3D-B6B9-C6468E722AD4",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Hình ảnh sản phẩm hoàn thành",
+                    "en": "Product finished picture",
+                    "zh": "产品完成图"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 2,
+                "localizedItemName": "产品完成图",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914116038658_2042087881782116354",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "CEA22C76-FA48-4F3D-B6B9-C6468E722AD4",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Hình ảnh sản phẩm hoàn thành",
+                    "en": "Product finished picture",
+                    "zh": "产品完成图"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": "2042087881782116354",
+                "sortOrder": 2,
+                "localizedItemName": "产品完成图",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914116038658_2042087882818109442",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "CEA22C76-FA48-4F3D-B6B9-C6468E722AD4",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Hình ảnh sản phẩm hoàn thành",
+                    "en": "Product finished picture",
+                    "zh": "产品完成图"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": "2042087882818109442",
+                "sortOrder": 2,
+                "localizedItemName": "产品完成图",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914116038658_2042087883799576577",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "CEA22C76-FA48-4F3D-B6B9-C6468E722AD4",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Hình ảnh sản phẩm hoàn thành",
+                    "en": "Product finished picture",
+                    "zh": "产品完成图"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": "2042087883799576577",
+                "sortOrder": 2,
+                "localizedItemName": "产品完成图",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914128621569",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "45BF375C-4ADD-4D93-8519-9E2F7C04C68D",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Tổng quan về thùng carton",
+                    "en": "Carton overview",
+                    "zh": "外箱总览"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 3,
+                "localizedItemName": "外箱总览",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914137010178",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "6D22BB6A-A8E8-4FC1-BD92-C2B53220C620",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Test thả rơi và lăn thùng",
+                    "en": "Droptest",
+                    "zh": "摔箱/滚箱/叠装测试"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 4,
+                "localizedItemName": "摔箱/滚箱/叠装测试",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914145398785",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "2D8510E5-9E78-4D16-9AEC-38485466C311",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Hình ảnh 6 mặt thùng",
+                    "en": "Six side view of outer box",
+                    "zh": "外箱六面图/叠装四面图"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 5,
+                "localizedItemName": "外箱六面图/叠装四面图",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914149593089",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "595A4F8D-E6EB-4B91-8BB3-3DF3E3B525D0",
+                "itemType": "Measurements",
+                "specResult": "[{\"name\":\"1\",\"length\":\"11\",\"width\":\"1\",\"height\":\"1\",\"gross_weight\":\"11\"}]",
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Đo kích thước và trọng lượng thùng carton",
+                    "en": "Measure carton dimension and gross weight",
+                    "zh": "测量外箱尺寸和毛重"
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "length",
+                        "attrKey": {
+                            "vi": "Chiều dài(CM)",
+                            "en": "length(CM)",
+                            "zh": "长(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "长(CM)"
+                    },
+                    {
+                        "attrId": "width",
+                        "attrKey": {
+                            "vi": "Chiều rộng(CM)",
+                            "en": "width(CM)",
+                            "zh": "宽(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "宽(CM)"
+                    },
+                    {
+                        "attrId": "height",
+                        "attrKey": {
+                            "vi": "Chiều cao(CM)",
+                            "en": "height(CM)",
+                            "zh": "高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "高(CM)"
+                    },
+                    {
+                        "attrId": "gross_weight",
+                        "attrKey": {
+                            "vi": "Trọng lượng tổng(KG)",
+                            "en": "gweight(KG)",
+                            "zh": "毛重(KG)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "毛重(KG)"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Kích thước thùng carton / Trọng lượng thùng carton xuất khẩu (Tổng trọng lượng)",
+                    "en": "Carton dimension/Export carton weight (Gross weight)",
+                    "zh": "外箱尺寸/毛重"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 6,
+                "localizedItemName": "外箱尺寸/毛重",
+                "localizedItemDescription": "测量外箱尺寸和毛重",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914162176001",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "DD823B67-963A-4C89-833D-FCFE686CBA6F",
+                "itemType": "Measurements",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "length",
+                        "attrKey": {
+                            "vi": "Dài (cm)",
+                            "en": "length(CM)",
+                            "zh": "长(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "长(CM)"
+                    },
+                    {
+                        "attrId": "width",
+                        "attrKey": {
+                            "vi": "Rộng (cm)",
+                            "en": "width(CM)",
+                            "zh": "宽(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "宽(CM)"
+                    },
+                    {
+                        "attrId": "height",
+                        "attrKey": {
+                            "vi": "Cao (cm)",
+                            "en": "height(CM)",
+                            "zh": "高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "高(CM)"
+                    },
+                    {
+                        "attrId": "weight",
+                        "attrKey": {
+                            "vi": "Tổng trọng lượng (KG)",
+                            "en": "gweight(KG)",
+                            "zh": "毛重(KG)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "毛重(KG)"
+                    },
+                    {
+                        "attrId": "quantity",
+                        "attrKey": {
+                            "vi": "Số lượng từng pallet (N)",
+                            "en": "quantity/stack(N)",
+                            "zh": "每托箱数(N)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "每托箱数(N)"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Kích thước toàn bộ pallet (đóng hộp) / tổng trọng lượng",
+                    "en": "Whole stack dimension/weight (Gross weight)",
+                    "zh": "整托(箱装)尺寸/毛重"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 7,
+                "localizedItemName": "整托(箱装)尺寸/毛重",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914170564609",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "9D58854D-F8C7-4939-9FE2-6337F6AF0C94",
+                "itemType": "Measurements",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "length",
+                        "attrKey": {
+                            "vi": "Dài (cm)",
+                            "en": "length(CM)",
+                            "zh": "长(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "长(CM)"
+                    },
+                    {
+                        "attrId": "width",
+                        "attrKey": {
+                            "vi": "Rộng (cm)",
+                            "en": "width(CM)",
+                            "zh": "宽(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "宽(CM)"
+                    },
+                    {
+                        "attrId": "height",
+                        "attrKey": {
+                            "vi": "Cao (cm)",
+                            "en": "height(CM)",
+                            "zh": "高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "高(CM)"
+                    },
+                    {
+                        "attrId": "weight",
+                        "attrKey": {
+                            "vi": "Tổng trọng lượng (KG)",
+                            "en": "gweight(KG)",
+                            "zh": "毛重(KG)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "毛重(KG)"
+                    },
+                    {
+                        "attrId": "stack_quantity",
+                        "attrKey": {
+                            "vi": "Số lượng từng pallet (N)",
+                            "en": "quantity/stack(N)",
+                            "zh": "每叠箱数(N)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "每叠箱数(N)"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Các bước và chi tiết đóng gói",
+                    "en": "Stack dimension/Stack weight (Gross weight)",
+                    "zh": "叠装尺寸/毛重"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 8,
+                "localizedItemName": "叠装尺寸/毛重",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914174758914",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "2E53D3E8-34E4-4EB1-9FA3-9C3E04990760",
+                "itemType": "Measurements",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "length",
+                        "attrKey": {
+                            "vi": "Dài (cm)",
+                            "en": "length(CM)",
+                            "zh": "长(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "长(CM)"
+                    },
+                    {
+                        "attrId": "width",
+                        "attrKey": {
+                            "vi": "Rộng (cm)",
+                            "en": "width(CM)",
+                            "zh": "宽(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "宽(CM)"
+                    },
+                    {
+                        "attrId": "height",
+                        "attrKey": {
+                            "vi": "Cao (cm)",
+                            "en": "height(CM)",
+                            "zh": "高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "高(CM)"
+                    },
+                    {
+                        "attrId": "height2",
+                        "attrKey": {
+                            "vi": "Khoảng trống (cm)",
+                            "en": "height(CM)",
+                            "zh": "净空高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "净空高(CM)"
+                    },
+                    {
+                        "attrId": "weight",
+                        "attrKey": {
+                            "vi": "Trọng lượng (KG)",
+                            "en": "weight(KG)",
+                            "zh": "重量(KG)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "重量(KG)"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Kích thước / trọng lượng giá đỡ",
+                    "en": "Special pallets dimension/weight",
+                    "zh": "托架尺寸/重量"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 9,
+                "localizedItemName": "托架尺寸/重量",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914178953217",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "0AC9C9A9-15B7-400F-8AC3-4424BB0720F3",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Các bước và chi tiết đóng gói",
+                    "en": "Packing steps and details",
+                    "zh": "包装步骤/细节"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 10,
+                "localizedItemName": "包装步骤/细节",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914183147522",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "BEF3EFF2-F4F5-4EAC-BD06-EF4A70B1CD1E",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Vật liệu đóng gói (nhãn lô hàng/thẻ/văn bản cảnh báo/LOGO/nhãn dán màu/khác)",
+                    "en": "Packing materials (Product label/Hangtags/Warning labels/Logo/Color label/Others)",
+                    "zh": "包材(批次贴/吊牌/警告文字/LOGO/彩贴/其他)"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 11,
+                "localizedItemName": "包材(批次贴/吊牌/警告文字/LOGO/彩贴/其他)",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914187341825",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "87B861A5-6650-472F-969B-1000BE2197ED",
+                "itemType": "Barcodes",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": "[{\"name\":\"\",\"code\":\"wlwm_volunteer_activity:42\",\"format\":\"QR_CODE\"},{\"name\":\"测试数据\",\"code\":\"wlwm_volunteer_activity:42\",\"format\":\"QR_CODE\"}]",
+                "resultStatus": "PENDING",
+                "remarks": "212",
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Quét mã vạch thùng carton",
+                    "en": "Scan outer carton barcode",
+                    "zh": "扫描外箱条码"
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Mã vạch thùng carton xuất khẩu",
+                    "en": "Export carton barcode",
+                    "zh": "条码扫描"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 12,
+                "localizedItemName": "条码扫描",
+                "localizedItemDescription": "扫描外箱条码",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914191536130",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "74A29515-4B3D-479B-886F-6E7FCBB5A26D",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Khác",
+                    "en": "Others",
+                    "zh": "其他"
+                },
+                "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "sonPlanId": null,
+                "sortOrder": 13,
+                "localizedItemName": "其他",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914216701953",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": null,
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 20:47:58",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Kiểm tra lắp ráp KD",
+                    "en": "KD Assembly Check",
+                    "zh": "KD装配检查"
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Lắp ráp KD",
+                    "en": "KD Assembly",
+                    "zh": "KD装配"
+                },
+                "parentItemId": null,
+                "sonPlanId": null,
+                "sortOrder": 14,
+                "localizedItemName": "KD装配",
+                "localizedItemDescription": "KD装配检查",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914233479169",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "371C03D8-CF91-4822-87C2-47031AF5CA16",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "REJECTED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra sách hướng dẫn",
+                    "en": "Assembly Instruction check",
+                    "zh": "说明书检查"
+                },
+                "parentItemId": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                "sonPlanId": null,
+                "sortOrder": 15,
+                "localizedItemName": "说明书检查",
+                "localizedItemDescription": "",
+                "fileList": [
+                    {
+                        "fileId": "2050560913173422082",
+                        "fileName": "photo_1777726793549.jpg",
+                        "filePath": "/documents/inspect/checkResult/202605/725.1762.000.001/f834cccb-cbe6-46b0-8241-a788280edf8c.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/checkResult/202605/725.1762.000.001/f834cccb-cbe6-46b0-8241-a788280edf8c_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 20:59:53",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 20:59:53",
+                        "status": "0",
+                        "bizId": "2050557914233479169",
+                        "bizType": "checkResult",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914241867777",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "7D9E5F0D-2030-46D4-A013-2E67E69DF79C",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra gói phụ kiện",
+                    "en": "Screws/Components check",
+                    "zh": "配件包检查"
+                },
+                "parentItemId": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                "sonPlanId": null,
+                "sortOrder": 16,
+                "localizedItemName": "配件包检查",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914250256385",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "2FB0B775-4490-4F5A-9286-FE1CBA998884",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "REJECTED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra thành phần",
+                    "en": " Component  check",
+                    "zh": "部件检查"
+                },
+                "parentItemId": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                "sonPlanId": null,
+                "sortOrder": 17,
+                "localizedItemName": "部件检查",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914258644994",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "2FB0B775-4490-4F5A-9286-FE1CBA998894",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Gage kiểm tra",
+                    "en": "Inspection tool check",
+                    "zh": "检具检查"
+                },
+                "parentItemId": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                "sonPlanId": null,
+                "sortOrder": 18,
+                "localizedItemName": "检具检查",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914262839297",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": null,
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 20:47:58",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Kiểm tra tổng thể sản phẩm",
+                    "en": "Product overall inspection",
+                    "zh": "产品整体检查"
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra sản phẩm",
+                    "en": "Product overview",
+                    "zh": "产品检查"
+                },
+                "parentItemId": null,
+                "sonPlanId": null,
+                "sortOrder": 19,
+                "localizedItemName": "产品检查",
+                "localizedItemDescription": "产品整体检查",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914267033602",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "C77CDE9F-2982-47BE-B0E6-4AEBDAEABF22",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Ngoại quan 6 mặt của sản phẩm",
+                    "en": "Six side view of product",
+                    "zh": "主图（六面图）"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 20,
+                "localizedItemName": "主图（六面图）",
+                "localizedItemDescription": "",
+                "fileList": [
+                    {
+                        "fileId": "2050560934614704130",
+                        "fileName": "photo_1777726798684.jpg",
+                        "filePath": "/documents/inspect/checkResult/202605/725.1762.000.001/20e7a6be-3126-4b94-8aab-c8f7279b7042.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/checkResult/202605/725.1762.000.001/20e7a6be-3126-4b94-8aab-c8f7279b7042_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 20:59:59",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 20:59:59",
+                        "status": "0",
+                        "bizId": "2050557914267033602",
+                        "bizType": "checkResult",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ],
+                "isRequired": 0,
+                "isPhotoRequired": 1
+            },
+            {
+                "id": "2050557914271227906",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "3ECF7747-4B92-4462-AA22-89489E8EF654",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Hình ảnh chi tiết sản phẩm",
+                    "en": "Product detail picture",
+                    "zh": "产品细节图"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 21,
+                "localizedItemName": "产品细节图",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914275422209",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "B6FA8B15-083D-43FF-B763-661F85DF3659",
+                "itemType": "Measurements",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Đo kích thước và trọng lượng sản phẩm",
+                    "en": "Measure product dimension and net weight",
+                    "zh": "测量产品尺寸和净重"
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "length",
+                        "attrKey": {
+                            "vi": "Chiều dài sản phẩm (cm)",
+                            "en": "product length(CM)",
+                            "zh": "长(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "长(CM)"
+                    },
+                    {
+                        "attrId": "width",
+                        "attrKey": {
+                            "vi": "Chiều rộng sản phẩm",
+                            "en": "product width(CM)",
+                            "zh": "宽(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "宽(CM)"
+                    },
+                    {
+                        "attrId": "height",
+                        "attrKey": {
+                            "vi": "Chiều cao sản phẩm (cm)",
+                            "en": "product height(CM)",
+                            "zh": "高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "高(CM)"
+                    },
+                    {
+                        "attrId": "diameter",
+                        "attrKey": {
+                            "vi": "Đường kính sản phẩm (cm)",
+                            "en": "product diameter(CM)",
+                            "zh": "直径(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "直径(CM)"
+                    },
+                    {
+                        "attrId": "pweight",
+                        "attrKey": {
+                            "vi": "Trọng lượng tịnh sản phẩm (KG)",
+                            "en": "product weight(KG)",
+                            "zh": "净重(KG)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "净重(KG)"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Kích thước sản phẩm / Trọng lượng sản phẩm",
+                    "en": "Product dimension/Product weight",
+                    "zh": "产品尺寸/净重"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 22,
+                "localizedItemName": "产品尺寸/净重",
+                "localizedItemDescription": "测量产品尺寸和净重",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914275422209_2042087881782116354",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "B6FA8B15-083D-43FF-B763-661F85DF3659",
+                "itemType": "Measurements",
+                "specResult": "[{\"name\":\"21\",\"length\":\"1\",\"width\":\"21212\",\"height\":\"12\",\"diameter\":\"1221\",\"pweight\":\"12\"},{\"name\":\"1212\",\"length\":\"12\",\"width\":\"12\",\"height\":\"12\",\"diameter\":\"12\",\"pweight\":\"12\"}]",
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": "12",
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Đo kích thước và trọng lượng sản phẩm",
+                    "en": "Measure product dimension and net weight",
+                    "zh": "测量产品尺寸和净重"
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "length",
+                        "attrKey": {
+                            "vi": "Chiều dài sản phẩm (cm)",
+                            "en": "product length(CM)",
+                            "zh": "长(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "长(CM)"
+                    },
+                    {
+                        "attrId": "width",
+                        "attrKey": {
+                            "vi": "Chiều rộng sản phẩm",
+                            "en": "product width(CM)",
+                            "zh": "宽(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "宽(CM)"
+                    },
+                    {
+                        "attrId": "height",
+                        "attrKey": {
+                            "vi": "Chiều cao sản phẩm (cm)",
+                            "en": "product height(CM)",
+                            "zh": "高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "高(CM)"
+                    },
+                    {
+                        "attrId": "diameter",
+                        "attrKey": {
+                            "vi": "Đường kính sản phẩm (cm)",
+                            "en": "product diameter(CM)",
+                            "zh": "直径(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "直径(CM)"
+                    },
+                    {
+                        "attrId": "pweight",
+                        "attrKey": {
+                            "vi": "Trọng lượng tịnh sản phẩm (KG)",
+                            "en": "product weight(KG)",
+                            "zh": "净重(KG)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "净重(KG)"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Kích thước sản phẩm / Trọng lượng sản phẩm",
+                    "en": "Product dimension/Product weight",
+                    "zh": "产品尺寸/净重"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": "2042087881782116354",
+                "sortOrder": 22,
+                "localizedItemName": "产品尺寸/净重",
+                "localizedItemDescription": "测量产品尺寸和净重",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914275422209_2042087882818109442",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "B6FA8B15-083D-43FF-B763-661F85DF3659",
+                "itemType": "Measurements",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Đo kích thước và trọng lượng sản phẩm",
+                    "en": "Measure product dimension and net weight",
+                    "zh": "测量产品尺寸和净重"
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "length",
+                        "attrKey": {
+                            "vi": "Chiều dài sản phẩm (cm)",
+                            "en": "product length(CM)",
+                            "zh": "长(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "长(CM)"
+                    },
+                    {
+                        "attrId": "width",
+                        "attrKey": {
+                            "vi": "Chiều rộng sản phẩm",
+                            "en": "product width(CM)",
+                            "zh": "宽(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "宽(CM)"
+                    },
+                    {
+                        "attrId": "height",
+                        "attrKey": {
+                            "vi": "Chiều cao sản phẩm (cm)",
+                            "en": "product height(CM)",
+                            "zh": "高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "高(CM)"
+                    },
+                    {
+                        "attrId": "diameter",
+                        "attrKey": {
+                            "vi": "Đường kính sản phẩm (cm)",
+                            "en": "product diameter(CM)",
+                            "zh": "直径(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "直径(CM)"
+                    },
+                    {
+                        "attrId": "pweight",
+                        "attrKey": {
+                            "vi": "Trọng lượng tịnh sản phẩm (KG)",
+                            "en": "product weight(KG)",
+                            "zh": "净重(KG)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "净重(KG)"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Kích thước sản phẩm / Trọng lượng sản phẩm",
+                    "en": "Product dimension/Product weight",
+                    "zh": "产品尺寸/净重"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": "2042087882818109442",
+                "sortOrder": 22,
+                "localizedItemName": "产品尺寸/净重",
+                "localizedItemDescription": "测量产品尺寸和净重",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914275422209_2042087883799576577",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "B6FA8B15-083D-43FF-B763-661F85DF3659",
+                "itemType": "Measurements",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Đo kích thước và trọng lượng sản phẩm",
+                    "en": "Measure product dimension and net weight",
+                    "zh": "测量产品尺寸和净重"
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "length",
+                        "attrKey": {
+                            "vi": "Chiều dài sản phẩm (cm)",
+                            "en": "product length(CM)",
+                            "zh": "长(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "长(CM)"
+                    },
+                    {
+                        "attrId": "width",
+                        "attrKey": {
+                            "vi": "Chiều rộng sản phẩm",
+                            "en": "product width(CM)",
+                            "zh": "宽(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "宽(CM)"
+                    },
+                    {
+                        "attrId": "height",
+                        "attrKey": {
+                            "vi": "Chiều cao sản phẩm (cm)",
+                            "en": "product height(CM)",
+                            "zh": "高(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "高(CM)"
+                    },
+                    {
+                        "attrId": "diameter",
+                        "attrKey": {
+                            "vi": "Đường kính sản phẩm (cm)",
+                            "en": "product diameter(CM)",
+                            "zh": "直径(CM)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "直径(CM)"
+                    },
+                    {
+                        "attrId": "pweight",
+                        "attrKey": {
+                            "vi": "Trọng lượng tịnh sản phẩm (KG)",
+                            "en": "product weight(KG)",
+                            "zh": "净重(KG)"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "净重(KG)"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Kích thước sản phẩm / Trọng lượng sản phẩm",
+                    "en": "Product dimension/Product weight",
+                    "zh": "产品尺寸/净重"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": "2042087883799576577",
+                "sortOrder": 22,
+                "localizedItemName": "产品尺寸/净重",
+                "localizedItemDescription": "测量产品尺寸和净重",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914283810818",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "1049EFDC-E537-40DA-B686-B3A3199FFCB9",
+                "itemType": "Text",
+                "specResult": null,
+                "textContent": "[{\"name\":\"12\",\"wood_type\":\"122\",\"PS\":\"112\",\"rattan\":\"12\",\"foam\":\"12\",\"fabric\":\"12\",\"glass\":\"12\",\"spray_film_thickness\":\"12\",\"other\":\"12\"}]",
+                "barcodeValue": null,
+                "resultStatus": "REJECTED",
+                "remarks": "12",
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": "输入合格、不合格或无"
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "wood_type",
+                        "attrKey": {
+                            "vi": "Chất liệu ống ",
+                            "en": "Wood type",
+                            "zh": "管材"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "管材"
+                    },
+                    {
+                        "attrId": "PS",
+                        "attrKey": {
+                            "vi": "PS",
+                            "en": "PS",
+                            "zh": "PS"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "PS"
+                    },
+                    {
+                        "attrId": "rattan",
+                        "attrKey": {
+                            "vi": "Dây mây",
+                            "en": "Rattan",
+                            "zh": "藤条"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "藤条"
+                    },
+                    {
+                        "attrId": "foam",
+                        "attrKey": {
+                            "vi": "Xốp",
+                            "en": "Foam",
+                            "zh": "海绵"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "海绵"
+                    },
+                    {
+                        "attrId": "fabric",
+                        "attrKey": {
+                            "vi": "Liệu vải",
+                            "en": "Fabric",
+                            "zh": "面料"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "面料"
+                    },
+                    {
+                        "attrId": "glass",
+                        "attrKey": {
+                            "vi": "Kính",
+                            "en": "Glass",
+                            "zh": "玻璃"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "玻璃"
+                    },
+                    {
+                        "attrId": "spray_film_thickness",
+                        "attrKey": {
+                            "vi": "Độ dầy màng phun",
+                            "en": "Spray film thickness",
+                            "zh": "喷塑膜厚"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "喷塑膜厚"
+                    },
+                    {
+                        "attrId": "other",
+                        "attrKey": {
+                            "vi": "Khác",
+                            "en": "Other",
+                            "zh": "其他"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "其他"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Đặc điểm kỹ thuật sản phẩm",
+                    "en": "Product specification",
+                    "zh": "产品规格"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 23,
+                "localizedItemName": "产品规格",
+                "localizedItemDescription": "输入合格、不合格或无",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914329948161",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "C67485C0-B877-4F03-952F-FED89695D7ED",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "So sánh với mẫu đã được phê duyệt (kiểu dáng, độ hoàn thiện, sự thoải mái)",
+                    "en": "Compare with approved sample (style, finish, comfort)",
+                    "zh": "对比确认样（款式，表面处理，舒适度...）"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 24,
+                "localizedItemName": "对比确认样（款式，表面处理，舒适度...）",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914346725377",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "DB60800C-64DB-4E49-B0C7-B024FC56B54B",
+                "itemType": "Text",
+                "specResult": null,
+                "textContent": "[{\"name\":\"\",\"plastic_spraying\":\"\",\"cloth_cove\":\"\",\"rattan\":\"\",\"PS\":\"\",\"glass\":\"\",\"plastic_parts\":\"\"}]",
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": "输入合格、不合格或无"
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "plastic_spraying",
+                        "attrKey": {
+                            "vi": "Màng phun",
+                            "en": "Plastic spraying",
+                            "zh": "喷塑"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "喷塑"
+                    },
+                    {
+                        "attrId": "cloth_cove",
+                        "attrKey": {
+                            "vi": "Mặt vải",
+                            "en": "Cloth cove",
+                            "zh": "布面"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "布面"
+                    },
+                    {
+                        "attrId": "rattan",
+                        "attrKey": {
+                            "vi": "Dây mây",
+                            "en": "Rattan",
+                            "zh": "藤条"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "藤条"
+                    },
+                    {
+                        "attrId": "PS",
+                        "attrKey": {
+                            "vi": "Thanh PS",
+                            "en": "PS strip",
+                            "zh": "PS条"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "PS条"
+                    },
+                    {
+                        "attrId": "glass",
+                        "attrKey": {
+                            "vi": "Kính",
+                            "en": "Glass",
+                            "zh": "玻璃"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "玻璃"
+                    },
+                    {
+                        "attrId": "plastic_parts",
+                        "attrKey": {
+                            "vi": "Phụ kiện nhựa",
+                            "en": "Plastic parts",
+                            "zh": "塑料件"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "塑料件"
+                    }
+                ],
+                "itemName": {
+                    "vi": "So sánh lớp sơn hoàn thiện với mẫu màu đã được phê duyệt",
+                    "en": "Compare finish with approved color swatch",
+                    "zh": "对比颜色样"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 25,
+                "localizedItemName": "对比颜色样",
+                "localizedItemDescription": "输入合格、不合格或无",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914359308289",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "DC26A57E-8D30-4718-B36E-46CC43D9AD28",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra chức năng",
+                    "en": "Function Check",
+                    "zh": "功能检查"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 26,
+                "localizedItemName": "功能检查",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914363502593",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "AB4BEBA6-FA38-4831-BBF9-24B0BCC35FEC",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Sản phẩm mẫu",
+                    "en": "Sample product",
+                    "zh": "抽样产品---必检项"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 27,
+                "localizedItemName": "抽样产品---必检项",
+                "localizedItemDescription": "",
+                "fileList": [
+                    {
+                        "fileId": "2050561197580787713",
+                        "fileName": "photo_1777726861407.jpg",
+                        "filePath": "/documents/inspect/checkResult/202605/725.1762.000.001/61db8518-da58-4f39-8639-bdf7c898c494.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/checkResult/202605/725.1762.000.001/61db8518-da58-4f39-8639-bdf7c898c494_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:01:01",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:01:01",
+                        "status": "0",
+                        "bizId": "2050557914363502593",
+                        "bizType": "checkResult",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ],
+                "isRequired": 0,
+                "isPhotoRequired": 1
+            },
+            {
+                "id": "2050557914376085506",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "58BF2C53-BCFF-4D7E-AFE4-77214B70732D",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Dòng sản phẩm",
+                    "en": "Product consistency",
+                    "zh": "产品一字排开图"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 28,
+                "localizedItemName": "产品一字排开图",
+                "localizedItemDescription": "",
+                "fileList": [
+                    {
+                        "fileId": "2050561187640287233",
+                        "fileName": "photo_1777726858924.jpg",
+                        "filePath": "/documents/inspect/checkResult/202605/725.1762.000.001/aa9fa732-11c9-4447-a382-5b211a891aad.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/checkResult/202605/725.1762.000.001/aa9fa732-11c9-4447-a382-5b211a891aad_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:00:59",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:00:59",
+                        "status": "0",
+                        "bizId": "2050557914376085506",
+                        "bizType": "checkResult",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ],
+                "isRequired": 0,
+                "isPhotoRequired": 1
+            },
+            {
+                "id": "2050557914380279809",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "6CCF326D-7A39-4808-8E3F-DF75B3D47FF3",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra khác",
+                    "en": "Other check",
+                    "zh": "其他"
+                },
+                "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "sonPlanId": null,
+                "sortOrder": 29,
+                "localizedItemName": "其他",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914388668417",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": null,
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 20:47:58",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Các hạng mục kiểm tra tại chỗ",
+                    "en": "On-site testing items",
+                    "zh": "现场测试项目"
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Test kiểm tra",
+                    "en": "Onsite Test",
+                    "zh": "测试"
+                },
+                "parentItemId": null,
+                "sonPlanId": null,
+                "sortOrder": 30,
+                "localizedItemName": "测试",
+                "localizedItemDescription": "现场测试项目",
+                "fileList": [],
+                "isRequired": 0,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914388668418",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "4955B7BE-05A8-44AF-8F5F-82936370B2D4",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Tải tĩnh",
+                    "en": "Load test",
+                    "zh": "静载"
+                },
+                "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                "sonPlanId": null,
+                "sortOrder": 31,
+                "localizedItemName": "静载",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914397057026",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "5F782A92-264E-4AE3-8D6A-2BC465D180A5",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra va chạm",
+                    "en": "Impact test",
+                    "zh": "冲击"
+                },
+                "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                "sonPlanId": null,
+                "sortOrder": 32,
+                "localizedItemName": "冲击",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914401251330",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "A916912C-BBD2-444B-AD28-76A0C8F6E7F6",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra an toàn",
+                    "en": "Safety check",
+                    "zh": "安规"
+                },
+                "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                "sonPlanId": null,
+                "sortOrder": 33,
+                "localizedItemName": "安规",
+                "localizedItemDescription": "",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914405445634",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "46FE39E0-47FD-4331-8598-DB5DD2836C9C",
+                "itemType": "Text",
+                "specResult": null,
+                "textContent": "[{\"name\":\"\",\"cloth_waterproof\":\"\",\"wet_dry_cloth_wipe\":\"\",\"cloth_seam_strength\":\"\",\"spray_adhesion\":\"\",\"spray_dry_wet_wipe\":\"\",\"rattan_tension\":\"\",\"cane_ductility\":\"\",\"rubbing_fastness_of_ps_strip\":\"\",\"glass_toughening_effect_test\":\"\",\"ps_strip_nail_pulling_force\":\"\"}]",
+                "barcodeValue": null,
+                "resultStatus": "PENDING",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "Đạt、Không Đạt、Không",
+                    "en": "",
+                    "zh": "输入合格、不合格或无"
+                },
+                "specAttributes": [
+                    {
+                        "attrId": "name",
+                        "attrKey": {
+                            "vi": "tên hộp",
+                            "en": "name",
+                            "zh": "名称"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "名称"
+                    },
+                    {
+                        "attrId": "cloth_waterproof",
+                        "attrKey": {
+                            "vi": "Mặt vải chống nước",
+                            "en": "Cloth waterproof",
+                            "zh": "布面防水"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "布面防水"
+                    },
+                    {
+                        "attrId": "wet_dry_cloth_wipe",
+                        "attrKey": {
+                            "vi": "Lau ướt và lau khô trên vải",
+                            "en": "Wet and dry cloth wipe",
+                            "zh": "布面干湿擦"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "布面干湿擦"
+                    },
+                    {
+                        "attrId": "cloth_seam_strength",
+                        "attrKey": {
+                            "vi": "Độ bền của đường may",
+                            "en": "Cloth seam strength",
+                            "zh": "布面拼缝强度"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "布面拼缝强度"
+                    },
+                    {
+                        "attrId": "spray_adhesion",
+                        "attrKey": {
+                            "vi": "Keo phun nhựa",
+                            "en": "Spray adhesion",
+                            "zh": "喷塑附着力"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "喷塑附着力"
+                    },
+                    {
+                        "attrId": "spray_dry_wet_wipe",
+                        "attrKey": {
+                            "vi": "Xịt khô và lau ướt",
+                            "en": "Spray dry and wet wipe",
+                            "zh": "喷塑干湿擦"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "喷塑干湿擦"
+                    },
+                    {
+                        "attrId": "rattan_tension",
+                        "attrKey": {
+                            "vi": "Lực kéo sợi mây",
+                            "en": "Rattan tension",
+                            "zh": "藤条拉力"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "藤条拉力"
+                    },
+                    {
+                        "attrId": "cane_ductility",
+                        "attrKey": {
+                            "vi": "Khả năng dãn mây",
+                            "en": "Cane ductility",
+                            "zh": "藤条延展性"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "藤条延展性"
+                    },
+                    {
+                        "attrId": "rubbing_fastness_of_ps_strip",
+                        "attrKey": {
+                            "vi": "Độ bền cọ xát của dải PS",
+                            "en": "Rubbing fastness of PS strip",
+                            "zh": "PS条摩擦牢度"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "PS条摩擦牢度"
+                    },
+                    {
+                        "attrId": "glass_toughening_effect_test",
+                        "attrKey": {
+                            "vi": "Kiểm tra hiệu ứng cường lực kính",
+                            "en": "Glass toughening effect test",
+                            "zh": "玻璃钢化效果测试"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "玻璃钢化效果测试"
+                    },
+                    {
+                        "attrId": "ps_strip_nail_pulling_force",
+                        "attrKey": {
+                            "vi": "Lực rút đinh dải PS",
+                            "en": "PS strip nail pulling force",
+                            "zh": "PS条拔钉力"
+                        },
+                        "value": null,
+                        "unit": null,
+                        "sortOrder": null,
+                        "displayName": "PS条拔钉力"
+                    }
+                ],
+                "itemName": {
+                    "vi": "Kiểm tra Nguyên vật liệu (vật lý)",
+                    "en": "Raw Materials Test（Physics）",
+                    "zh": "原材料测试(物理)"
+                },
+                "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                "sonPlanId": null,
+                "sortOrder": 34,
+                "localizedItemName": "原材料测试(物理)",
+                "localizedItemDescription": "输入合格、不合格或无",
+                "fileList": [],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914409639938",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "0DA454B2-962B-48FD-9B02-FBF21E8F03FE",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "NA",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Kiểm tra Nguyên vật liệu (hoá học)",
+                    "en": "Raw Materials Test（Chemistry）",
+                    "zh": "原材料测试(化学)"
+                },
+                "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                "sonPlanId": null,
+                "sortOrder": 35,
+                "localizedItemName": "原材料测试(化学)",
+                "localizedItemDescription": "",
+                "fileList": [
+                    {
+                        "fileId": "2050561209664577537",
+                        "fileName": "photo_1777726864260.jpg",
+                        "filePath": "/documents/inspect/checkResult/202605/725.1762.000.001/e4d11ebe-faa7-4fed-a868-16799b1ff325.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/checkResult/202605/725.1762.000.001/e4d11ebe-faa7-4fed-a868-16799b1ff325_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:01:04",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:01:04",
+                        "status": "0",
+                        "bizId": "2050557914409639938",
+                        "bizType": "checkResult",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ],
+                "isRequired": 1,
+                "isPhotoRequired": 0
+            },
+            {
+                "id": "2050557914413834241",
+                "reportId": "2050557914086678530",
+                "planId": "2042087883799576577",
+                "standardItemId": "80221073-AD4F-4AB6-A245-5A693820BEE9",
+                "itemType": "Standard",
+                "specResult": null,
+                "textContent": null,
+                "barcodeValue": null,
+                "resultStatus": "APPROVED",
+                "remarks": null,
+                "createDate": "2026-05-02 20:47:58",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "itemDescription": {
+                    "vi": "",
+                    "en": "",
+                    "zh": ""
+                },
+                "specAttributes": null,
+                "itemName": {
+                    "vi": "Tài liệu giám định. kiểm tra",
+                    "en": "Inspection doc. check",
+                    "zh": "验货资料核对"
+                },
+                "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                "sonPlanId": null,
+                "sortOrder": 36,
+                "localizedItemName": "验货资料核对",
+                "localizedItemDescription": "",
+                "fileList": [
+                    {
+                        "fileId": "2050561238924042241",
+                        "fileName": "photo_1777726871250.jpg",
+                        "filePath": "/documents/inspect/checkResult/202605/725.1762.000.001/3b27ff1b-1987-43e3-8289-fd82c079e6c3.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/checkResult/202605/725.1762.000.001/3b27ff1b-1987-43e3-8289-fd82c079e6c3_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:01:11",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:01:11",
+                        "status": "0",
+                        "bizId": "2050557914413834241",
+                        "bizType": "checkResult",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ],
+                "isRequired": 1,
+                "isPhotoRequired": 1
+            }
+        ],
+        "defectRecords": [
+            {
+                "id": "7d57b2c4-bb2e-4ecd-856a-ef1a2dfdab59",
+                "planId": "2042087883799576577",
+                "itemResultId": null,
+                "defectLevel": "minor",
+                "defectCode": "FAS-1",
+                "defectDesc": "组装孔错位",
+                "defectPosition": "产品规格",
+                "quantity": 1,
+                "commonFlag": 0,
+                "createDate": "2026-05-02 21:00:45",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "sonPlanId": null,
+                "fileList": [
+                    {
+                        "fileId": "2050561126810296321",
+                        "fileName": "photo_1777726843371.jpg",
+                        "filePath": "/documents/inspect/defect/202605/725.1762.000.001/04746681-ef1d-42d0-89ef-cd7bb2ff4995.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/defect/202605/725.1762.000.001/04746681-ef1d-42d0-89ef-cd7bb2ff4995_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:00:44",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:00:44",
+                        "status": "0",
+                        "bizId": "7d57b2c4-bb2e-4ecd-856a-ef1a2dfdab59",
+                        "bizType": "defect",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ]
+            },
+            {
+                "id": "d6c29d71-4422-43d3-a7af-c875ca847b15",
+                "planId": "2042087883799576577",
+                "itemResultId": null,
+                "defectLevel": "critical",
+                "defectCode": "IFFN-2",
+                "defectDesc": "生锈/氧化",
+                "defectPosition": "",
+                "quantity": 2,
+                "commonFlag": 0,
+                "createDate": "2026-05-02 21:02:20",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "sonPlanId": null,
+                "fileList": [
+                    {
+                        "fileId": "2050561525587943425",
+                        "fileName": "photo_1777726939570.jpg",
+                        "filePath": "/documents/inspect/defect/202605/725.1762.000.001/a33e4538-35c9-4b59-a6ed-bef5c0bfc371.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/defect/202605/725.1762.000.001/a33e4538-35c9-4b59-a6ed-bef5c0bfc371_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:02:19",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:02:19",
+                        "status": "0",
+                        "bizId": "d6c29d71-4422-43d3-a7af-c875ca847b15",
+                        "bizType": "defect",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ]
+            },
+            {
+                "id": "90f119fb-bafe-4d75-96cf-24250eb8d627",
+                "planId": "2042087883799576577",
+                "itemResultId": null,
+                "defectLevel": "major",
+                "defectCode": "IFFN-2",
+                "defectDesc": "生锈/氧化",
+                "defectPosition": "",
+                "quantity": 0,
+                "commonFlag": 1,
+                "createDate": "2026-05-02 21:02:30",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "sonPlanId": null,
+                "fileList": [
+                    {
+                        "fileId": "2050561567237382146",
+                        "fileName": "photo_1777726949408.jpg",
+                        "filePath": "/documents/inspect/defect/202605/725.1762.000.001/241bf8dc-1b5d-4d5e-8168-cf4c159e6adc.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/defect/202605/725.1762.000.001/241bf8dc-1b5d-4d5e-8168-cf4c159e6adc_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:02:29",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:02:29",
+                        "status": "0",
+                        "bizId": "90f119fb-bafe-4d75-96cf-24250eb8d627",
+                        "bizType": "defect",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ]
+            },
+            {
+                "id": "b117327a-6e37-4235-8377-334c2d72a8e5",
+                "planId": "2042087883799576577",
+                "itemResultId": null,
+                "defectLevel": "major",
+                "defectCode": "IFFN-2",
+                "defectDesc": "生锈/氧化",
+                "defectPosition": "说明书检查",
+                "quantity": 4,
+                "commonFlag": 0,
+                "createDate": "2026-05-02 21:02:57",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "sonPlanId": null,
+                "fileList": [
+                    {
+                        "fileId": "2050561681393754113",
+                        "fileName": "photo_1777726976656.jpg",
+                        "filePath": "/documents/inspect/defect/202605/725.1760.000.001/33864133-429e-45d5-9d7c-291ca675b1ca.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/defect/202605/725.1760.000.001/33864133-429e-45d5-9d7c-291ca675b1ca_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:02:57",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:02:57",
+                        "status": "0",
+                        "bizId": "b117327a-6e37-4235-8377-334c2d72a8e5",
+                        "bizType": "defect",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ]
+            },
+            {
+                "id": "6b596b1c-48d9-4a0e-8d4a-8ee31bb0ce19",
+                "planId": "2042087883799576577",
+                "itemResultId": null,
+                "defectLevel": "critical",
+                "defectCode": "IFFN-2",
+                "defectDesc": "生锈/氧化",
+                "defectPosition": "部件检查",
+                "quantity": 0,
+                "commonFlag": 1,
+                "createDate": "2026-05-02 21:03:10",
+                "createBy": "system",
+                "updateDate": "2026-05-02 21:03:31",
+                "updateBy": "system",
+                "sonPlanId": null,
+                "fileList": [
+                    {
+                        "fileId": "2050561735152148482",
+                        "fileName": "photo_1777726989547.jpg",
+                        "filePath": "/documents/inspect/defect/202605/725.1760.000.001/f62cf1c6-db3d-4227-8566-9ec0bf5f4407.jpg",
+                        "fileSize": 235124,
+                        "fileType": "image/jpeg",
+                        "fileExt": "jpg",
+                        "thumbnailPath": "/documents/inspect/defect/202605/725.1760.000.001/f62cf1c6-db3d-4227-8566-9ec0bf5f4407_thumb.jpg",
+                        "ftpServer": "192.168.0.3:21",
+                        "uploadStatus": "SUCCESS",
+                        "remarks": null,
+                        "createBy": "system",
+                        "createDate": "2026-05-02 21:03:09",
+                        "updateBy": "system",
+                        "updateDate": "2026-05-02 21:03:09",
+                        "status": "0",
+                        "bizId": "6b596b1c-48d9-4a0e-8d4a-8ee31bb0ce19",
+                        "bizType": "defect",
+                        "googsNo": null,
+                        "sortNo": 1,
+                        "deleted": false,
+                        "image": true,
+                        "uploadSuccess": true
+                    }
+                ]
+            }
+        ],
+        "inspectionPlans": [
+            {
+                "id": "2042087881782116354",
+                "domeNo": "254690",
+                "subGoodsNo": "725.1760.000.001",
+                "batchNo": "4",
+                "goodsName": "巴林顿全铁可拆单人转角沙发（国产面料）",
+                "clientOrderNo": "01430042",
+                "goodsCname": "巴林顿全铁可拆单人转角沙发（国产面料）\r\n产品尺寸：(D)990*(W)1700*(H)850MM\r\n全铁骨架，电泳+优质室外粉喷塑，座背满编。前后脚为方形塑料脚+调节脚垫。配座背垫\r\n净重：\r\n1PC/CTN",
+                "requiredQuantity": 235,
+                "deliveryDate": "2026-01-28",
+                "companyNo": "ZYGF",
+                "factoryNo": "ZJLJ",
+                "factoryName": "浙江乐居户外用品有限公司",
+                "clientNo": "CTHK",
+                "clientName": "CANADIAN TIRE CORPORTATION LTD",
+                "purchaseUserId": "11639",
+                "purchaseUser": "张婷",
+                "purchaseUserEmail": "Shirley.Zhang@letright.com",
+                "salesUserId": "322261",
+                "salesUser": "胡敬东",
+                "salesUserEmail": null,
+                "qcmLeaderId": "42572",
+                "qcmLeader": "张蓉",
+                "qcmLeaderEmail": "",
+                "goodsClass": "户外家具",
+                "goodsFlag": 1,
+                "inspectType": "最终验货",
+                "status": 3,
+                "sourceType": 1,
+                "parentPlanId": "2042087883799576577",
+                "mergeType": 2,
+                "inspectorId": "11928",
+                "inspectorName": "曾贤伟",
+                "lockFlag": 1,
+                "lockedAt": "2026-05-02 20:47:58",
+                "templateId": "7B2B9296-9183-451D-A3F9-3115100231EB",
+                "templateName": "户外家具",
+                "inspectionLevel": "G-I",
+                "sampleCode": "E",
+                "sampleSize": 13,
+                "criticalAql": 0.00,
+                "criticalAc": 0,
+                "criticalRe": 1,
+                "majorAql": 1.50,
+                "majorAc": 1,
+                "majorRe": 2,
+                "minorAql": 4.00,
+                "minorAc": 3,
+                "minorRe": 4,
+                "createDate": "2026-04-09 11:51:05",
+                "createBy": "system",
+                "updateDate": "2026-04-09 11:51:05",
+                "updateBy": "system"
+            },
+            {
+                "id": "2042087882818109442",
+                "domeNo": "254690",
+                "subGoodsNo": "725.1761.000.001",
+                "batchNo": "4",
+                "goodsName": "巴林顿全铁可拆双人右扶手沙发（国产面料）",
+                "clientOrderNo": "01430042",
+                "goodsCname": "巴林顿全铁可拆双人右扶手沙发（国产面料）\r\n产品尺寸：(D)900*(W)1370*(H)850MM\r\n全铁骨架，电泳+优质室外粉喷塑，扶手满编，两侧+绞线，座背满编。前后脚为方形塑料脚+调节脚垫。配座背垫\r\n净重：\r\n1PCS/CTN",
+                "requiredQuantity": 235,
+                "deliveryDate": "2026-01-28",
+                "companyNo": "ZYGF",
+                "factoryNo": "ZJLJ",
+                "factoryName": "浙江乐居户外用品有限公司",
+                "clientNo": "CTHK",
+                "clientName": "CANADIAN TIRE CORPORTATION LTD",
+                "purchaseUserId": "11639",
+                "purchaseUser": "张婷",
+                "purchaseUserEmail": "Shirley.Zhang@letright.com",
+                "salesUserId": "322261",
+                "salesUser": "胡敬东",
+                "salesUserEmail": null,
+                "qcmLeaderId": "42572",
+                "qcmLeader": "张蓉",
+                "qcmLeaderEmail": "",
+                "goodsClass": "户外家具",
+                "goodsFlag": 1,
+                "inspectType": "最终验货",
+                "status": 3,
+                "sourceType": 1,
+                "parentPlanId": "2042087883799576577",
+                "mergeType": 2,
+                "inspectorId": "11928",
+                "inspectorName": "曾贤伟",
+                "lockFlag": 1,
+                "lockedAt": "2026-05-02 20:47:58",
+                "templateId": "7B2B9296-9183-451D-A3F9-3115100231EB",
+                "templateName": "户外家具",
+                "inspectionLevel": "G-I",
+                "sampleCode": "E",
+                "sampleSize": 13,
+                "criticalAql": 0.00,
+                "criticalAc": 0,
+                "criticalRe": 1,
+                "majorAql": 1.50,
+                "majorAc": 1,
+                "majorRe": 2,
+                "minorAql": 4.00,
+                "minorAc": 3,
+                "minorRe": 4,
+                "createDate": "2026-04-09 11:51:06",
+                "createBy": "system",
+                "updateDate": "2026-04-09 11:51:06",
+                "updateBy": "system"
+            },
+            {
+                "id": "2042087883799576577",
+                "domeNo": "254690",
+                "subGoodsNo": "725.1762.000.001",
+                "batchNo": "4",
+                "goodsName": "巴林顿全铁可拆双人左扶手沙发（国产面料）",
+                "clientOrderNo": "01430042",
+                "goodsCname": "巴林顿全铁可拆双人左扶手沙发（国产面料）\r\n产品尺寸：(D)900*(W)1370*(H)850MM\r\n全铁骨架，电泳+优质室外粉喷塑，扶手满编，两侧+绞线，座背满编。前后脚为方形塑料脚+调节脚垫。配座背垫\r\n净重：\r\n1PCS/CTN",
+                "requiredQuantity": 235,
+                "deliveryDate": "2026-01-28",
+                "companyNo": "ZYGF",
+                "factoryNo": "ZJLJ",
+                "factoryName": "浙江乐居户外用品有限公司",
+                "clientNo": "CTHK",
+                "clientName": "CANADIAN TIRE CORPORTATION LTD",
+                "purchaseUserId": "11639",
+                "purchaseUser": "张婷",
+                "purchaseUserEmail": "Shirley.Zhang@letright.com",
+                "salesUserId": "322261",
+                "salesUser": "胡敬东",
+                "salesUserEmail": null,
+                "qcmLeaderId": "42572",
+                "qcmLeader": "张蓉",
+                "qcmLeaderEmail": "",
+                "goodsClass": "户外家具",
+                "goodsFlag": 1,
+                "inspectType": "最终验货",
+                "status": 3,
+                "sourceType": 1,
+                "parentPlanId": "2042087883799576577",
+                "mergeType": 2,
+                "inspectorId": "11928",
+                "inspectorName": "曾贤伟",
+                "lockFlag": 1,
+                "lockedAt": "2026-05-02 20:47:58",
+                "templateId": "7B2B9296-9183-451D-A3F9-3115100231EB",
+                "templateName": "户外家具",
+                "inspectionLevel": "G-I",
+                "sampleCode": "E",
+                "sampleSize": 13,
+                "criticalAql": 0.00,
+                "criticalAc": 0,
+                "criticalRe": 1,
+                "majorAql": 1.50,
+                "majorAc": 1,
+                "majorRe": 2,
+                "minorAql": 4.00,
+                "minorAc": 3,
+                "minorRe": 4,
+                "createDate": "2026-04-09 11:51:06",
+                "createBy": "system",
+                "updateDate": "2026-04-09 11:51:06",
+                "updateBy": "system"
+            }
+        ],
+        "totalItems": 42,
+        "passedItems": 32,
+        "failedItems": 10,
+        "template": null,
+        "standardItems": null,
+        "criticalCount": 0,
+        "majorCount": 0,
+        "minorCount": 0,
+        "totalDefects": 0
+    },
+    "timestamp": 1777732658766,
+    "success": true
+}

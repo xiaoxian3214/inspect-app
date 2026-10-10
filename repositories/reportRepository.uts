@@ -10,6 +10,12 @@ function parseJson(value) {
   }
 }
 
+/** 从历史下载记录的多种字段位置选取首个非空卡片展示值。 */
+function firstNonEmptyField(values) {
+  const found = values.find((value) => value !== undefined && value !== null && value !== '')
+  return found === undefined ? '' : found
+}
+
 /**
  * 从下载计划的多种 H5 数据结构中提取稳定的本地计划主键。
  */
@@ -104,14 +110,22 @@ function restorePhotoOwner(detail, photo) {
 }
 
 /**
- * 将数据库报告行转换为 H5 列表使用的轻量计划摘要，并用数据库列回填缺失展示字段。
+ * 从下载时的完整卡片快照构建离线摘要，保留所有列表字段并以本地详情和状态为准。
  */
 function summarizeReportRow(row) {
   const jsonData = parseJson(row?.jsonData)
-  const plan = jsonData?.plan != null && typeof jsonData.plan === 'object' ? jsonData.plan : {}
+  const sourceCard = jsonData?.listCard != null && typeof jsonData.listCard === 'object' ? jsonData.listCard : {}
+  const sourcePlan = sourceCard?.plan != null && typeof sourceCard.plan === 'object' ? sourceCard.plan : sourceCard
+  const storedPlan = jsonData?.plan != null && typeof jsonData.plan === 'object' ? jsonData.plan : {}
+  const plan = { ...sourcePlan, ...storedPlan }
+  Object.keys(sourcePlan).forEach((field) => {
+    if (field === 'id' || field === 'planId') return
+    if (plan[field] === undefined || plan[field] === null || plan[field] === '') plan[field] = sourcePlan[field]
+  })
   const planId = String(row?.reportId ?? plan?.id ?? plan?.planId ?? '')
   const remoteReportId = String(jsonData?.report?.id ?? '').trim()
   return {
+    ...sourceCard,
     id: plan?.id || planId,
     planId,
     reportId: remoteReportId || planId,
@@ -124,17 +138,19 @@ function summarizeReportRow(row) {
     lockerId: row?.lockerId ?? '',
     lockExpireAt: row?.lockExpireAt ?? '',
     plan: {
+      ...plan,
       id: plan?.id || planId,
       planId: plan?.planId || planId,
       reportId: (plan?.reportId || jsonData?.reportId || remoteReportId) ?? '',
       clientOrderNo: (plan?.clientOrderNo || row?.orderNo || jsonData?.clientOrderNo) ?? '',
-      domeNo: (plan?.domeNo || jsonData?.domeNo) ?? '',
-      factoryName: (plan?.factoryName || jsonData?.factoryName) ?? '',
+      domeNo: firstNonEmptyField([plan?.domeNo, jsonData?.domeNo, jsonData?.raw?.domeNo]),
+      factoryName: firstNonEmptyField([plan?.factoryName, plan?.supplierName, jsonData?.factoryName, jsonData?.supplierName, jsonData?.raw?.factoryName, jsonData?.raw?.supplierName]),
       goodsName: (plan?.goodsName || plan?.goodsCname || row?.productName || jsonData?.productName) ?? '',
       goodsCname: plan?.goodsCname ?? '',
       subGoodsNo: plan?.subGoodsNo ?? '',
       batchNo: plan?.batchNo ?? '',
-      inspectType: (plan?.inspectType || jsonData?.inspectType) ?? '',
+      inspectType: firstNonEmptyField([plan?.inspectType, jsonData?.inspectType, jsonData?.raw?.inspectType]),
+      inspectTypeName: firstNonEmptyField([plan?.inspectTypeName, jsonData?.inspectTypeName, jsonData?.raw?.inspectTypeName]),
       templateId: (plan?.templateId || jsonData?.templateId) ?? '',
       templateName: (plan?.templateName || jsonData?.templateName) ?? '',
       createDate: (plan?.createDate || jsonData?.createdAt || row?.downloadAt) ?? '',
@@ -352,6 +368,7 @@ export function createReportRepository(database) {
       })
       const parentPlanId = String(detail?.plan?.parentPlanId ?? '').trim()
       const reportEntityId = String(detail?.report?.id ?? '').trim()
+      const sharedPlanIds = new Set([normalizedPlanId])
       if (Number(detail?.plan?.mergeType ?? 0) === 2 && parentPlanId !== '' && reportEntityId !== '' && (detail?.inspectionPlans ?? []).length > 1) {
         const groupPlanIds = new Set(detail.inspectionPlans.map((plan) => String(plan?.id ?? plan?.planId ?? '')))
         const sharedPhotoIds = new Set(detail.photos.map((photo) => String(photo?.photoId ?? photo?.id ?? '')))
@@ -360,6 +377,7 @@ export function createReportRepository(database) {
           if (siblingPlanId === normalizedPlanId || !groupPlanIds.has(siblingPlanId)) return
           const sibling = parseJson(row?.jsonData)
           if (String(sibling?.plan?.parentPlanId ?? '') !== parentPlanId || String(sibling?.report?.id ?? '') !== reportEntityId) return
+          sharedPlanIds.add(siblingPlanId)
           const shared = {
             ...detail,
             id: sibling?.id ?? siblingPlanId,
@@ -413,6 +431,9 @@ export function createReportRepository(database) {
       transaction.removeWhere('photo', (row) => String(row?.reportId ?? '') === normalizedPlanId)
       detail.photos.forEach((photo, index) => {
         const sourcePhotoId = String(photo?.photoId ?? photo?.id ?? `local-${index}`)
+        const ownedBySibling = transaction.read('photo').some((row) => sharedPlanIds.has(String(row?.reportId ?? ''))
+          && String(row?.reportId ?? '') !== normalizedPlanId && String(row?.sourcePhotoId ?? '') === sourcePhotoId)
+        if (ownedBySibling) return
         transaction.upsert('photo', 'photoId', {
           photoId: `${normalizedPlanId}::${sourcePhotoId}`,
           sourcePhotoId,

@@ -14,6 +14,8 @@ test('Chinese, English and Vietnamese translate inspection copy', async () => {
   assert.equal(normalizeLocale('fr-FR'), 'zh')
   assert.equal(translate('未收录文案', 'en'), '未收录文案')
   assert.equal(translate('已选 {count} 条', 'en', { count: 3 }), 'Selected 3 items')
+  assert.equal(translate('仍有 2 张图片未上传完成，请联网后重试', 'en'), '2 photos are not uploaded. Connect and try again.')
+  assert.equal(translate('仍有 1 个必填检查项未完成', 'vi'), 'Còn 1 mục kiểm tra bắt buộc chưa hoàn thành')
 })
 
 test('login and task list share reactive locale and keep API language synchronized', async () => {

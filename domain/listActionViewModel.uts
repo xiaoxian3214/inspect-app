@@ -31,10 +31,10 @@ export function buildFabActions(statusKey) {
 }
 
 /**
- * 根据本地下载记录、锁状态和当前用户计算计划的下载状态。
+ * 根据本机缓存、锁状态和当前用户计算下载状态，忽略线上下载时间。
  */
 export function resolveDownloadState(options: any = {}) {
-  if (options?.isLocalDownloaded === true || Boolean(options?.downloadedAt)) return 'downloaded'
+  if (options?.isLocalDownloaded === true) return 'downloaded'
   if (Number(options?.lockFlag ?? 0) !== 1) return 'available'
 
   const inspectorId = String(options?.inspectorId ?? '').trim()
@@ -69,15 +69,16 @@ export function buildCardActions(options: any = {}) {
 }
 
 /**
- * 未缓存的线上卡片先恢复完整详情；已缓存计划沿用原有操作分流。
+ * 优先处理合并和报告；非本机下载的任务不得绕过下载确认进入详情。
  */
 export function resolveCardClickAction(options: any = {}) {
   if (options?.selectionMode === true) return 'toggle-merge'
+  if (Number(options?.status ?? 0) === 3) return 'open-actions'
   const downloadState = String(options?.downloadState ?? 'available')
   if (options?.isLocalDownloaded !== true) {
-    return downloadState === 'locked' ? 'open-actions' : 'recover-detail'
+    if (downloadState === 'locked') return 'open-actions'
+    return options?.manageActionsInCard === true ? 'open-download' : 'request-download'
   }
-  if (Number(options?.status ?? 0) === 3) return 'open-actions'
   return 'open-detail'
 }
 

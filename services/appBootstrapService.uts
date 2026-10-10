@@ -1,5 +1,4 @@
-import { initializeRuntime, restoreSession, syncOfflineDataAutomatically } from '../runtime/appRuntime.uts'
-import { getAppSetting } from '../runtime/appRuntime.uts'
+import { getAppSetting, initializeRuntime, restoreSession, syncOfflineDataAutomatically } from '../runtime/appRuntime.uts'
 import { applyLocale } from '../i18n/index.uts'
 
 let networkListenerStarted = false

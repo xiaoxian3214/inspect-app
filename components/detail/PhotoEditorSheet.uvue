@@ -3,7 +3,7 @@
 		<view class="editor" @click.stop="stopEvent">
 			<video v-if="isVideo" class="preview-video" :src="videoSource" />
 			<InspectionMediaImage v-else class="preview" :media="photo" view-mode="preview" image-mode="aspectFit" />
-			<view class="meta"><text>{{ metaLabel }}</text></view>
+			<view class="meta"><text>{{ t(metaLabel) }}</text></view>
 			<view class="actions">
 				<button class="button close-button" @click="closeSheet">{{ t('关闭') }}</button>
 				<button class="button delete-button" @click="deletePhoto">{{ t(isVideo ? '删除视频' : '删除图片') }}</button>

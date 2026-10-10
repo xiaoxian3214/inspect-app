@@ -9,7 +9,7 @@
 				</view>
 				<scroll-view class="dialog-body" scroll-y="true">
 					<view class="section media-section"><text class="label">{{ t('媒体库') }}</text><InspectionMediaGrid :photos="draft.photos" add-label="拍照" @capture-media="addPhoto" @remove-media="removePhoto" @preview-media="previewPhoto" @retry-media="retryPhoto" /></view>
-						<view class="section"><text class="label">{{ t('严重性') }}</text><view class="severity-row"><AppButton v-for="option in levels" :key="option.value" class="severity-option" :selected="draft.type === option.value" :label-color="draft.type === option.value ? '#16a34a' : '#334155'" @press="selectSeverity(option.value)">{{ option.label }}</AppButton></view></view>
+						<view class="section"><text class="label">{{ t('严重性') }}</text><view class="severity-row"><AppButton v-for="option in levels" :key="option.value" class="severity-option" :selected="draft.type === option.value" :label-color="draft.type === option.value ? '#16a34a' : '#334155'" @press="selectSeverity(option.value)">{{ t(option.label) }}</AppButton></view></view>
 						<view class="section"><text class="label">{{ t('受影响的产品数量') }}</text><scroll-view class="quantity-scroll" scroll-x="true"><view class="quantity-row" :class="{ disabled: draft.commonFlag === 1 }"><AppButton v-for="quantity in 19" :key="quantity" class="qty-item" :selected="draft.quantity === quantity" :label-color="draft.quantity === quantity ? '#1d4ed8' : '#334155'" @press="selectQuantity(quantity)">{{ quantity }}</AppButton><AppButton class="qty-other" :selected="draft.quantity === 'other'" :label-color="draft.quantity === 'other' ? '#1d4ed8' : '#334155'" @press="selectQuantity('other')">{{ t('其他') }}</AppButton></view></scroll-view><input v-if="draft.quantity === 'other' && draft.commonFlag !== 1" class="other-input" type="number" :value="draft.customQuantity" :placeholder="t('请输入数量')" @input="updateField('customQuantity', $event)" /></view>
 					<view class="section"><view class="common-row" @click="toggleCommon"><text class="common-title">{{ t('普遍性疵点') }}</text><view class="common-switch" :class="{ active: draft.commonFlag === 1 }"><view class="common-dot"></view></view></view></view>
 						<view class="section"><view class="label-row"><text class="label">{{ t('疵点类别') }}</text><text class="required">{{ t('必选') }}</text></view><view class="category-trigger" @click="openCategorySheet"><text :class="draft.defectCode ? 'category-value' : 'placeholder'">{{ selectedCategoryLabel }}</text><text>›</text></view></view>
@@ -72,7 +72,7 @@
 	/** 请求页面重新上传失败的疵点图片。 */
 	function retryPhoto(photo) { emit('retry-photo', { defect: draft.value, photo }) }
 	/** 校验类别和有效数量，保存数值型数量或普遍性 null。 */
-	function saveDefect() { const error = validateDefectDraft(draft.value); if (error) { uni.showToast({ title: error, icon: 'none' }); return }; emit('save', { ...draft.value, quantity: getDefectQuantity(draft.value) }) }
+	function saveDefect() { const error = validateDefectDraft(draft.value); if (error) { uni.showToast({ title: t(error), icon: 'none' }); return }; emit('save', { ...draft.value, quantity: getDefectQuantity(draft.value) }) }
 	/** 编辑时请求二次确认删除，新增时关闭弹层。 */
 	function requestDelete() { if (isEditing.value) emit('delete', draft.value); else closeSheet() }
 	/** 关闭疵点编辑弹层。 */

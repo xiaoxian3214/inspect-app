@@ -19,23 +19,6 @@ export function createInspectionDetailService(options) {
   }
 
   /**
-   * 判断本地记录是否包含可渲染的检查项定义或已有检查结果，而不是仅有列表摘要。
-   */
-  function hasCompleteDetail(detail) {
-    if (detail == null || typeof detail !== 'object') return false
-    const rebuiltStandardItems = typeof viewModel?.buildStandardItemsFromItemResults === 'function'
-      ? viewModel.buildStandardItemsFromItemResults(detail?.itemResults ?? [])
-      : []
-    const hasRebuiltChecklist = rebuiltStandardItems.some((section) => Array.isArray(section?.children) && section.children.length > 0)
-    const hasChecklistDefinitions = (Array.isArray(detail?.standardItems) && detail.standardItems.length > 0)
-      || (Array.isArray(detail?.checklistItems) && detail.checklistItems.length > 0)
-      || hasRebuiltChecklist
-    if (!hasChecklistDefinitions) return false
-    const plan = detail?.plan != null && typeof detail.plan === 'object' ? detail.plan : detail
-    return Boolean(plan?.goodsName || plan?.goodsCname || plan?.subGoodsNo || plan?.planNo || plan?.clientOrderNo)
-  }
-
-  /**
    * 使用本地非空字段补充远程计划，避免旧空壳记录覆盖产品名称等完整字段。
    */
   function mergeNonEmptyFields(base, overlay) {
@@ -76,7 +59,7 @@ export function createInspectionDetailService(options) {
     const normalizedPlanId = String(planId ?? '').trim()
     if (normalizedPlanId === '') throw new Error('计划ID缺失，无法加载详情')
     const local = await reportRepository.getPlanById(normalizedPlanId)
-    if (hasCompleteDetail(local)) {
+    if (viewModel.isInspectionDetailComplete(local)) {
       const normalizedLocal = viewModel.normalizeInspectionDetail(local, normalizedPlanId)
       return mergeStoredPhotos(normalizedLocal, normalizedPlanId)
     }

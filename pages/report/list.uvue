@@ -27,20 +27,10 @@
 					<text class="tab-icon">{{ tab.icon }}</text>
 					<text class="tab-text">{{ t(tab.label) }}</text>
 					<text v-if="counts[tab.key] > 0" class="tab-badge">{{ counts[tab.key] }}</text>
+					<view v-if="activeTab === tab.key" class="tab-indicator"></view>
 				</view>
 			</view>
 		</view>
-		<view v-if="mergeMode" class="merge-mode-bar">
-			<view class="merge-mode-copy">
-				<text class="merge-mode-title">{{ t('选择需要合并的计划') }}</text>
-				<text class="merge-mode-subtitle">{{ mergeInspectType }} · {{ t('已选 {count} 条', { count: mergeSelectedItems.length }) }}</text>
-			</view>
-			<view class="merge-mode-actions">
-				<text class="merge-mode-cancel" @click="cancelMergeMode">{{ t('取消') }}</text>
-				<button class="merge-mode-confirm" :disabled="mergeSelectedItems.length < 2 || operationSubmitting" @click="openMergeConfirm">{{ t('下一步') }}</button>
-			</view>
-		</view>
-
 		<scroll-view
 			class="content"
 			scroll-y="true"
@@ -56,7 +46,7 @@
 					<button class="retry-btn" @click="refreshLocalList">{{ t('重新读取') }}</button>
 				</view>
 				<view v-else>
-					<view v-if="errorMessage !== ''" class="inline-notice">{{ errorMessage }}</view>
+					<view v-if="errorMessage !== ''" class="inline-notice">{{ t(errorMessage) }}</view>
 					<view class="inline-notice">{{ t('本机 SQLite · report 表 · 共 {count} 条（包含所有状态）', { count: localReportRows.length }) }}</view>
 					<button class="local-refresh-btn" @click="refreshLocalList">{{ t('重新读取本地数据') }}</button>
 					<LocalReportRecord v-for="row in localReportRows" :key="row.reportId" :row="row" />
@@ -74,10 +64,16 @@
 			</view>
 
 			<view v-else class="group-list">
-				<view v-if="errorMessage !== ''" class="inline-notice">{{ errorMessage }}</view>
+				<view v-if="errorMessage !== ''" class="inline-notice">{{ t(errorMessage) }}</view>
 				<view v-for="group in groups" :key="group.groupKey" class="plan-group">
 					<view class="order-header">
 						<text class="order-no">{{ group.clientOrderNo }}</text>
+						<checkbox-group v-if="mergeMode" class="group-select-all" :class="{ selected: isGroupAllSelected(group), disabled: !canGroupSelectAll(group) }" @change="toggleGroupSelectAll(group)" @click.stop>
+							<label class="group-select-label">
+								<checkbox v-if="canGroupSelectAll(group)" class="group-checkbox" value="all" :checked="isGroupAllSelected(group)" :disabled="!canGroupSelectAll(group)" color="#16a34a" />
+								<text v-if="!canGroupSelectAll(group)" class="group-disabled-mark">—</text>
+							</label>
+						</checkbox-group>
 					</view>
 					<view class="supplier-row">
 						<text class="supplier-name">{{ group.supplierName }}</text>
@@ -94,11 +90,13 @@
 						:use-internal-actions="true"
 						:manage-actions-in-card="true"
 						:use-internal-card-click="true"
-						:show-action-split="false"
+						:show-action-split="isSplitAvailable(item)"
 						:selection-mode="mergeMode"
 						:selection-checked="isMergeChecked(item)"
 						:selection-disabled="mergeMode && !isMergeSelectableItem(item)"
 						@merge-toggle="toggleMergeSelect"
+						@action-split="openSplitPreview"
+						@released="handleCardReleased"
 						@request-refresh="refreshLocalList"
 					/>
 				</view>
@@ -118,6 +116,10 @@
 			</view>
 			<view class="content-space"></view>
 		</scroll-view>
+		<view v-if="mergeMode" class="merge-action-bar">
+			<button class="merge-action-btn cancel" @click="cancelMergeMode">{{ t('取消') }}</button>
+			<button class="merge-action-btn confirm" :class="{ disabled: mergeSelectedItems.length < 2 || operationSubmitting }" :disabled="mergeSelectedItems.length < 2 || operationSubmitting" @click="openMergeConfirm">{{ t('合并验货') }}（{{ mergeSelectedItems.length }}）</button>
+		</view>
 
 		<view v-if="fabActions.length > 0 && !mergeMode" class="fab" @click="showActionMenu">
 			<AppIcon :type="activeTab === 'report' ? 'search' : 'plus'" :size="32" color="#ffffff" />
@@ -175,6 +177,16 @@
 			@confirm-merge="confirmMerge"
 			@download="downloadMergedPlan"
 		/>
+		<SplitPlanSheet
+			:visible="showSplitSheet"
+			:preview-items="splitPreviewItems"
+			:result-items="splitResultItems"
+			:downloaded-ids="splitDownloadedIds"
+			:submitting="operationSubmitting"
+			@close="closeSplitSheet"
+			@confirm="confirmSplit"
+			@download="downloadSplitItem"
+		/>
 	</view>
 </template>
 
@@ -182,6 +194,7 @@
 	import { computed, reactive, ref } from 'vue'
 	import BottomActionSheet from '../../components/common/BottomActionSheet.uvue'
 	import MergePlanSheet from '../../components/search/MergePlanSheet.uvue'
+	import SplitPlanSheet from '../../components/search/SplitPlanSheet.uvue'
 	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
 	import InspectionPlanCard from '../../components/inspection/InspectionPlanCard.uvue'
 	import LocalReportRecord from '../../components/inspection/LocalReportRecord.uvue'
@@ -189,8 +202,8 @@
 	import OfflineSyncStatus from '../../components/sync/OfflineSyncStatus.uvue'
 	import { applyLocale, t } from '../../i18n/index.uts'
 	import { buildFabActions } from '../../domain/listActionViewModel.uts'
-	import { getPlanUniqueId, groupPlans, isPlanInTab, mergePlansLocalFirst } from '../../domain/planViewModel.uts'
-	import { extractCopiedPlanId, getItemInspectType, getPlanOperationId, isBaseMergeEligible, isMergeSelectable } from '../../domain/searchViewModel.uts'
+	import { filterReleasedPlans, getPlanUniqueId, groupPlans, isPlanInTab, mergePlansLocalFirst } from '../../domain/planViewModel.uts'
+	import { buildSplitPreview, getMergeGroupTargets, getMergedPlanId, getItemInspectType, getItemParentPlanId, getPlanOperationId, isBaseMergeEligible, isMergeSelectable, isSplitAvailable, markMergedSourcePlans, markSplitSourcePlans } from '../../domain/searchViewModel.uts'
 	import {
 		getCurrentSession,
 		getAppSetting,
@@ -251,6 +264,11 @@
 	const mergeTemplateId = ref('')
 	const mergeTemplateName = ref('')
 	const mergedPlanId = ref('')
+	const showSplitSheet = ref(false)
+	const splitTargetPlanId = ref('')
+	const splitPreviewItems = ref([])
+	const splitResultItems = ref([])
+	const splitDownloadedIds = ref([])
 	const operationSubmitting = ref(false)
 
 	/**
@@ -350,7 +368,7 @@
 			await refreshLocalList()
 			await automaticTask
 			await refreshLocalList()
-		} catch (error) { errorMessage.value = error?.message ?? 'SQLite 初始化失败，请重试' }
+		} catch (error) { errorMessage.value = error?.message ?? t('SQLite 初始化失败，请重试') }
 	}
 
 	onShow(refreshListWithAutomaticSync)
@@ -415,12 +433,12 @@
 	}
 
 	/**
-	 * 加载指定页数据；远程失败时自动回退到本地列表。
+	 * 加载指定页数据；加载更多可仅显示按钮状态，远程失败时保留本地列表。
 	 */
 	async function loadPage(page, options: any = {}) {
 		const shouldFetchRemote = options?.remote === true
 		const appendMessage = options?.appendMessage === true
-		const useLoadingMore = page !== 1 && groups.value.length > 0
+		const useLoadingMore = options?.loadingMore === true || (page !== 1 && groups.value.length > 0)
 		if (useLoadingMore) loadingMore.value = true
 		else loading.value = true
 		if (!appendMessage) errorMessage.value = ''
@@ -443,12 +461,12 @@
 					pageMap[activeTab.value] = page
 					totalMap[activeTab.value] = Number(result?.total ?? 0)
 				} catch (error) {
-					errorMessage.value = error?.message ?? '云端列表加载失败，已保留当前列表和本地数据'
+					errorMessage.value = error?.message ?? t('云端列表加载失败，已保留当前列表和本地数据')
 				}
 			}
 			await refreshOverview()
 		} catch (error) {
-			errorMessage.value = error?.message ?? '列表加载失败'
+			errorMessage.value = error?.message ?? t('列表加载失败')
 			await refreshOverview()
 		} finally {
 			loading.value = false
@@ -469,9 +487,21 @@
 			await loadLocalPlanSummaries()
 			await refreshOverview()
 		} catch (error) {
-			errorMessage.value = error?.message ?? '本地列表加载失败'
+			errorMessage.value = error?.message ?? t('本地列表加载失败')
 		} finally {
 			loading.value = false
+		}
+	}
+
+	/** 接收卡片释放结果，立即移除本地、远程页签缓存和合并多选中的计划。 */
+	function handleCardReleased(payload) {
+		const removedIds = payload?.removedIds ?? []
+		const parentPlanId = payload?.parentPlanId ?? ''
+		localPlans.value = filterReleasedPlans(localPlans.value, removedIds, parentPlanId)
+		mergeSelectedItems.value = filterReleasedPlans(mergeSelectedItems.value, removedIds, parentPlanId)
+		for (const tab of tabs) {
+			if (tab.key === 'local') continue
+			remoteListMap[tab.key] = filterReleasedPlans(remoteListMap[tab.key], removedIds, parentPlanId)
 		}
 	}
 
@@ -508,16 +538,16 @@
 			failedSyncCount.value = Math.max(failedSyncCount.value, resultFailedCount)
 			if (failedSyncCount.value > 0) {
 				uni.showToast({
-					title: `已同步 ${Number(result?.syncedCount ?? 0)} 条，失败 ${failedSyncCount.value} 项`,
+					title: t('已同步 {synced} 条，失败 {failed} 项', { synced: Number(result?.syncedCount ?? 0), failed: failedSyncCount.value }),
 					icon: 'none'
 				})
 				return
 			}
 			const totalCount = Number(result?.syncedCount ?? 0) + Number(result?.uploadedPhotoCount ?? 0)
-			uni.showToast({ title: totalCount > 0 ? `同步成功，共 ${totalCount} 项` : '本地数据已是最新', icon: totalCount > 0 ? 'success' : 'none' })
+			uni.showToast({ title: totalCount > 0 ? t('同步成功，共 {count} 项', { count: totalCount }) : t('本地数据已是最新'), icon: totalCount > 0 ? 'success' : 'none' })
 		} catch (error) {
 			failedSyncCount.value = Math.max(1, pendingSyncCount.value)
-			uni.showToast({ title: error?.message ?? '同步失败', icon: 'none' })
+			uni.showToast({ title: error?.message ?? t('同步失败'), icon: 'none' })
 		} finally {
 			isSyncingData.value = false
 			await refreshOverview()
@@ -535,18 +565,11 @@
 	}
 
 	/**
-	 * 加载远程下一页；首次点击时先加载第一页远程数据。
+	 * 与 H5 一致重新请求远程第一页，并只显示加载更多按钮的 loading 状态。
 	 */
 	async function loadMore() {
-		if (!hasRemoteLoaded.value) {
-			await loadPage(1, { remote: true, appendMessage: true })
-			return
-		}
-		if (currentPage.value >= totalPages.value) {
-			uni.showToast({ title: t('已加载全部数据'), icon: 'none' })
-			return
-		}
-		await loadPage(currentPage.value + 1, { remote: true, appendMessage: true })
+		if (loadingMore.value) return
+		await loadPage(1, { remote: true, appendMessage: true, loadingMore: true })
 	}
 
 	/**
@@ -606,7 +629,7 @@
 			closeUserDrawer()
 			uni.showToast({ title: t('邀请链接已复制'), icon: 'success' })
 		} catch (error) {
-			uni.showToast({ title: error?.message ?? '生成邀请链接失败', icon: 'none' })
+			uni.showToast({ title: error?.message ?? t('生成邀请链接失败'), icon: 'none' })
 		} finally {
 			inviteGenerating.value = false
 		}
@@ -628,10 +651,10 @@
 	function showDrawerConfirm(options) {
 		return new Promise((resolve) => {
 			uni.showModal({
-				title: options?.title ?? '提示',
-				content: options?.content ?? '',
-				confirmText: options?.confirmText ?? '确定',
-				cancelText: options?.cancelText ?? '取消',
+				title: t(options?.title ?? '提示'),
+				content: t(options?.content ?? ''),
+				confirmText: t(options?.confirmText ?? '确定'),
+				cancelText: t(options?.cancelText ?? '取消'),
 				confirmColor: options?.confirmColor ?? '#ef4444',
 				success: (result) => resolve(result.confirm === true),
 				fail: () => resolve(false)
@@ -671,7 +694,7 @@
 			await refreshLocalList()
 			uni.showToast({ title: t('本地缓存已清除'), icon: 'success' })
 		} catch (error) {
-			uni.showToast({ title: error?.message ?? '清理本地缓存失败', icon: 'none' })
+			uni.showToast({ title: error?.message ?? t('清理本地缓存失败'), icon: 'none' })
 		} finally {
 			isClearingLocalCache.value = false
 		}
@@ -754,7 +777,7 @@
 			if (mergeInspectType.value === '' && inspectTypeOptions.value.length > 0) mergeInspectType.value = String(inspectTypeOptions.value[inspectTypeOptions.value.length - 1]?.value ?? '')
 			mergeSheetStage.value = 'type'
 			showMergeSheet.value = true
-		} catch (error) { uni.showToast({ title: error?.message ?? '加载验货类型失败', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: error?.message ?? t('加载验货类型失败'), icon: 'none' }) }
 	}
 
 	/** 更新合并流程选择的验货类型。 */
@@ -769,6 +792,28 @@
 	function isMergeChecked(item) { const id = getPlanOperationId(item); return mergeSelectedItems.value.some((selected) => getPlanOperationId(selected) === id) }
 	/** 判断计划是否满足当前验货类型和首条计划的 H5 合并规则。 */
 	function isMergeSelectableItem(item) { return isMergeChecked(item) || isMergeSelectable(item, mergeInspectType.value, getMergeAnchorItem()) }
+	/** 按 H5 规则获取订单组可全选的同工厂、同货类、同类型计划。 */
+	function getGroupTargetItems(group) { return getMergeGroupTargets(group, mergeInspectType.value, mergeSelectedItems.value) }
+	/** 判断订单组内是否存在可合并的计划。 */
+	function canGroupSelectAll(group) { return getGroupTargetItems(group).length > 0 }
+	/** 判断订单组当前兼容计划是否已全部选中。 */
+	function isGroupAllSelected(group) {
+		const targets = getGroupTargetItems(group)
+		return targets.length > 0 && targets.every((item) => isMergeChecked(item))
+	}
+	/** 切换订单组兼容计划的全选状态，保留其他订单组已选计划。 */
+	function toggleGroupSelectAll(group) {
+		if (!mergeMode.value) return
+		const targets = getGroupTargetItems(group)
+		if (targets.length === 0) return
+		const targetIds = new Set(targets.map((item) => getPlanOperationId(item)))
+		if (isGroupAllSelected(group)) {
+			mergeSelectedItems.value = mergeSelectedItems.value.filter((item) => !targetIds.has(getPlanOperationId(item)))
+			return
+		}
+		const selectedIds = new Set(mergeSelectedItems.value.map((item) => getPlanOperationId(item)))
+		mergeSelectedItems.value = [...mergeSelectedItems.value, ...targets.filter((item) => !selectedIds.has(getPlanOperationId(item)))]
+	}
 	/** 按 H5 合并资格规则添加或移除当前计划。 */
 	function toggleMergeSelect(item) {
 		const planId = getPlanOperationId(item)
@@ -784,7 +829,7 @@
 	async function openMergeConfirm() {
 		if (mergeSelectedItems.value.length < 2) return
 		try { await loadTemplateOptions(); if (mergeTemplateId.value === '' && templateOptions.value.length > 0) setMergeTemplate(templateOptions.value[0]); mergeSheetStage.value = 'confirm'; showMergeSheet.value = true }
-		catch (error) { uni.showToast({ title: error?.message ?? '加载清单失败', icon: 'none' }) }
+		catch (error) { uni.showToast({ title: error?.message ?? t('加载清单失败'), icon: 'none' }) }
 	}
 	/** 更新合并计划下载使用的清单模板。 */
 	function setMergeTemplate(option) { mergeTemplateId.value = String(option?.id ?? ''); mergeTemplateName.value = String(option?.name ?? '') }
@@ -793,28 +838,103 @@
 		if (operationSubmitting.value || mergeSelectedItems.value.length < 2) return
 		const anchor = mergeSelectedItems.value[0]
 		if (!mergeSelectedItems.value.every((item) => isMergeSelectable(item, mergeInspectType.value, anchor))) { uni.showToast({ title: t('存在不满足合并条件的任务'), icon: 'none' }); return }
+		const sourcePlanIds = mergeSelectedItems.value.map((item) => getPlanOperationId(item))
 		operationSubmitting.value = true
 		try {
-			const response = await planOperationService.mergePlans(mergeSelectedItems.value.map((item) => getPlanOperationId(item)))
-			const copiedPlanId = extractCopiedPlanId(response)
-			mergedPlanId.value = copiedPlanId !== '' ? copiedPlanId : String(response?.parentPlanId ?? '')
+			const response = await planOperationService.mergePlans(sourcePlanIds)
+			mergedPlanId.value = getMergedPlanId(response)
 			if (mergedPlanId.value === '') throw new Error('合并成功但未返回计划ID')
+			localPlans.value = markMergedSourcePlans(localPlans.value, sourcePlanIds, mergedPlanId.value)
+			for (const tab of tabs) {
+				if (tab.key === 'local') continue
+				remoteListMap[tab.key] = markMergedSourcePlans(remoteListMap[tab.key], sourcePlanIds, mergedPlanId.value)
+			}
 			uni.showToast({ title: t('合并成功'), icon: 'success' })
-		} catch (error) { uni.showToast({ title: error?.message ?? '合并失败', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: error?.message ?? t('合并失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
 	/** 下载合并生成的新计划到离线数据库，并刷新列表回显。 */
 	async function downloadMergedPlan() {
-		if (mergedPlanId.value === '' || operationSubmitting.value) return
+		if (operationSubmitting.value) return
+		if (mergedPlanId.value === '') { uni.showToast({ title: t('缺少合并后计划ID，无法下载验货'), icon: 'none' }); return }
+		if (mergeTemplateId.value === '') { uni.showToast({ title: t('请选择清单'), icon: 'none' }); return }
 		operationSubmitting.value = true
 		try {
-			await planOperationService.downloadToLocal(mergedPlanId.value, { templateId: mergeTemplateId.value, templateName: mergeTemplateName.value })
+			await planOperationService.downloadToLocal(mergedPlanId.value, { templateId: mergeTemplateId.value, templateName: mergeTemplateName.value }, [], mergeSelectedItems.value)
 			await refreshLocalList()
 			cancelMergeMode()
 			await refreshList()
 			uni.showToast({ title: t('已下载到本地'), icon: 'success' })
-		} catch (error) { uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: error?.message ?? t('下载失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
+	}
+
+	/** 查询合并父计划成员并打开拆分预览，优先保留本地完整记录。 */
+	async function openSplitPreview(item) {
+		if (!isSplitAvailable(item) || operationSubmitting.value) return
+		if (!(await isNetworkOnline())) { uni.showToast({ title: t('拆分验货需要联网，请连接网络后重试'), icon: 'none' }); return }
+		const planId = getPlanOperationId(item)
+		if (planId === '') { uni.showToast({ title: t('计划ID缺失，无法拆分'), icon: 'none' }); return }
+		const parentPlanId = getItemParentPlanId(item) || planId
+		operationSubmitting.value = true
+		try {
+			const response = await planApi.searchPlans({ parentPlanId }, 1, pageSize)
+			const candidates = [...(response?.records ?? [])]
+			for (const tab of tabs) {
+				if (tab.key !== 'local') candidates.push(...remoteListMap[tab.key])
+			}
+			splitPreviewItems.value = buildSplitPreview(candidates, localPlans.value, parentPlanId)
+			if (splitPreviewItems.value.length === 0) splitPreviewItems.value = [item]
+			splitTargetPlanId.value = planId
+			splitResultItems.value = []
+			splitDownloadedIds.value = []
+			showSplitSheet.value = true
+		} catch (error) { uni.showToast({ title: error?.message ?? t('加载拆分预览失败'), icon: 'none' }) }
+		finally { operationSubmitting.value = false }
+	}
+
+	/** 向云端拆分合并组并同步列表标记，结果弹层支持逐条下载。 */
+	async function confirmSplit() {
+		if (splitTargetPlanId.value === '' || operationSubmitting.value) return
+		if (!(await isNetworkOnline())) { uni.showToast({ title: t('拆分验货需要联网，请连接网络后重试'), icon: 'none' }); return }
+		operationSubmitting.value = true
+		try {
+			await planOperationService.splitPlan(splitTargetPlanId.value)
+			const sourceIds = splitPreviewItems.value.map((item) => getPlanOperationId(item))
+			splitResultItems.value = markSplitSourcePlans(splitPreviewItems.value, sourceIds)
+			localPlans.value = markSplitSourcePlans(localPlans.value, sourceIds)
+			for (const tab of tabs) {
+				if (tab.key !== 'local') remoteListMap[tab.key] = markSplitSourcePlans(remoteListMap[tab.key], sourceIds)
+			}
+			uni.showToast({ title: t('拆分验货成功'), icon: 'success' })
+		} catch (error) { uni.showToast({ title: error?.message ?? t('拆分失败'), icon: 'none' }) }
+		finally { operationSubmitting.value = false }
+	}
+
+	/** 下载一条已拆分计划并刷新 SQLite 下载状态。 */
+	async function downloadSplitItem(item) {
+		const planId = getPlanOperationId(item)
+		if (planId === '' || operationSubmitting.value) return
+		if (!(await isNetworkOnline())) { uni.showToast({ title: t('下载验货需要联网，请连接网络后重试'), icon: 'none' }); return }
+		operationSubmitting.value = true
+		try {
+			const plan = item?.plan ?? item
+			await planOperationService.downloadToLocal(planId, { templateId: plan?.templateId ?? item?.templateId ?? '', templateName: plan?.templateName ?? item?.templateName ?? '' }, [], [item])
+			splitDownloadedIds.value = [...splitDownloadedIds.value, planId]
+			await refreshLocalList()
+			uni.showToast({ title: t('下载验货成功'), icon: 'success' })
+		} catch (error) { uni.showToast({ title: error?.message ?? t('下载失败'), icon: 'none' }) }
+		finally { operationSubmitting.value = false }
+	}
+
+	/** 关闭拆分弹层并清理上次预览及下载状态。 */
+	function closeSplitSheet() {
+		if (operationSubmitting.value) return
+		showSplitSheet.value = false
+		splitTargetPlanId.value = ''
+		splitPreviewItems.value = []
+		splitResultItems.value = []
+		splitDownloadedIds.value = []
 	}
 
 	/**
@@ -845,18 +965,17 @@
 	.title { color: #ffffff; font-size: 20px; font-weight: 600; }
 	.sync-entry { width: 40px; align-items: flex-end; }
 	.status-tabs { flex-direction: row; margin-top: 8px; }
-	.status-tab { position: relative; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding: 10px 0 8px; border-bottom-width: 3px; border-bottom-color: transparent; opacity: 0.9; }
-	.status-tab.active { border-bottom-color: #ffffff; opacity: 1; }
+	.status-tab { position: relative; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding: 10px 0 11px; opacity: 0.9; }
+	.status-tab.active { opacity: 1; }
+	.tab-indicator { position: absolute; left: 0; right: 0; bottom: 0; height: 6rpx; background-color: #ffffff; }
 	.tab-icon { color: #ffffff; font-size: 18px; line-height: 20px; }
 	.tab-text { margin-top: 4px; color: #ffffff; font-size: 13px; line-height: 16px; }
 	.tab-badge { position: absolute; top: 4px; right: 10px; min-width: 18px; height: 18px; padding: 0 5px; color: #ffffff; background-color: #ff4444; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; }
-	.merge-mode-bar { min-height: 68px; padding: 10px 16px; flex-direction: row; align-items: center; justify-content: space-between; background-color: #ecfdf3; border-bottom-width: 1px; border-bottom-color: #bbf7d0; }
-	.merge-mode-copy { flex: 1; }
-	.merge-mode-title { color: #166534; font-size: 15px; font-weight: 700; }
-	.merge-mode-subtitle { margin-top: 4px; color: #15803d; font-size: 12px; }
-	.merge-mode-actions { margin-left: 12px; flex-direction: row; align-items: center; }
-	.merge-mode-cancel { padding: 10px 12px; color: #64748b; font-size: 14px; }
-	.merge-mode-confirm { min-width: 84px; height: 38px; margin-left: 4px; border-radius: 19px; color: #ffffff; background-color: #16a34a; font-size: 13px; }
+	.merge-action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; flex-direction: row; padding: 20rpx 28rpx 40rpx; border-top-width: 2rpx; border-top-color: #e5e7eb; background-color: #ffffff; }
+	.merge-action-btn { height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.merge-action-btn.cancel { width: 200rpx; margin-right: 20rpx; border-width: 2rpx; border-color: #e5e7eb; color: #334155; background-color: #ffffff; }
+	.merge-action-btn.confirm { flex: 1; color: #ffffff; background-color: #03ae4f; }
+	.merge-action-btn.confirm.disabled { background-color: #9ca3af; }
 	.content { flex: 1; }
 	.loading { align-items: center; padding: 80px 20px; color: #64748b; font-size: 14px; }
 	.loading-icon { margin-bottom: 10px; font-size: 22px; }
@@ -868,7 +987,13 @@
 	.inline-notice { margin: 0 16px 12px; padding: 10px 12px; border-radius: 12px; color: #c2410c; background-color: #fff7ed; font-size: 12px; line-height: 18px; }
 	.local-refresh-btn { height: 36px; margin: 0 16px 12px; color: #15803d; background-color: #ecfdf5; border-radius: 10px; font-size: 13px; }
 	.plan-group { margin: 0 16px 14px; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05); }
-	.order-header { padding: 12px 14px 10px; background-color: #f5f5f5; }
+	.order-header { padding: 12px 14px 10px; background-color: #f5f5f5; flex-direction: row; align-items: center; justify-content: space-between; }
+	.group-select-all { width: 68rpx; height: 68rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 18rpx; background-color: #ffffff; align-items: center; justify-content: center; box-shadow: 0 3rpx 8rpx rgba(15, 23, 42, 0.08); }
+	.group-select-all.selected { border-color: #22c55e; background-color: #ecfdf5; }
+	.group-select-all.disabled { border-color: #94a3b8; background-color: #cbd5e1; }
+	.group-select-label { width: 68rpx; height: 68rpx; align-items: center; justify-content: center; }
+	.group-checkbox { width: 42rpx; height: 42rpx; }
+	.group-disabled-mark { color: #475569; font-size: 36rpx; font-weight: 700; line-height: 42rpx; }
 	.order-no { color: #0f172a; font-size: 17px; font-weight: 700; }
 	.supplier-row { flex-direction: row; justify-content: space-between; padding: 10px 14px 2px; background-color: #ffffff; }
 	.supplier-name { color: #64748b; font-size: 12px; }

@@ -4,18 +4,18 @@
 			<view class="info-card merge-card">
 				<view class="merge-header" @click="toggleMerged"><text class="expand-icon">{{ mergedExpanded ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ t('合并验货') }}</text><text class="merge-sub">单号：{{ mergedNo }}</text></view></view>
 				<view v-if="mergedExpanded" class="merge-content">
-					<view class="sub-info-card"><view v-for="field in mergedCommonFields" :key="field.label" class="info-row"><text class="info-label">{{ field.label }}</text><text class="info-value">{{ field.value }}</text></view></view>
+					<view class="sub-info-card"><view v-for="field in mergedCommonFields" :key="field.label" class="info-row"><text class="info-label">{{ t(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view>
 					<view class="merge-table-head"><text class="table-name">{{ t('订单号-款号-款名') }}</text><text class="table-number">{{ t('总数量') }}</text><text class="table-number">{{ t('样品数量') }}</text></view>
 					<view v-for="(row, index) in inspectionPlans" :key="rowKey(row, index)" class="merge-table-row"><text class="table-name">{{ mergeRowName(row, index) }}</text><text class="table-number">{{ displayValue(row.requiredQuantity) }}</text><text class="table-number">{{ displayValue(row.sampleSize) }}</text></view>
 					<view class="merge-table-row total-row"><text class="table-name">{{ t('所有') }}</text><text class="table-number">{{ mergedTotals.requiredQuantity }}</text><text class="table-number">{{ mergedTotals.sampleSize }}</text></view>
 				</view>
 			</view>
 			<view v-for="(row, index) in inspectionPlans" :key="rowKey(row, index)" class="info-card merge-card">
-				<view class="merge-header" @click="togglePlan(row, index)"><text class="expand-icon">{{ isPlanExpanded(row, index) ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ row.goodsName || `验货项 ${index + 1}` }}</text><text class="merge-sub">单号：{{ (row.clientOrderNo || row.planNo) ?? '-' }}</text><text class="merge-sub">产品：{{ row.subGoodsNo ?? '-' }}#{{ row.batchNo ?? '-' }}</text></view></view>
-				<view v-if="isPlanExpanded(row, index)" class="merge-content"><view class="sub-info-card"><view v-for="field in planFields(row)" :key="field.label" class="info-row"><text class="info-label">{{ field.label }}</text><text class="info-value">{{ field.value }}</text></view></view></view>
+				<view class="merge-header" @click="togglePlan(row, index)"><text class="expand-icon">{{ isPlanExpanded(row, index) ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ row.goodsName || t('验货项 {index}', { index: index + 1 }) }}</text><text class="merge-sub">{{ t('单号：{number}', { number: (row.clientOrderNo || row.planNo) ?? '-' }) }}</text><text class="merge-sub">{{ t('产品：{number}', { number: `${row.subGoodsNo ?? '-'}#${row.batchNo ?? '-'}` }) }}</text></view></view>
+				<view v-if="isPlanExpanded(row, index)" class="merge-content"><view class="sub-info-card"><view v-for="field in planFields(row)" :key="field.label" class="info-row"><text class="info-label">{{ t(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view></view>
 			</view>
 		</template>
-		<view v-else class="info-card"><view v-for="field in currentFields" :key="field.label" class="info-row"><text class="info-label">{{ field.label }}</text><text class="info-value">{{ field.value }}</text></view></view>
+		<view v-else class="info-card"><view v-for="field in currentFields" :key="field.label" class="info-row"><text class="info-label">{{ t(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view>
 	</view>
 </template>
 

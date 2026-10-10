@@ -18,11 +18,13 @@ test('matches H5 floating actions by active tab', () => {
   ])
 })
 
+/** 仅本地记录或锁归属决定下载状态，线上下载时间不代表当前设备已下载。 */
 test('resolves download state using the same lock ownership rules as H5', () => {
   assert.equal(viewModel.resolveDownloadState({ lockFlag: 0 }), 'available')
   assert.equal(viewModel.resolveDownloadState({ lockFlag: 1, inspectorId: 'u-1', currentUserId: 'u-2' }), 'locked')
   assert.equal(viewModel.resolveDownloadState({ lockFlag: 1, inspectorId: 'u-1', currentUserId: 'u-1' }), 'downloaded')
   assert.equal(viewModel.resolveDownloadState({ isLocalDownloaded: true, lockFlag: 1 }), 'downloaded')
+  assert.equal(viewModel.resolveDownloadState({ downloadedAt: '2026-10-09', lockFlag: 0 }), 'available')
 })
 
 test('builds H5-compatible card actions for available plans', () => {
@@ -74,13 +76,15 @@ test('starts sync only once when online pending work exists', () => {
   assert.equal(viewModel.canStartSync({ isSyncing: false, isOnline: true, pendingCount: 0 }), false)
 })
 
-/** 未缓存的线上卡片先恢复详情，已缓存或被他人锁定的卡片保持原操作。 */
-test('routes uncached online cards to detail caching before opening', () => {
+/** 进行中仅以本机缓存决定是否进入详情；本人锁定但本机缺失时仍需主动下载。 */
+test('routes uncached progress cards to download even when locked by current user', () => {
   assert.equal(viewModel.resolveCardClickAction({ selectionMode: true }), 'toggle-merge')
   assert.equal(viewModel.resolveCardClickAction({ status: 3, isLocalDownloaded: true }), 'open-actions')
-  assert.equal(viewModel.resolveCardClickAction({ status: 0, downloadState: 'available' }), 'recover-detail')
-  assert.equal(viewModel.resolveCardClickAction({ status: 1, downloadState: 'downloaded', isLocalDownloaded: false }), 'recover-detail')
-  assert.equal(viewModel.resolveCardClickAction({ status: 3, downloadState: 'available', isLocalDownloaded: false }), 'recover-detail')
+  assert.equal(viewModel.resolveCardClickAction({ status: 0, downloadState: 'available', manageActionsInCard: true }), 'open-download')
+  assert.equal(viewModel.resolveCardClickAction({ status: 1, downloadState: 'available', manageActionsInCard: false }), 'request-download')
+  assert.equal(viewModel.resolveCardClickAction({ status: 1, downloadState: 'downloaded', isLocalDownloaded: false, manageActionsInCard: true }), 'open-download')
+  assert.equal(viewModel.resolveCardClickAction({ status: 1, downloadState: 'downloaded', isLocalDownloaded: false, manageActionsInCard: false }), 'request-download')
+  assert.equal(viewModel.resolveCardClickAction({ status: 3, downloadState: 'available', isLocalDownloaded: false }), 'open-actions')
   assert.equal(viewModel.resolveCardClickAction({ status: 1, downloadState: 'downloaded', isLocalDownloaded: true }), 'open-detail')
   assert.equal(viewModel.resolveCardClickAction({ status: 0, downloadState: 'locked' }), 'open-actions')
 })

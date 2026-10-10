@@ -11,12 +11,12 @@
 			</view>
 
 			<view class="card-middle">
-				<view class="product-name">{{ productName }}</view>
+				<view class="product-name">{{ productName === '未命名产品' ? t('未命名产品') : productName }}</view>
 				<view class="status-row">
 					<text class="status-badge">{{ inspectTypeShort }}</text>
 					<text class="goods-no">{{ goodsNoWithBatch }}</text>
 					<view class="status-right">
-						<text class="progress-status" :class="statusClass">{{ statusText }}</text>
+					<text class="progress-status" :class="statusClass">{{ t(statusText) }}</text>
 					</view>
 				</view>
 				<view v-if="goodsFlagType === 'raw'" class="goods-extra-line">
@@ -38,9 +38,12 @@
 			</view>
 
 					<view class="card-right">
-						<view v-if="selectionMode" class="selection-control" :class="{ selected: selectionChecked, disabled: selectionDisabled }" @click.stop="toggleMergeSelection">
-							<text class="selection-mark">{{ selectionChecked ? '✓' : '' }}</text>
-						</view>
+						<checkbox-group v-if="selectionMode" class="merge-check-wrapper" :class="{ selected: selectionChecked, disabled: selectionDisabled }" @change="toggleMergeSelection" @click.stop>
+							<label class="merge-check-label">
+								<checkbox v-if="!selectionDisabled" class="merge-checkbox" :value="String(getPlanOperationId(item))" :checked="selectionChecked" :disabled="selectionDisabled" color="#16a34a" />
+								<text v-if="selectionDisabled" class="merge-disabled-mark">—</text>
+							</label>
+						</checkbox-group>
 						<view v-else-if="isMerged" class="merge-flag">
 							<AppIcon type="merge" :size="18" color="#059669" />
 						</view>
@@ -61,7 +64,7 @@
 		<view v-if="showDownloadModal" class="menu-overlay" @click="closeDownloadModal">
 			<view class="copy-modal download-modal" @click.stop>
 				<text class="copy-modal-title">{{ t('下载验货') }}</text>
-				<PlanDownloadDetails :item="props.item" :template-names="downloadTemplateNames" :template-index="downloadTemplateIndex" :template-name="downloadTemplateDisplayName" :merged-items="downloadMergedItems" :merged-loading="downloadPreviewLoading" @select-template="changeDownloadTemplate" />
+				<PlanDownloadDetails :item="props.item" :template-name="downloadTemplateDisplayName" :is-merged="isMerged" :merged-items="downloadMergedItems" :merged-loading="downloadPreviewLoading" @open-template="openDownloadTemplateSheet" />
 					<view class="copy-actions">
 						<button class="copy-btn close" :disabled="submitting" @click="closeDownloadModal">{{ t('取消') }}</button>
 						<button class="copy-btn create" :disabled="submitting || downloadTemplateId === '' || (isMerged && (downloadPreviewLoading || downloadMergedItems.length < 2))" @click="confirmDownload">
@@ -69,6 +72,8 @@
 					</button>
 				</view>
 			</view>
+		</view>
+		<OptionSelectSheet :visible="showDownloadTemplateSheet" title="选择清单" empty-text="暂无可选清单" :options="downloadTemplateOptions" :selected-value="downloadTemplateId" @close="closeDownloadTemplateSheet" @confirm="selectDownloadTemplate" />
 
 			<view v-if="showUnlockModal" class="menu-overlay" @click="closeUnlockModal">
 				<view class="confirm-modal" @click.stop>
@@ -99,7 +104,6 @@
 					</view>
 				</view>
 			</view>
-		</view>
 
 		<view v-if="showInspectorModal" class="menu-overlay" @click="closeInspectorModal">
 			<view class="confirm-modal" @click.stop>
@@ -120,8 +124,11 @@
 				:item="item"
 				:inspect-type-options="copyInspectTypeOptions"
 				:templates="copyTemplateOptions"
+				:merged-items="copyMergedItems"
+				:merged-loading="copyMergedLoading"
 				:selected-inspect-type="copyInspectType"
 				:selected-template-id="copyTemplateId"
+				:selected-template-name="copyTemplateName"
 				:created="copyCreated"
 				:submitting="submitting"
 				@close="closeCopySheet"
@@ -139,13 +146,14 @@
 		import { computed, ref } from 'vue'
 		import BottomActionSheet from '../common/BottomActionSheet.uvue'
 		import CopyPlanSheet from '../search/CopyPlanSheet.uvue'
+		import OptionSelectSheet from '../search/OptionSelectSheet.uvue'
 		import PlanDownloadDetails from './PlanDownloadDetails.uvue'
 		import ReadyQuantitySheet from './ReadyQuantitySheet.uvue'
 		import AppIcon from '../icons/AppIcon.uvue'
 		import { buildCardActions, resolveCardClickAction, resolveDownloadState } from '../../domain/listActionViewModel.uts'
 		import { normalizePlanStatus } from '../../domain/planViewModel.uts'
-		import { extractCopiedPlanId, getItemInspectType, getItemParentPlanId, getPlanOperationId } from '../../domain/searchViewModel.uts'
-	import { initializeRuntime, inspectionDetailService, planApi, planDownloadService, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
+		import { extractCopiedPlanId, getItemInspectType, getItemParentPlanId, getMergePreviewRow, getPlanInspectTypeLabel, getPlanOperationId } from '../../domain/searchViewModel.uts'
+	import { initializeRuntime, planApi, planDownloadService, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
 
 	const props = defineProps({
 		item: { type: Object, required: true },
@@ -166,7 +174,10 @@
 			'open',
 			'download',
 			'request-refresh',
+			'released',
 			'action-unlock',
+			'action-reset',
+			'action-download',
 			'action-copy',
 			'action-copy-merged',
 			'action-split',
@@ -179,6 +190,7 @@
 	const showUnlockModal = ref(false)
 	const showResetModal = ref(false)
 	const downloadTemplates = ref([])
+	const showDownloadTemplateSheet = ref(false)
 	const downloadMergedItems = ref([])
 	const downloadPreviewLoading = ref(false)
 	const downloadTemplateId = ref('')
@@ -187,6 +199,8 @@
 	const copyMode = ref(1)
 	const copyInspectTypeOptions = ref([])
 	const copyTemplateOptions = ref([])
+	const copyMergedItems = ref([])
+	const copyMergedLoading = ref(false)
 	const copyInspectType = ref('')
 	const copyTemplateId = ref('')
 	const copyTemplateName = ref('')
@@ -200,7 +214,7 @@
 	const plan = computed(() => (props.item?.plan || props.item) ?? {})
 	const status = computed(() => normalizePlanStatus(props.item))
 	/** 选择卡片展示的产品名称。 */
-	const productName = computed(() => (plan.value?.goodsName || plan.value?.goodsCname || props.item?.productName) ?? '未命名产品')
+	const productName = computed(() => getMergePreviewRow(props.item).productName)
 	/** 选择卡片展示的货号。 */
 	const goodsNo = computed(() => (plan.value?.subGoodsNo || plan.value?.goodsNo || props.item?.subGoodsNo) ?? '-')
 	/** 选择卡片展示的批次号。 */
@@ -210,7 +224,8 @@
 	const supplierName = computed(() => (plan.value?.factoryName || props.item?.supplierName || props.item?.factoryName) ?? '-')
 	/** 选择卡片分组使用的订单号。 */
 	const orderNo = computed(() => (plan.value?.clientOrderNo || plan.value?.domeNo || props.item?.clientOrderNo || props.item?.orderNo) ?? '未分组')
-	const inspectType = computed(() => String(plan.value?.inspectTypeName ?? plan.value?.inspectType ?? '验货'))
+	/** 按 H5 卡片的类型显示顺序，保留拆分计划平铺字段中的原验货类型。 */
+	const inspectType = computed(() => getPlanInspectTypeLabel(props.item))
 	const inspectTypeShort = computed(() => inspectType.value.length > 2 ? inspectType.value.substring(0, 2) : inspectType.value)
 	const goodsFlagType = computed(() => Number(plan.value?.goodsFlag ?? props.item?.goodsFlag ?? props.item?.raw?.goodsFlag ?? 1) === 0 ? 'raw' : 'finished')
 	const produceNo = computed(() => String(plan.value?.produceNo ?? props.item?.produceNo ?? '-'))
@@ -223,9 +238,8 @@
 	const lockFlag = computed(() => Number(plan.value?.lockFlag ?? props.item?.lockFlag ?? 0))
 	const isMerged = computed(() => Number(plan.value?.mergeType ?? props.item?.mergeType ?? 0) === 2)
 		const resolvedDownloadState = computed(() => resolveDownloadState({
-			isLocalDownloaded: props.isLocalDownloaded,
-			downloadedAt: props.item?.downloadedAt ?? '',
-			lockFlag: lockFlag.value,
+				isLocalDownloaded: props.isLocalDownloaded,
+				lockFlag: lockFlag.value,
 			inspectorId: inspectorId.value,
 			currentUserId: props.currentUserId
 		}))
@@ -235,10 +249,8 @@
 	const statusText = computed(() => status.value === 3 ? '已完成' : (status.value === 1 ? '进行中' : '已定计划'))
 	const statusClass = computed(() => status.value === 3 ? 'completed' : (status.value === 1 ? 'in-progress' : 'planned'))
 	const canDownload = computed(() => props.showDownload && !isLockedByOther.value && !isDownloaded.value)
-	/** 返回下载清单名称数组供原生 picker 使用。 */
-	const downloadTemplateNames = computed(() => downloadTemplates.value.map((item) => String(item?.name ?? '')))
-	/** 返回当前下载清单在 picker 中的索引。 */
-	const downloadTemplateIndex = computed(() => Math.max(0, downloadTemplates.value.findIndex((item) => String(item?.id ?? '') === downloadTemplateId.value)))
+	/** 将下载清单转换为复制验货选择弹层使用的选项。 */
+	const downloadTemplateOptions = computed(() => downloadTemplates.value.map((item) => ({ value: String(item?.id ?? ''), label: String(item?.name ?? ''), raw: item })))
 	/** 返回下载弹层当前清单显示名称。 */
 	const downloadTemplateDisplayName = computed(() => downloadTemplateName.value !== '' ? downloadTemplateName.value : '请选择清单')
 		const cardActions = computed(() => buildCardActions({
@@ -293,6 +305,7 @@
 		 */
 	function closeDownloadModal() {
 		showDownloadModal.value = false
+		showDownloadTemplateSheet.value = false
 		downloadMergedItems.value = []
 	}
 
@@ -312,7 +325,7 @@
 				seen.add(memberId)
 				return true
 			})
-		} catch (error) { uni.showToast({ title: error?.message ?? '加载合并验货成员失败', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: error?.message ?? t('加载合并验货成员失败'), icon: 'none' }) }
 		finally { downloadPreviewLoading.value = false }
 	}
 
@@ -331,18 +344,22 @@
 					downloadTemplateName.value = String(downloadTemplates.value[0]?.name ?? '')
 				}
 			} catch (error) {
-				uni.showToast({ title: error?.message ?? '加载清单失败', icon: 'none' })
+				uni.showToast({ title: error?.message ?? t('加载清单失败'), icon: 'none' })
 			}
 		}
 
-		/**
-		 * 根据详情组件传入的 picker 索引更新下载清单 ID 与名称。
-		 */
-		function changeDownloadTemplate(index) {
-			const option = downloadTemplates.value[Number(index)]
-			if (option == null) return
-			downloadTemplateId.value = String(option?.id ?? '')
-			downloadTemplateName.value = String(option?.name ?? '')
+		/** 打开与复制验货相同的底部清单选择弹层。 */
+		function openDownloadTemplateSheet() { if (!submitting.value) showDownloadTemplateSheet.value = true }
+
+		/** 取消清单选择且不改变当前下载参数。 */
+		function closeDownloadTemplateSheet() { showDownloadTemplateSheet.value = false }
+
+		/** 确认清单选项后同步下载参数及弹框回显。 */
+		function selectDownloadTemplate(option) {
+			const template = option?.raw ?? option
+			downloadTemplateId.value = String(template?.id ?? '')
+			downloadTemplateName.value = String(template?.name ?? '')
+			closeDownloadTemplateSheet()
 		}
 
 		/**
@@ -374,11 +391,27 @@
 				copyInspectType.value = copyInspectTypeOptions.value.some((option) => String(option?.value ?? '') === currentType)
 					? currentType
 					: String(copyInspectTypeOptions.value[0]?.value ?? '')
-				setCopyTemplate(copyTemplateOptions.value[0] ?? {})
+				const existingTemplateId = String(plan.value?.templateId ?? props.item?.templateId ?? '')
+				const existingTemplate = copyTemplateOptions.value.find((option) => String(option?.id ?? '') === existingTemplateId)
+				setCopyTemplate(existingTemplate ?? { id: existingTemplateId, name: plan.value?.templateName ?? props.item?.templateName ?? '' })
+				copyMergedItems.value = []
 				showCopySheet.value = true
+				if (copyMode.value === 2) loadCopyMergedItems()
 			} catch (error) {
-				uni.showToast({ title: error?.message ?? '加载复制选项失败', icon: 'none' })
+				uni.showToast({ title: error?.message ?? t('加载复制选项失败'), icon: 'none' })
 			}
+		}
+
+		/** 查询复制合并验货的全部成员，接口失败时至少展示当前卡片。 */
+		async function loadCopyMergedItems() {
+			const parentPlanId = getItemParentPlanId(props.item) || getPlanOperationId(props.item)
+			copyMergedLoading.value = true
+			try {
+				const response = await planApi.searchPlans({ parentPlanId }, 1, 100)
+				const members = response?.records ?? []
+				copyMergedItems.value = members.length > 0 ? members : [props.item]
+			} catch (error) { copyMergedItems.value = [props.item]; uni.showToast({ title: error?.message ?? t('加载合并验货成员失败'), icon: 'none' }) }
+			finally { copyMergedLoading.value = false }
 		}
 
 		/**
@@ -388,6 +421,7 @@
 			showCopySheet.value = false
 			copyCreated.value = false
 			copiedPlanId.value = ''
+			copyMergedItems.value = []
 		}
 
 		/**
@@ -424,7 +458,7 @@
 				}).filter((row) => row.planId !== '')
 				showReadyQuantitySheet.value = true
 			} catch (error) {
-				uni.showToast({ title: error?.message ?? '加载备货数量失败', icon: 'none' })
+				uni.showToast({ title: error?.message ?? t('加载备货数量失败'), icon: 'none' })
 			}
 		}
 
@@ -462,7 +496,7 @@
 				emit('request-refresh')
 				uni.showToast({ title: t('备货数量已更新'), icon: 'success' })
 			} catch (error) {
-				uni.showToast({ title: error?.message ?? '修改备货数量失败', icon: 'none' })
+				uni.showToast({ title: error?.message ?? t('修改备货数量失败'), icon: 'none' })
 			} finally {
 				submitting.value = false
 			}
@@ -511,7 +545,7 @@
 				copyCreated.value = true
 				uni.showToast({ title: t('复制验货成功'), icon: 'success' })
 			} catch (error) {
-				uni.showToast({ title: error?.message ?? '复制验货失败', icon: 'none' })
+				uni.showToast({ title: error?.message ?? t('复制验货失败'), icon: 'none' })
 			} finally {
 				submitting.value = false
 			}
@@ -529,7 +563,7 @@
 				emit('request-refresh')
 				uni.showToast({ title: t('已下载到本地'), icon: 'success' })
 			} catch (error) {
-				uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' })
+				uni.showToast({ title: error?.message ?? t('下载失败'), icon: 'none' })
 			} finally {
 				submitting.value = false
 			}
@@ -567,7 +601,7 @@
 		}
 
 		/**
-		 * 分发 H5 卡片菜单操作，已具备的离线操作直接执行，其余入口明确提示待接入。
+		 * 分发卡片菜单操作，按当前页面配置执行或委托下载、解锁、重置、复制及拆分。
 		 */
 		function handleCardAction(action) {
 			const actionKey = String(action?.key ?? '')
@@ -581,6 +615,10 @@
 			}
 			if (actionKey === 'reset') {
 				closeActionSheet()
+				if (props.delegateRemoteActions) {
+					emit('action-reset', props.item)
+					return
+				}
 				showResetModal.value = true
 				return
 			}
@@ -618,16 +656,13 @@
 				return
 			}
 			if (actionKey === 'split') {
-				if (props.delegateRemoteActions) {
-					emit('action-split', props.item)
-					return
-				}
-				uni.showToast({ title: t('拆分验货功能待接入'), icon: 'none' })
+				emit('action-split', props.item)
+				return
 			}
 		}
 
 		/**
-		 * 下载计划完整数据并事务性保存到本地数据库。
+		 * 下载完整计划并事务性保存，同时传入原卡片字段供本地摘要补全。
 		 */
 		async function confirmDownload() {
 		const planId = String(plan.value?.planId ?? plan.value?.id ?? props.item?.planId ?? props.item?.id ?? '').trim()
@@ -644,65 +679,73 @@
 			await planDownloadService.downloadToLocal(downloadPlanId, {
 			templateId: downloadTemplateId.value,
 			templateName: downloadTemplateName.value
-			}, isMerged.value ? downloadMergedItems.value.map((member) => getPlanOperationId(member)) : [])
+			}, isMerged.value ? downloadMergedItems.value.map((member) => getPlanOperationId(member)) : [],
+			isMerged.value ? downloadMergedItems.value : [props.item])
 			showDownloadModal.value = false
 			emit('download', props.item)
 			emit('request-refresh')
 			uni.showToast({ title: t('下载成功'), icon: 'success' })
 		} catch (error) {
-			uni.showToast({ title: error?.message ?? '下载失败', icon: 'none' })
+			uni.showToast({ title: error?.message ?? t('下载失败'), icon: 'none' })
 		} finally {
 			submitting.value = false
 		}
 	}
 
 		/**
-		 * 二次确认后调用 H5 同源释放接口解锁当前任务。
+		 * 二次确认后解锁当前任务，并通知列表移除已释放的本地与远程缓存。
 		 */
 		async function confirmUnlock() {
 		submitting.value = true
 		try {
 			await initializeRuntime()
-			await planOperationService.unlockPlan(props.item)
+			const response = await planOperationService.unlockPlan(props.item)
 			showUnlockModal.value = false
+			emit('released', response)
 			emit('request-refresh')
 			uni.showToast({ title: t('解锁成功'), icon: 'success' })
 		} catch (error) {
-			uni.showToast({ title: error?.message ?? '解锁失败', icon: 'none' })
+			uni.showToast({ title: error?.message ?? t('解锁失败'), icon: 'none' })
 		} finally {
 			submitting.value = false
 		}
 	}
 
 		/**
-		 * 二次确认后调用 H5 同源释放接口重置并删除云端报告。
+		 * 二次确认后重置任务并删除云端报告，同时通知列表移除已释放的缓存。
 		 */
 		async function confirmReset() {
 			submitting.value = true
 			try {
 				await initializeRuntime()
-				await planOperationService.resetPlan(props.item)
+				const response = await planOperationService.resetPlan(props.item)
 				showResetModal.value = false
+				emit('released', response)
 				emit('request-refresh')
 				uni.showToast({ title: t('重置成功'), icon: 'success' })
 			} catch (error) {
-				uni.showToast({ title: error?.message ?? '重置失败', icon: 'none' })
+				uni.showToast({ title: error?.message ?? t('重置失败'), icon: 'none' })
 			} finally {
 				submitting.value = false
 			}
 		}
 
 		/**
-		 * 提取当前卡片用于详情页导航和远端恢复的计划 ID。
+		 * 提取当前卡片用于本地详情页导航的计划 ID。
 		 */
 		function getDetailPlanId() {
 			return String(getPlanOperationId(props.item) ?? '').trim()
 		}
 
 		/**
-		 * 跳转移动端离线验货详情页，并保留当前计划 ID。
+		 * 本机已下载才进入详情；未下载则提示锁定或打开下载确认弹框。
 		 */
 		function openDetailPage() {
+			if (!props.isLocalDownloaded) {
+				if (resolvedDownloadState.value === 'locked') uni.showToast({ title: t('该计划已被其他验货员下载，当前账号不可操作'), icon: 'none' })
+				else openDownloadModal()
+				return
+			}
 			const planId = getDetailPlanId()
 			if (planId === '') {
 				uni.showToast({ title: t('计划ID缺失，无法进入详情'), icon: 'none' })
@@ -712,30 +755,7 @@
 		}
 
 		/**
-		 * 未缓存的线上计划经详情服务拉取并持久化到 SQLite 后再进入详情页。
-		 */
-		async function recoverLocalDetailAndOpen() {
-			if (submitting.value) return
-			const planId = getDetailPlanId()
-			if (planId === '') {
-				uni.showToast({ title: t('计划ID缺失，无法恢复详情'), icon: 'none' })
-				return
-			}
-			submitting.value = true
-			try {
-				await initializeRuntime()
-				await inspectionDetailService.loadDetail(planId)
-				emit('request-refresh')
-				openDetailPage()
-			} catch (error) {
-				uni.showToast({ title: error?.message ?? '恢复本地详情失败', icon: 'none' })
-			} finally {
-				submitting.value = false
-			}
-		}
-
-		/**
-		 * 本地计划直接打开，未缓存的线上计划先入库，锁定计划保留操作菜单。
+		 * 本机未下载的进行中任务先弹下载确认，已缓存才打开详情。
 		 */
 		function handleCardClick() {
 			if (!props.useInternalCardClick) {
@@ -746,11 +766,13 @@
 				selectionMode: props.selectionMode,
 				status: status.value,
 				downloadState: resolvedDownloadState.value,
-				isLocalDownloaded: props.isLocalDownloaded
+				isLocalDownloaded: props.isLocalDownloaded,
+				manageActionsInCard: props.manageActionsInCard
 			})
 			if (action === 'toggle-merge') return toggleMergeSelection()
+			if (action === 'open-download') return openDownloadModal()
+			if (action === 'request-download') return emit('action-download', props.item)
 			if (action === 'open-actions') return openActionSheet()
-			if (action === 'recover-detail') return recoverLocalDetailAndOpen()
 			openDetailPage()
 	}
 </script>
@@ -781,10 +803,12 @@
 	.goods-extra-value { color: #64748b; font-size: 20rpx; }
 		.card-right { position: absolute; top: 20rpx; right: 24rpx; z-index: 1; flex-direction: row; align-items: center; }
 		.merge-flag { width: 46rpx; height: 46rpx; margin-right: 10rpx; border-radius: 12rpx; background-color: #ecfdf5; border-width: 2rpx; border-color: #a7f3d0; align-items: center; justify-content: center; box-shadow: 0 2rpx 4rpx rgba(5, 150, 105, 0.12); }
-		.selection-control { width: 46rpx; height: 46rpx; border-radius: 24rpx; border-width: 3rpx; border-color: #94a3b8; background-color: #ffffff; align-items: center; justify-content: center; }
-		.selection-control.selected { border-color: #16a34a; background-color: #16a34a; }
-		.selection-control.disabled { opacity: 0.35; }
-		.selection-mark { color: #ffffff; font-size: 28rpx; font-weight: 700; }
+		.merge-check-wrapper { width: 68rpx; height: 68rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 18rpx; background-color: #ffffff; align-items: center; justify-content: center; box-shadow: 0 3rpx 8rpx rgba(15, 23, 42, 0.08); }
+		.merge-check-wrapper.selected { border-color: #22c55e; background-color: #ecfdf5; }
+		.merge-check-wrapper.disabled { border-color: #94a3b8; background-color: #cbd5e1; }
+		.merge-check-label { width: 68rpx; height: 68rpx; align-items: center; justify-content: center; }
+		.merge-checkbox { width: 42rpx; height: 42rpx; }
+		.merge-disabled-mark { color: #475569; font-size: 36rpx; font-weight: 700; line-height: 42rpx; }
 		.card-more-btn { width: 46rpx; height: 46rpx; background-color: #f8fafc; border-width: 2rpx; border-color: #e2e8f0; border-radius: 12rpx; flex-direction: row; align-items: center; justify-content: center; box-shadow: 0 2rpx 4rpx rgba(15, 23, 42, 0.08); }
 		.menu-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); z-index: 2000; justify-content: flex-end; }
 	.confirm-modal { width: 100%; background-color: #ffffff; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; overflow: hidden; }
@@ -801,7 +825,7 @@
 	.download-modal { height: 85%; }
 	.copy-modal-title { font-size: 40rpx; font-weight: 700; color: #111827; margin-bottom: 24rpx; }
 	.copy-info-card { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; border-radius: 24rpx; padding: 16rpx 24rpx; }
-	.copy-info-row { flex-direction: row; justify-content: space-between; align-items: flex-start; padding: 20rpx 0; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.copy-info-row { flex-direction: row; justify-content: space-between; align-items: flex-start; padding: 20rpx 0; border-bottom-width: 2rpx; border-bottom-color: #cbd5e1; }
 	.copy-info-row.selectable { background-color: #f8fafc; }
 	.copy-label { color: #64748b; font-size: 28rpx; }
 	.copy-value { max-width: 420rpx; color: #111827; font-size: 28rpx; text-align: right; }

@@ -3,6 +3,15 @@
  */
 function parsePhotoRow(row) {
   try {
+    return { ...JSON.parse(row?.jsonData ?? '{}'), reportId: String(row?.reportId ?? '') }
+  } catch (_) {
+    return { reportId: String(row?.reportId ?? '') }
+  }
+}
+
+/** 安全读取报告快照中的合并身份，供照片共享范围校验使用。 */
+function parseReportRow(row) {
+  try {
     return JSON.parse(row?.jsonData ?? '{}')
   } catch (_) {
     return {}
@@ -29,22 +38,56 @@ function isPendingPhoto(photo) {
  * 创建手机本地照片与上传状态仓库。
  */
 export function createPhotoRepository(database) {
+  /** 根据相同报告实体与合并父计划确定共享媒体的成员计划 ID；普通报告仅返回自身。 */
+  function getSharedPlanIds(planId) {
+    const normalizedPlanId = String(planId ?? '').trim()
+    const rows = database.readTable('report')
+    const current = rows.find((row) => String(row?.reportId ?? '') === normalizedPlanId)
+    if (current == null) return new Set([normalizedPlanId])
+    const detail = parseReportRow(current)
+    const parentPlanId = String(detail?.plan?.parentPlanId ?? '').trim()
+    const reportEntityId = String(detail?.report?.id ?? '').trim()
+    if (Number(detail?.plan?.mergeType ?? 0) !== 2 || parentPlanId === '' || reportEntityId === '') return new Set([normalizedPlanId])
+    const memberIds = new Set((Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : [])
+      .map((plan) => String(plan?.id ?? plan?.planId ?? '').trim()).filter((id) => id !== ''))
+    const sharedIds = new Set([normalizedPlanId])
+    rows.forEach((row) => {
+      const siblingId = String(row?.reportId ?? '')
+      if (!memberIds.has(siblingId)) return
+      const sibling = parseReportRow(row)
+      if (String(sibling?.report?.id ?? '') === reportEntityId && String(sibling?.plan?.parentPlanId ?? '') === parentPlanId) sharedIds.add(siblingId)
+    })
+    return sharedIds
+  }
+
   /**
-   * 按报告 ID 读取全部本地媒体记录。
+   * 按计划 ID 读取共享合并报告的媒体记录，按照片 ID 去重并保留原拍摄计划。
    */
   async function listByReportId(reportId) {
     const normalizedReportId = String(reportId ?? '').trim()
+    const sharedPlanIds = getSharedPlanIds(normalizedReportId)
+    const seen = new Set()
     return database.readTable('photo')
-      .filter((row) => String(row?.reportId ?? '') === normalizedReportId)
+      .filter((row) => sharedPlanIds.has(String(row?.reportId ?? '')))
       .sort((left, right) => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+      .filter((row) => {
+        const photoId = String(row?.sourcePhotoId ?? row?.photoId ?? '')
+        if (seen.has(photoId)) return false
+        seen.add(photoId)
+        return true
+      })
       .map(parsePhotoRow)
   }
 
   /**
-   * 读取指定报告中尚未完成上传的媒体记录。
+   * 只读取当前计划实际持有的待上传行，避免合并成员重复上传同一文件。
    */
   async function listPendingByReportId(reportId) {
-    return (await listByReportId(reportId)).filter(isPendingPhoto)
+    const normalizedReportId = String(reportId ?? '').trim()
+    return database.readTable('photo')
+      .filter((row) => String(row?.reportId ?? '') === normalizedReportId)
+      .map(parsePhotoRow)
+      .filter(isPendingPhoto)
   }
 
   /**
@@ -100,7 +143,7 @@ export function createPhotoRepository(database) {
   }
 
   /**
-   * 新增或更新单个本地媒体记录。
+   * 新增媒体；若合并报告已存在该照片，则更新原拍摄成员的唯一媒体行。
    */
   async function save(reportId, photo) {
     const normalizedReportId = String(reportId ?? '').trim()
@@ -109,14 +152,18 @@ export function createPhotoRepository(database) {
     if (sourcePhotoId === '') throw new Error('照片ID不能为空')
     let saved = photo
     await database.transaction(async (transaction) => {
-      const existing = transaction.read('photo').filter((row) => String(row?.reportId ?? '') === normalizedReportId)
+      const sharedPlanIds = getSharedPlanIds(normalizedReportId)
+      const ownerRow = transaction.read('photo').find((row) => sharedPlanIds.has(String(row?.reportId ?? ''))
+        && String(row?.sourcePhotoId ?? '') === sourcePhotoId)
+      const ownerPlanId = String(ownerRow?.reportId ?? normalizedReportId)
+      const existing = transaction.read('photo').filter((row) => String(row?.reportId ?? '') === ownerPlanId)
       const previous = existing.find((row) => String(row?.sourcePhotoId ?? '') === sourcePhotoId)
-      saved = { ...(previous != null ? parsePhotoRow(previous) : {}), ...photo }
+      saved = { ...(previous != null ? parsePhotoRow(previous) : {}), ...photo, reportId: ownerPlanId }
       transaction.upsert('photo', 'photoId', {
-        photoId: buildPhotoKey(normalizedReportId, sourcePhotoId),
+        photoId: buildPhotoKey(ownerPlanId, sourcePhotoId),
         sourcePhotoId,
         defectId: saved?.defectId ?? '',
-        reportId: normalizedReportId,
+        reportId: ownerPlanId,
         ownerType: saved?.ownerType ?? '',
         ownerId: (saved?.ownerId || saved?.itemId || saved?.defectId) ?? '',
         localPath: saved?.localPath ?? '',
@@ -153,14 +200,15 @@ export function createPhotoRepository(database) {
   }
 
   /**
-   * 删除指定报告中的单个本地媒体记录。
+   * 从合并报告中删除指定照片，允许在非拍摄成员的详情里操作共享媒体。
    */
   async function remove(reportId, photoId) {
     const normalizedReportId = String(reportId ?? '').trim()
     const normalizedPhotoId = String(photoId ?? '').trim()
     await database.transaction(async (transaction) => {
+      const sharedPlanIds = getSharedPlanIds(normalizedReportId)
       transaction.removeWhere('photo', (row) => {
-        return String(row?.reportId ?? '') === normalizedReportId
+        return sharedPlanIds.has(String(row?.reportId ?? ''))
           && String(row?.sourcePhotoId ?? '') === normalizedPhotoId
       })
     })

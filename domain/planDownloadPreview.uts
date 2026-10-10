@@ -37,3 +37,8 @@ export function buildDownloadPlanFields(item) {
     { label: '模具色卡号', value: firstNonEmpty([plan?.modelNo, item?.modelNo]) }
   ]
 }
+
+/** 从下载字段中选取 H5“复制当前验货”弹框的前七项计划摘要。 */
+export function buildCopyPlanFields(item) {
+  return buildDownloadPlanFields(item).slice(0, 7)
+}

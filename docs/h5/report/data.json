@@ -1,0 +1,638 @@
+{
+    "code": 200,
+    "message": "plan.download.success",
+    "data": {
+        "plan": {
+            "id": "2042087884445499394",
+            "domeNo": "254690",
+            "subGoodsNo": "730.1680.000.001",
+            "batchNo": "3",
+            "goodsName": "巴林顿铝铁混合藤编可拆储物咖啡桌",
+            "clientOrderNo": "01430046",
+            "goodsCname": "巴林顿全铁藤编可拆储物咖啡桌\r\n产品尺寸：(L)665*(W)410*(H)510MM\r\n铝铁混合骨架，电泳+优质室粉喷塑+手涮漆。桌面为铝板冲压+手涮漆，其它为铁+编藤，桌脚为四个方形塑料脚+调节脚垫。\r\n1PC/CTN",
+            "requiredQuantity": 438,
+            "deliveryDate": "2026-01-27",
+            "companyNo": "ZYGF",
+            "factoryNo": "ZJLJ",
+            "factoryName": "浙江乐居户外用品有限公司",
+            "clientNo": "CTHK",
+            "clientName": "CANADIAN TIRE CORPORTATION LTD",
+            "purchaseUserId": "11639",
+            "purchaseUser": "张婷",
+            "purchaseUserEmail": "Shirley.Zhang@letright.com",
+            "salesUserId": "322261",
+            "salesUser": "胡敬东",
+            "qcmLeaderId": "42572",
+            "qcmLeader": "张蓉",
+            "qcmLeaderEmail": "",
+            "goodsClass": "户外家具",
+            "goodsFlag": 1,
+            "inspectType": "最终验货",
+            "status": 1,
+            "sourceType": 1,
+            "parentPlanId": "2042087884252561410",
+            "mergeType": 2,
+            "inspectorId": "",
+            "inspectorName": "",
+            "lockedAt": "2026-04-13 16:59:18",
+            "templateId": "7B2B9296-9183-451D-A3F9-3115100231EB",
+            "templateName": "户外家具",
+            "inspectionLevel": "G-I",
+            "sampleCode": "F",
+            "sampleSize": 20,
+            "criticalAql": 0.00,
+            "criticalAc": 0,
+            "criticalRe": 1,
+            "majorAql": 1.50,
+            "majorAc": 2,
+            "majorRe": 3,
+            "minorAql": 4.00,
+            "minorAc": 5,
+            "minorRe": 6,
+            "createDate": "2026-04-09 11:51:06",
+            "createBy": "system",
+            "updateDate": "2026-04-09 11:51:06",
+            "updateBy": "system"
+        },
+        "template": {
+            "id": "7B2B9296-9183-451D-A3F9-3115100231EB",
+            "templateName": "户外家具",
+            "goodsFlag": "1",
+            "version": "1.0",
+            "status": 1,
+            "description": "户外家具验货检查清单"
+        },
+        "standardItems": [
+            {
+                "id": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                "itemName": "外箱检查",
+                "itemDescription": "检查外箱相关信息",
+                "itemType": "Standard",
+                "isRequired": 0,
+                "isPhotoRequired": 0,
+                "sortOrder": 1,
+                "children": [
+                    {
+                        "id": "CEA22C76-FA48-4F3D-B6B9-C6468E722AD4",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "产品完成图",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 2
+                    },
+                    {
+                        "id": "45BF375C-4ADD-4D93-8519-9E2F7C04C68D",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "外箱总览",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 3
+                    },
+                    {
+                        "id": "6D22BB6A-A8E8-4FC1-BD92-C2B53220C620",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "摔箱/滚箱/叠装测试",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 4
+                    },
+                    {
+                        "id": "2D8510E5-9E78-4D16-9AEC-38485466C311",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "外箱六面图/叠装四面图",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 5
+                    },
+                    {
+                        "id": "595A4F8D-E6EB-4B91-8BB3-3DF3E3B525D0",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "外箱尺寸/毛重",
+                        "itemDescription": "测量外箱尺寸和毛重",
+                        "itemType": "Measurements",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 6,
+                        "specAttributes": [
+                            {
+                                "attrId": "name",
+                                "attrName": "箱名"
+                            },
+                            {
+                                "attrId": "length",
+                                "attrName": "长(CM)"
+                            },
+                            {
+                                "attrId": "width",
+                                "attrName": "宽(CM)"
+                            },
+                            {
+                                "attrId": "height",
+                                "attrName": "高(CM)"
+                            },
+                            {
+                                "attrId": "gross_weight",
+                                "attrName": "毛重(KG)"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "DD823B67-963A-4C89-833D-FCFE686CBA6F",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "整托(箱装)尺寸/毛重",
+                        "itemDescription": "",
+                        "itemType": "Measurements",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 7,
+                        "specAttributes": [
+                            {
+                                "attrId": "length",
+                                "attrName": "长(CM)"
+                            },
+                            {
+                                "attrId": "width",
+                                "attrName": "宽(CM)"
+                            },
+                            {
+                                "attrId": "height",
+                                "attrName": "高(CM)"
+                            },
+                            {
+                                "attrId": "weight",
+                                "attrName": "毛重(KG)"
+                            },
+                            {
+                                "attrId": "quantity",
+                                "attrName": "每托箱数(N)"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "9D58854D-F8C7-4939-9FE2-6337F6AF0C94",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "叠装尺寸/毛重",
+                        "itemDescription": "",
+                        "itemType": "Measurements",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 8,
+                        "specAttributes": [
+                            {
+                                "attrId": "length",
+                                "attrName": "长(CM)"
+                            },
+                            {
+                                "attrId": "width",
+                                "attrName": "宽(CM)"
+                            },
+                            {
+                                "attrId": "height",
+                                "attrName": "高(CM)"
+                            },
+                            {
+                                "attrId": "weight",
+                                "attrName": "毛重(KG)"
+                            },
+                            {
+                                "attrId": "stack_quantity",
+                                "attrName": "每叠箱数(N)"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "2E53D3E8-34E4-4EB1-9FA3-9C3E04990760",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "托架尺寸/重量",
+                        "itemDescription": "",
+                        "itemType": "Measurements",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 9,
+                        "specAttributes": [
+                            {
+                                "attrId": "length",
+                                "attrName": "长(CM)"
+                            },
+                            {
+                                "attrId": "width",
+                                "attrName": "宽(CM)"
+                            },
+                            {
+                                "attrId": "height",
+                                "attrName": "高(CM)"
+                            },
+                            {
+                                "attrId": "height2",
+                                "attrName": "净空高(CM)"
+                            },
+                            {
+                                "attrId": "weight",
+                                "attrName": "重量(KG)"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "0AC9C9A9-15B7-400F-8AC3-4424BB0720F3",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "包装步骤/细节",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 10
+                    },
+                    {
+                        "id": "BEF3EFF2-F4F5-4EAC-BD06-EF4A70B1CD1E",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "包材(批次贴/吊牌/警告文字/LOGO/彩贴/其他)",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 11
+                    },
+                    {
+                        "id": "87B861A5-6650-472F-969B-1000BE2197ED",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "条码扫描",
+                        "itemDescription": "扫描外箱条码",
+                        "itemType": "Barcodes",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 12
+                    },
+                    {
+                        "id": "74A29515-4B3D-479B-886F-6E7FCBB5A26D",
+                        "parentItemId": "6E622D65-7ED0-46D1-B30D-BAF8407C8C37",
+                        "itemName": "其他",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 13
+                    }
+                ]
+            },
+            {
+                "id": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                "itemName": "KD装配",
+                "itemDescription": "KD装配检查",
+                "itemType": "Standard",
+                "isRequired": 0,
+                "isPhotoRequired": 0,
+                "sortOrder": 14,
+                "children": [
+                    {
+                        "id": "371C03D8-CF91-4822-87C2-47031AF5CA16",
+                        "parentItemId": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                        "itemName": "说明书检查",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 15
+                    },
+                    {
+                        "id": "7D9E5F0D-2030-46D4-A013-2E67E69DF79C",
+                        "parentItemId": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                        "itemName": "配件包检查",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 16
+                    },
+                    {
+                        "id": "2FB0B775-4490-4F5A-9286-FE1CBA998894",
+                        "parentItemId": "6A1F4ABF-9FE4-4A99-85F6-4F6B2924CDB7",
+                        "itemName": "检具检查",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 17
+                    }
+                ]
+            },
+            {
+                "id": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                "itemName": "产品检查",
+                "itemDescription": "产品整体检查",
+                "itemType": "Standard",
+                "isRequired": 0,
+                "isPhotoRequired": 0,
+                "sortOrder": 18,
+                "children": [
+                    {
+                        "id": "C77CDE9F-2982-47BE-B0E6-4AEBDAEABF22",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "主图（六面图）",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 1,
+                        "sortOrder": 19
+                    },
+                    {
+                        "id": "3ECF7747-4B92-4462-AA22-89489E8EF654",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "产品细节图",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 20
+                    },
+                    {
+                        "id": "B6FA8B15-083D-43FF-B763-661F85DF3659",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "产品尺寸/净重",
+                        "itemDescription": "测量产品尺寸和净重",
+                        "itemType": "Measurements",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 21,
+                        "specAttributes": [
+                            {
+                                "attrId": "length",
+                                "attrName": "长(CM)"
+                            },
+                            {
+                                "attrId": "width",
+                                "attrName": "宽(CM)"
+                            },
+                            {
+                                "attrId": "height",
+                                "attrName": "高(CM)"
+                            },
+                            {
+                                "attrId": "diameter",
+                                "attrName": "直径(CM)"
+                            },
+                            {
+                                "attrId": "pweight",
+                                "attrName": "净重(KG)"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "1049EFDC-E537-40DA-B686-B3A3199FFCB9",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "产品规格",
+                        "itemDescription": "输入合格、不合格或无",
+                        "itemType": "Text",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 22,
+                        "specAttributes": [
+                            {
+                                "attrId": "wood_type",
+                                "attrName": "管材"
+                            },
+                            {
+                                "attrId": "PS",
+                                "attrName": "PS"
+                            },
+                            {
+                                "attrId": "rattan",
+                                "attrName": "藤条"
+                            },
+                            {
+                                "attrId": "foam",
+                                "attrName": "海绵"
+                            },
+                            {
+                                "attrId": "fabric",
+                                "attrName": "面料"
+                            },
+                            {
+                                "attrId": "glass",
+                                "attrName": "玻璃"
+                            },
+                            {
+                                "attrId": "spray_film_thickness",
+                                "attrName": "喷塑膜厚"
+                            },
+                            {
+                                "attrId": "other",
+                                "attrName": "其他"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "C67485C0-B877-4F03-952F-FED89695D7ED",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "对比确认样（款式，表面处理，舒适度...）",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 23
+                    },
+                    {
+                        "id": "DB60800C-64DB-4E49-B0C7-B024FC56B54B",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "对比颜色样",
+                        "itemDescription": "输入合格、不合格或无",
+                        "itemType": "Text",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 24,
+                        "specAttributes": [
+                            {
+                                "attrId": "plastic_spraying",
+                                "attrName": "喷塑"
+                            },
+                            {
+                                "attrId": "cloth_cove",
+                                "attrName": "布面"
+                            },
+                            {
+                                "attrId": "rattan",
+                                "attrName": "藤条"
+                            },
+                            {
+                                "attrId": "PS",
+                                "attrName": "PS条"
+                            },
+                            {
+                                "attrId": "glass",
+                                "attrName": "玻璃"
+                            },
+                            {
+                                "attrId": "plastic_parts",
+                                "attrName": "塑料件"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "DC26A57E-8D30-4718-B36E-46CC43D9AD28",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "功能检查",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 25
+                    },
+                    {
+                        "id": "AB4BEBA6-FA38-4831-BBF9-24B0BCC35FEC",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "抽样产品---必检项",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 1,
+                        "sortOrder": 26
+                    },
+                    {
+                        "id": "58BF2C53-BCFF-4D7E-AFE4-77214B70732D",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "产品一字排开图",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 1,
+                        "sortOrder": 27
+                    },
+                    {
+                        "id": "6CCF326D-7A39-4808-8E3F-DF75B3D47FF3",
+                        "parentItemId": "234A1CE1-9AB0-4A6E-B64D-46BAF1E04437",
+                        "itemName": "其他",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 0,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 28
+                    }
+                ]
+            },
+            {
+                "id": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                "itemName": "测试",
+                "itemDescription": "现场测试项目",
+                "itemType": "Standard",
+                "isRequired": 0,
+                "isPhotoRequired": 0,
+                "sortOrder": 29,
+                "children": [
+                    {
+                        "id": "4955B7BE-05A8-44AF-8F5F-82936370B2D4",
+                        "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                        "itemName": "静载",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 30
+                    },
+                    {
+                        "id": "5F782A92-264E-4AE3-8D6A-2BC465D180A5",
+                        "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                        "itemName": "冲击",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 31
+                    },
+                    {
+                        "id": "A916912C-BBD2-444B-AD28-76A0C8F6E7F6",
+                        "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                        "itemName": "安规",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 32
+                    },
+                    {
+                        "id": "46FE39E0-47FD-4331-8598-DB5DD2836C9C",
+                        "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                        "itemName": "原材料测试(物理)",
+                        "itemDescription": "输入合格、不合格或无",
+                        "itemType": "Text",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 33,
+                        // "specAttributesResult":"[{"attr_001": "120.5", "attr_002": "60.2"},{"attr_001": "120.5", "attr_002": "60.2"},{"attr_001": "120.5", "attr_002": "60.2"}]",
+                        "specAttributes": [
+                            {
+                                "attrId": "cloth_waterproof",
+                                "attrName": "布面防水"
+                            },
+                            {
+                                "attrId": "wet_dry_cloth_wipe",
+                                "attrName": "布面干湿擦"
+                            },
+                            {
+                                "attrId": "cloth_seam_strength",
+                                "attrName": "布面拼缝强度"
+                            },
+                            {
+                                "attrId": "spray_adhesion",
+                                "attrName": "喷塑附着力"
+                            },
+                            {
+                                "attrId": "spray_dry_wet_wipe",
+                                "attrName": "喷塑干湿擦"
+                            },
+                            {
+                                "attrId": "rattan_tension",
+                                "attrName": "藤条拉力"
+                            },
+                            {
+                                "attrId": "cane_ductility",
+                                "attrName": "藤条延展性"
+                            },
+                            {
+                                "attrId": "rubbing_fastness_of_ps_strip",
+                                "attrName": "PS条摩擦牢度"
+                            },
+                            {
+                                "attrId": "glass_toughening_effect_test",
+                                "attrName": "玻璃钢化效果测试"
+                            },
+                            {
+                                "attrId": "ps_strip_nail_pulling_force",
+                                "attrName": "PS条拔钉力"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "0DA454B2-962B-48FD-9B02-FBF21E8F03FE",
+                        "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                        "itemName": "原材料测试(化学)",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 0,
+                        "sortOrder": 34
+                    },
+                    {
+                        "id": "80221073-AD4F-4AB6-A245-5A693820BEE9",
+                        "parentItemId": "3F6544AB-D32A-4EAE-8F3B-461F93EAF590",
+                        "itemName": "验货资料核对",
+                        "itemDescription": "",
+                        "itemType": "Standard",
+                        "isRequired": 1,
+                        "isPhotoRequired": 1,
+                        "sortOrder": 35
+                    }
+                ]
+            }
+        ]
+    },
+    "timestamp": 1776070758848,
+    "success": true
+}
+

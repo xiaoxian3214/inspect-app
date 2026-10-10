@@ -1,19 +1,41 @@
+/** 用卡片的计划主键而非报告主键关联下载成员，避免稀疏响应丢失展示字段。 */
+function getSourcePlanId(item) {
+  const candidates = [item?.plan?.planId, item?.planId, item?.raw?.planId, item?.raw?.id, item?.plan?.id, item?.id]
+  const found = candidates.find((value) => value !== undefined && value !== null && String(value).trim() !== '')
+  return found === undefined ? '' : String(found).trim()
+}
+
+/** 创建计划下载服务，负责完整报告落库及原卡片字段补全。 */
 export function createPlanDownloadService(options) {
   const planApi = options.planApi
   const reportRepository = options.reportRepository
   const planViewModel = options.planViewModel
+  const detailViewModel = options.detailViewModel
+  if (typeof detailViewModel?.isInspectionDetailComplete !== 'function') throw new Error('缺少验货详情完整性校验组件')
 
-  /** 从一次接口响应保存整组合并报告；传入成员 ID 时拒绝不完整下载，避免部分成员落库。 */
-  async function downloadToLocal(planId, payload, expectedPlanIds = []) {
+  /** 保存生成接口返回的完整报告；缺少离线清单时拒绝整组落库，不额外请求详情。 */
+  async function downloadToLocal(planId, payload, expectedPlanIds = [], sourceItems = []) {
     const downloadData = await planApi.downloadPlan(planId, payload ?? {})
-    const records = planViewModel.splitDownloadDataToLocalPlans(downloadData).map((record) => ({
-      ...record,
-      status: Number.isFinite(Number(record?.status)) ? Number(record.status) : 0,
-      downloadedAt: record?.downloadedAt || new Date().toISOString()
-    }))
+    const sourceById = new Map()
+    for (const item of sourceItems) {
+      const id = getSourcePlanId(item)
+      if (id !== '') sourceById.set(id, item)
+    }
+    const records = planViewModel.splitDownloadDataToLocalPlans(downloadData).map((record) => {
+      const source = sourceById.get(String(planViewModel.getPlanUniqueId(record) ?? ''))
+      const completed = planViewModel.fillMissingPlanCardFields(record, source)
+      return {
+        ...completed,
+        listCard: source ?? completed?.listCard,
+        status: Number.isFinite(Number(completed?.status)) ? Number(completed.status) : 0,
+        downloadedAt: completed?.downloadedAt || new Date().toISOString()
+      }
+    })
     if (records.length === 0) throw new Error('下载数据为空，无法保存到本地')
     const downloadedIds = new Set(records.map((record) => String(record?.planId ?? '')))
     if (expectedPlanIds.some((id) => !downloadedIds.has(String(id)))) throw new Error('合并验货数据不完整，请稍后重试')
+    const incomplete = records.find((record) => !detailViewModel.isInspectionDetailComplete(record))
+    if (incomplete != null) throw new Error(`验货 ${incomplete.planId} 下载数据不完整，未保存到本地，请重试`)
     await reportRepository.savePlans(records)
     return records
   }

@@ -25,7 +25,7 @@
 							<view v-for="reply in thread.replies" :key="reply.id" class="reply-card">
 								<view class="comment-head">
 									<view class="head-left">
-										<view class="reply-author"><text class="author">{{ reply.authorName ?? '-' }}</text><text v-if="reply.replyToName !== ''" class="reply-to">回复 {{ reply.replyToName }}</text></view>
+										<view class="reply-author"><text class="author">{{ reply.authorName ?? '-' }}</text><text v-if="reply.replyToName !== ''" class="reply-to">{{ t('回复 {name}', { name: reply.replyToName }) }}</text></view>
 										<text class="time">{{ reply.updatedAt || reply.createdAt ?? '-' }}</text>
 									</view>
 									<view class="head-actions">
@@ -41,10 +41,10 @@
 			</scroll-view>
 			<view class="editor">
 				<view v-if="String(replyTarget.id ?? '') !== ''" class="reply-target">
-					<text class="reply-target-text">回复给：{{ replyTarget.authorName ?? '-' }}</text>
+				<text class="reply-target-text">{{ t('回复给：{name}', { name: replyTarget.authorName ?? '-' }) }}</text>
 					<text class="reply-target-cancel" @click="cancelReply">{{ t('取消回复') }}</text>
 				</view>
-				<textarea class="comment-input" :value="draft" :placeholder="String(replyTarget.id ?? '') !== '' ? '写回复' : '写评论'" :maxlength="500" @input="handleInput" />
+				<textarea class="comment-input" :value="draft" :placeholder="t(String(replyTarget.id ?? '') !== '' ? '写回复' : '写评论')" :maxlength="500" @input="handleInput" />
 				<view class="editor-actions">
 					<button v-if="String(replyTarget.id ?? '') !== ''" class="editor-button secondary" :disabled="saving" @click="cancelReply">{{ t('取消') }}</button>
 					<button class="editor-button primary" :disabled="saving || draft.trim() === ''" @click="submitComment">{{ t(saving ? '提交中...' : (String(replyTarget.id ?? '') !== '' ? '提交回复' : '提交评论')) }}</button>
@@ -78,7 +78,7 @@
 	watch(() => props.visible, (visible) => { if (visible) { resetEditor(); loadComments() } })
 
 	/** 显示统一轻提示。 */
-	function showToast(message) { uni.showToast({ title: String(message ?? ''), icon: 'none', duration: 2400 }) }
+	function showToast(message) { uni.showToast({ title: t(String(message ?? '')), icon: 'none', duration: 2400 }) }
 	/** 重置草稿与回复目标，便于每次打开弹层回到干净状态。 */
 	function resetEditor() { draft.value = ''; replyTarget.value = {}; deletingId.value = '' }
 	/** 按 H5 归一化规则加载报告全部评论并压平为两级楼层。 */
@@ -90,7 +90,7 @@
 			const rows = await reportCommentsApi.listCommentsByReport(reportId)
 			threads.value = buildCommentThreads(normalizeReportComments(rows))
 		} catch (error) {
-			showToast(error?.message ?? '加载评论失败')
+			showToast(error?.message ?? t('加载评论失败'))
 		} finally {
 			loading.value = false
 		}
@@ -114,7 +114,7 @@
 			cancelReply()
 			await loadComments()
 		} catch (error) {
-			showToast(error?.message ?? '提交评论失败')
+			showToast(error?.message ?? t('提交评论失败'))
 		} finally {
 			saving.value = false
 		}
@@ -135,7 +135,7 @@
 					showToast('删除成功')
 					await loadComments()
 				} catch (error) {
-					showToast(error?.message ?? '删除评论失败')
+					showToast(error?.message ?? t('删除评论失败'))
 				} finally {
 					deletingId.value = ''
 				}
