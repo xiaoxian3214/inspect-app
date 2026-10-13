@@ -33,23 +33,23 @@
 		</view>
 		<scroll-view
 			class="content"
-			scroll-y="true"
+			:scroll-y="true"
 		>
 			<view v-if="activeTab === 'local'" class="group-list">
-				<view v-if="loading && localReportRows.length === 0" class="loading">
+				<view v-if="loading && localPlanRows.length === 0" class="loading">
 					<text class="loading-icon">⟳</text>
 					<text>{{ t('读取本地数据中...') }}</text>
 				</view>
-				<view v-else-if="localReportRows.length === 0" class="tip-card">
+				<view v-else-if="localPlanRows.length === 0" class="tip-card">
 					<view class="tip-title">{{ t(errorMessage !== '' ? '读取本地数据失败' : '暂无本地下载数据') }}</view>
-					<view class="tip-sub">{{ t(errorMessage !== '' ? errorMessage : '下载的验货计划会保存到本机 SQLite 的 report 表。') }}</view>
+					<view class="tip-sub">{{ t(errorMessage !== '' ? errorMessage : '下载的验货计划、报告、检查项与疵点会关联保存到本机 SQLite。') }}</view>
 					<button class="retry-btn" @click="refreshLocalList">{{ t('重新读取') }}</button>
 				</view>
 				<view v-else>
 					<view v-if="errorMessage !== ''" class="inline-notice">{{ t(errorMessage) }}</view>
-					<view class="inline-notice">{{ t('本机 SQLite · report 表 · 共 {count} 条（包含所有状态）', { count: localReportRows.length }) }}</view>
+					<view class="inline-notice">{{ t('本机 SQLite · 验货计划表 · 共 {count} 条（包含所有状态）', { count: localPlanRows.length }) }}</view>
 					<button class="local-refresh-btn" @click="refreshLocalList">{{ t('重新读取本地数据') }}</button>
-					<LocalReportRecord v-for="row in localReportRows" :key="row.reportId" :row="row" />
+					<LocalReportRecord v-for="row in localPlanRows" :key="row.planId" :row="row" />
 				</view>
 			</view>
 			<view v-else-if="loading && groups.length === 0" class="loading">
@@ -230,7 +230,7 @@
 
 	const activeTab = ref('planned')
 	const localPlans = ref([])
-	const localReportRows = ref([])
+	const localPlanRows = ref([])
 	const remoteListMap = reactive({ planned: [], progress: [], report: [] })
 	const pageMap = reactive({ planned: 0, progress: 0, report: 0 })
 	const totalMap = reactive({ planned: 0, progress: 0, report: 0 })
@@ -291,10 +291,10 @@
 	}
 
 	/**
-	 * 合并状态页签的本地和远程数量，并单独统计 SQLite 中的全部报告行。
+	 * 合并状态页签的本地和远程数量，并单独统计 SQLite 中的全部验货计划行。
 	 */
 	const counts = computed(() => {
-		const result = { planned: 0, progress: 0, report: 0, local: localReportRows.value.length }
+		const result = { planned: 0, progress: 0, report: 0, local: localPlanRows.value.length }
 		for (const tab of tabs) {
 			if (tab.key === 'local') continue
 			const merged = mergePlansLocalFirst(localPlans.value, remoteListMap[tab.key] ?? [])
@@ -425,11 +425,11 @@
 	}
 
 	/**
-	 * 从本地数据库读取计划摘要与 report 原始行，不清除远程页签缓存。
+	 * 从本地数据库读取计划摘要与计划表原始行，不清除远程页签缓存。
 	 */
 	async function loadLocalPlanSummaries() {
 		localPlans.value = await planListService.listPlanSummaries()
-		localReportRows.value = await reportRepository.listStoredReportRows()
+		localPlanRows.value = await reportRepository.listStoredInspectionPlanRows()
 	}
 
 	/**
@@ -478,7 +478,7 @@
 	 * 只从本地数据库重新加载当前页签。
 	 */
 	async function refreshLocalList() {
-		const showLoading = activeTab.value === 'local' ? localReportRows.value.length === 0 : groups.value.length === 0
+		const showLoading = activeTab.value === 'local' ? localPlanRows.value.length === 0 : groups.value.length === 0
 		if (showLoading) loading.value = true
 		errorMessage.value = ''
 		try {
@@ -554,14 +554,11 @@
 		}
 	}
 
-	/**
-	 * 切换状态页签并立即加载对应本地列表。
-	 */
+	/** 切换状态页签时复用已加载的本地摘要与远程缓存。 */
 	async function switchTab(tabKey) {
 		if (activeTab.value === tabKey) return
 		if (mergeMode.value) cancelMergeMode()
 		activeTab.value = tabKey
-		await refreshLocalList()
 	}
 
 	/**
@@ -875,7 +872,8 @@
 		if (!(await isNetworkOnline())) { uni.showToast({ title: t('拆分验货需要联网，请连接网络后重试'), icon: 'none' }); return }
 		const planId = getPlanOperationId(item)
 		if (planId === '') { uni.showToast({ title: t('计划ID缺失，无法拆分'), icon: 'none' }); return }
-		const parentPlanId = getItemParentPlanId(item) || planId
+		const mergedParentPlanId = getItemParentPlanId(item)
+		const parentPlanId = mergedParentPlanId !== '' ? mergedParentPlanId : planId
 		operationSubmitting.value = true
 		try {
 			const response = await planApi.searchPlans({ parentPlanId }, 1, pageSize)

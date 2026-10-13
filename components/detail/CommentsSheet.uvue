@@ -1,11 +1,11 @@
 <template>
 	<view v-if="visible" class="overlay" @click="closeSheet">
-		<view class="dialog" @click.stop="stopEvent">
+		<view class="dialog" :style="{ height: windowHeightPx(0.82), paddingBottom: safeBottomPaddingPx(24) }" @click.stop="stopEvent">
 			<view class="sheet-header">
 				<text class="title">{{ t('报告评论') }}</text>
 				<view class="close-button" @click="closeSheet"><AppIcon type="close" :size="18" color="#64748b" /></view>
 			</view>
-			<scroll-view class="comment-list" scroll-y="true" show-scrollbar="false">
+			<scroll-view class="comment-list" :scroll-y="true" :show-scrollbar="false">
 				<text v-if="loading" class="state-text">{{ t('加载中...') }}</text>
 				<text v-else-if="threads.length === 0" class="state-text">{{ t('暂无评论，发布第一条评论吧。') }}</text>
 				<view v-else class="thread-list">
@@ -55,6 +55,7 @@
 </template>
 
 <script setup lang="uts">
+	import { windowHeightPx, safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
 	import { ref, watch } from 'vue'
 	import AppIcon from '../icons/AppIcon.uvue'
@@ -150,7 +151,7 @@
 
 <style>
 	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2300; justify-content: flex-end; background-color: rgba(15,23,42,0.55); }
-	.dialog { width: 100%; height: 82vh; padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom)); border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }
+	.dialog { width: 100%; padding: 24rpx 32rpx 24rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }
 	.sheet-header { flex-direction: row; align-items: center; justify-content: space-between; }
 	.title { color: #172033; font-size: 34rpx; font-weight: 700; }
 	.close-button { width: 56rpx; height: 56rpx; border-radius: 14rpx; background-color: #f1f5f9; align-items: center; justify-content: center; }

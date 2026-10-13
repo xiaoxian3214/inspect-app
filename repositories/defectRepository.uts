@@ -1,12 +1,47 @@
-/**
- * 安全还原疵点数据库行中的完整业务数据。
- */
+const DEFECT_FIELDS = 'id plan_id item_result_id defect_level defect_code defect_desc defect_position quantity common_flag create_date create_by update_date update_by son_plan_id file_list comments'.split(' ')
+
+/** 将 SQLite 列名转换成后端疵点属性。 */
+function defectField(column) {
+  return column.replace(/_([a-z])/g, (_matched, letter) => letter.toUpperCase())
+}
+
+/** 从疵点实体提取后端业务列，文件及评论数组作为单列 JSON。 */
+function defectColumns(defect, reportId) {
+  const source = { ...defect, id: defect?.id ?? defect?.defectId, planId: reportId,
+    itemResultId: defect?.itemResultId ?? defect?.checkItemResultId ?? '',
+    defectLevel: defect?.defectLevel ?? defect?.defectType ?? defect?.severity,
+    defectDesc: defect?.defectDesc ?? defect?.desc }
+  const columns = {}
+  DEFECT_FIELDS.forEach((field) => {
+    const value = source[defectField(field)]
+    if (value !== undefined) columns[field] = value != null && typeof value === 'object' ? JSON.stringify(value) : value
+  })
+  return columns
+}
+
+/** 保留业务表之外的本地媒体、展示扩展和离线编辑字段。 */
+function defectExtras(defect) {
+  const known = new Set(DEFECT_FIELDS.map(defectField))
+  const extras = {}
+  Object.keys(defect ?? {}).forEach((field) => { if (!known.has(field)) extras[field] = defect[field] })
+  return extras
+}
+
+/** 从业务列与离线扩展还原疵点，兼容尚未迁移的旧 JSON 行。 */
 function parseDefectRow(row) {
+  let restored = {}
   try {
-    return JSON.parse(row?.jsonData ?? '{}')
-  } catch (_) {
-    return {}
-  }
+    restored = JSON.parse(row?.jsonData ?? '{}')
+  } catch (_) {}
+  DEFECT_FIELDS.forEach((field) => {
+    const value = row?.[field]
+    if (value == null) return
+    if ((field === 'file_list' || field === 'comments') && typeof value === 'string') {
+      try { restored[defectField(field)] = JSON.parse(value) }
+      catch (_) { restored[defectField(field)] = value }
+    } else restored[defectField(field)] = value
+  })
+  return restored
 }
 
 /**
@@ -46,12 +81,13 @@ export function createDefectRepository(database) {
           defectId: buildDefectKey(normalizedReportId, sourceDefectId),
           sourceDefectId,
           reportId: normalizedReportId,
+          ...defectColumns(defect, normalizedReportId),
           itemId: defect?.itemId ?? '',
           defectType: (defect?.defectType || defect?.severity) ?? '',
           desc: (defect?.defectDesc || defect?.desc) ?? '',
           photoPaths: JSON.stringify(defect?.photos ?? []),
           sortNo: index,
-          jsonData: JSON.stringify(defect),
+          jsonData: JSON.stringify(defectExtras(defect)),
           createAt: defect?.createAt || new Date().toISOString()
         })
       })

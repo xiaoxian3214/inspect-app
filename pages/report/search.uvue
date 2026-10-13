@@ -16,7 +16,7 @@
 			</view>
 		</view>
 
-		<scroll-view class="content" scroll-y="true">
+		<scroll-view class="content" :scroll-y="true">
 			<view v-if="searching" class="loading">{{ t('搜索中...') }}</view>
 			<view v-else-if="errorMessage !== '' && results.length === 0" class="empty"><text class="empty-icon">!</text><text class="empty-text">{{ t(errorMessage) }}</text></view>
 			<view v-else-if="results.length === 0 && searched" class="empty"><text class="empty-icon">{{ t('查') }}</text><text class="empty-text">{{ t('未找到相关计划') }}</text></view>
@@ -422,7 +422,8 @@
 	}
 	/** 查询复制合并验货的成员；失败时保留当前卡片供用户确认。 */
 	async function loadCopyMergedItems(item) {
-		const parentPlanId = getItemParentPlanId(item) || getPlanOperationId(item)
+		const mergedParentPlanId = getItemParentPlanId(item)
+		const parentPlanId = mergedParentPlanId !== '' ? mergedParentPlanId : getPlanOperationId(item)
 		copyMergedLoading.value = true
 		try {
 			const response = await planApi.searchPlans({ parentPlanId }, 1, searchPageSize)
@@ -543,7 +544,7 @@
 	.hint-list { margin-top: 24rpx; padding: 32rpx; border-radius: 32rpx; background-color: #ffffff; }
 	.hint-item { margin-top: 16rpx; color: #64748b; font-size: 28rpx; }
 	.search-pagination-bar { padding: 24rpx 0 12rpx; }
-	.pagination-info { display: block; color: #64748b; font-size: 24rpx; text-align: center; }
+	.pagination-info { color: #64748b; font-size: 24rpx; text-align: center; }
 	.pagination-actions { margin-top: 20rpx; }
 	.page-nav-btn, .load-more-btn { flex: 1; height: 80rpx; margin: 0 8rpx; border-radius: 24rpx; font-size: 28rpx; }
 	.page-nav-btn { color: #ffffff; background-color: #00b050; }

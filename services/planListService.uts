@@ -123,7 +123,7 @@ export function createPlanListService(options) {
    * 获取三个页签的本地数量。
    */
   async function getLocalCounts() {
-    const localPlans = await reportRepository.listPlans()
+    const localPlans = await reportRepository.listPlanSummaries()
     return buildCounts(localPlans)
   }
 
@@ -131,7 +131,7 @@ export function createPlanListService(options) {
    * 获取首页抽屉和云同步入口使用的本地概览。
    */
   async function getOverview() {
-    const localPlans = await reportRepository.listPlans()
+    const localPlans = await reportRepository.listPlanSummaries()
     const counts = buildCounts(localPlans)
     return {
       ...counts,

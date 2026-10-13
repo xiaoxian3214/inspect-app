@@ -92,3 +92,18 @@ test('continues with the next task after a failure', async () => {
   await next
   assert.deepEqual(events, ['next'])
 })
+
+test('read-only list requests are not blocked by an active write request', async () => {
+  const queue = queueModule.createApiRequestQueue()
+  const gate = deferred()
+  const events = []
+  const write = queue.enqueue({ key: 'download', execute: async () => { events.push('write:start'); await gate.promise } })
+  const read = queue.enqueue({ key: 'list', lane: 'read', execute: async () => { events.push('read'); return 'listed' } })
+
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const observedBeforeWriteFinishes = [...events]
+  gate.resolve()
+  await Promise.all([write, read])
+  assert.deepEqual(observedBeforeWriteFinishes, ['write:start', 'read'])
+  assert.deepEqual(events, ['write:start', 'read'])
+})

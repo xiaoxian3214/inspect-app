@@ -5,7 +5,11 @@ function clone(value) {
 function createEmptyState() {
   return {
     user: [],
+    inspection_plan: [],
     report: [],
+    item_result: [],
+    report_group: [],
+    report_member: [],
     checklist: [],
     defect: [],
     photo: [],

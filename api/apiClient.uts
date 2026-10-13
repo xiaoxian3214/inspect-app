@@ -80,6 +80,7 @@ export function createApiClient(options) {
   const getLanguage = typeof options.getLanguage === 'function' ? options.getLanguage : () => 'zh'
   const onAuthFailure = typeof options.onAuthFailure === 'function' ? options.onAuthFailure : null
 
+  /** 将接口请求交给对应通道，默认只读 GET 不阻塞写操作。 */
   function request(requestOptions) {
     const language = getLanguage() ?? 'zh'
     const session = getSession()
@@ -96,6 +97,7 @@ export function createApiClient(options) {
     return queue.enqueue({
       key: taskKey,
       priority: Number(requestOptions?.priority ?? 0),
+      lane: requestOptions?.lane ?? (String(requestOptions?.method ?? 'GET').toUpperCase() === 'GET' ? 'read' : 'write'),
       execute: async () => {
         const response = await transport({
           url: `${baseUrl}${requestOptions.url}${buildQueryString(query)}`,

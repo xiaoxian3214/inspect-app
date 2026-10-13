@@ -4,16 +4,16 @@
 			<view class="category-head">
 				<view class="category-back" @click="goBack"><text>{{ step > 1 ? '‹' : '×' }}</text></view>
 				<view class="category-title-wrap">
-					<text class="category-title">{{ t(stepTitle) }}</text>
+					<text class="category-title">{{ translateText(stepTitle) }}</text>
 					<text class="category-path">{{ selectedPath }}</text>
 				</view>
 				<view class="category-placeholder"></view>
 			</view>
 
-			<input class="category-search" :value="keyword" :placeholder="t('搜索编码或名称')" @input="updateKeyword" />
+			<input class="category-search" :value="keyword" :placeholder="translateText('搜索编码或名称')" @input="updateKeyword" />
 
 			<view v-if="step === 1 && keyword === '' && recentCategories.length > 0" class="recent-block">
-				<text class="recent-title">{{ t('最近使用') }}</text>
+				<text class="recent-title">{{ translateText('最近使用') }}</text>
 				<view class="recent-list">
 					<view v-for="item in recentCategories" :key="item.defectCode" class="recent-chip" @click="applyRecentCategory(item)">
 						<text>{{ item.defectDesc }}</text>
@@ -21,8 +21,8 @@
 				</view>
 			</view>
 
-			<scroll-view class="category-list" scroll-y="true">
-				<view v-if="filteredOptions.length === 0" class="empty-state"><text>{{ t(categoryTree.length > 0 ? '没有匹配的疵点分类' : '暂无疵点分类缓存，请联网刷新') }}</text></view>
+			<scroll-view class="category-list" :scroll-y="true">
+				<view v-if="filteredOptions.length === 0" class="empty-state"><text>{{ translateText(categoryTree.length > 0 ? '没有匹配的疵点分类' : '暂无疵点分类缓存，请联网刷新') }}</text></view>
 				<view v-for="item in filteredOptions" :key="item.code" class="category-row" @click="selectCategory(item)">
 					<view class="category-copy">
 						<text class="category-name">{{ item.name || item.code }}</text>
@@ -40,6 +40,8 @@
 	import { computed, ref, watch } from 'vue'
 	import { getAppSetting, setAppSetting } from '../../runtime/appRuntime.uts'
 	import { normalizeRecentCategories, pushRecentCategory } from '../../domain/defectCategoryHistory.uts'
+	type CategoryNode = { code: string, name: string, status: string, isLeaf: boolean, children: CategoryNode[], raw: UTSJSONObject }
+	type RecentCategory = { tier1Code: string, tier2Code: string, tier3Code: string, defectCode: string, defectDesc: string }
 
 	const RECENT_CATEGORY_KEY = 'qcm_recent_defect_categories'
 	const props = defineProps({
@@ -52,34 +54,40 @@
 	const keyword = ref('')
 	const tier1Code = ref('')
 	const tier2Code = ref('')
-	const recentCategories = ref([])
+	const recentCategories = ref<RecentCategory[]>([])
+	/** 在原生分类弹层中提供明确的翻译方法。 */
+	function translateText(key: string): string { return t(key) }
+	/** 将历史模块的动态记录转换成模板可读取的最近分类字段。 */
+	function toRecentCategory(row: UTSJSONObject): RecentCategory { return { tier1Code: (row['tier1Code'] ?? '').toString(), tier2Code: (row['tier2Code'] ?? '').toString(), tier3Code: (row['tier3Code'] ?? '').toString(), defectCode: (row['defectCode'] ?? '').toString(), defectDesc: (row['defectDesc'] ?? '').toString() } }
+	/** 将服务端分类树节点归一化为原生模板可读取的固定字段。 */
+	function normalizeCategory(raw: UTSJSONObject): CategoryNode { const storedChildren = raw['children']; const children = Array.isArray(storedChildren) ? (storedChildren as UTSJSONObject[]).map((child: UTSJSONObject): CategoryNode => normalizeCategory(child)) : []; return { code: (raw['code'] ?? '').toString(), name: (raw['name'] ?? '').toString(), status: (raw['status'] ?? '').toString(), isLeaf: raw['isLeaf'] === true, children, raw } }
 
 	/** 返回过滤禁用状态后的一级疵点分类。 */
-	const level1Options = computed(() => (props.categoryTree ?? []).filter((item) => String(item?.status ?? '') !== '1'))
+	const level1Options = computed((): CategoryNode[] => (props.categoryTree as UTSJSONObject[]).map((raw: UTSJSONObject): CategoryNode => normalizeCategory(raw)).filter((item: CategoryNode) => item.status !== '1'))
 	/** 返回当前选中的一级疵点分类。 */
-	const selectedLevel1 = computed(() => level1Options.value.find((item) => String(item?.code ?? '') === tier1Code.value) || null)
+	const selectedLevel1 = computed((): CategoryNode | null => level1Options.value.find((item: CategoryNode) => item.code === tier1Code.value) ?? null)
 	/** 返回过滤禁用状态后的二级疵点分类。 */
-	const level2Options = computed(() => (selectedLevel1.value?.children ?? []).filter((item) => String(item?.status ?? '') !== '1'))
+	const level2Options = computed((): CategoryNode[] => (selectedLevel1.value?.children ?? []).filter((item: CategoryNode) => item.status !== '1'))
 	/** 返回当前选中的二级疵点分类。 */
-	const selectedLevel2 = computed(() => level2Options.value.find((item) => String(item?.code ?? '') === tier2Code.value) || null)
+	const selectedLevel2 = computed((): CategoryNode | null => level2Options.value.find((item: CategoryNode) => item.code === tier2Code.value) ?? null)
 	/** 返回过滤禁用状态后的三级叶子疵点分类。 */
-	const level3Options = computed(() => (selectedLevel2.value?.children ?? []).filter((item) => {
-		if (String(item?.status ?? '') === '1') return false
-		return item?.isLeaf === true || !Array.isArray(item?.children) || item.children.length === 0
+	const level3Options = computed((): CategoryNode[] => (selectedLevel2.value?.children ?? []).filter((item: CategoryNode) => {
+		if (item.status === '1') return false
+		return item.isLeaf || item.children.length === 0
 	}))
 	/** 返回当前选择步骤可展示的分类集合。 */
-	const currentOptions = computed(() => step.value === 1 ? level1Options.value : (step.value === 2 ? level2Options.value : level3Options.value))
+	const currentOptions = computed((): CategoryNode[] => step.value === 1 ? level1Options.value : (step.value === 2 ? level2Options.value : level3Options.value))
 	/** 返回按编码或名称过滤后的分类集合。 */
 	const filteredOptions = computed(() => {
-		const searchText = String(keyword.value ?? '').trim().toLowerCase()
+		const searchText = keyword.value.trim().toLowerCase()
 		if (searchText === '') return currentOptions.value
-		return currentOptions.value.filter((item) => String(item?.code ?? '').toLowerCase().includes(searchText) || String(item?.name ?? '').toLowerCase().includes(searchText))
+		return currentOptions.value.filter((item: CategoryNode) => item.code.toLowerCase().includes(searchText) || item.name.toLowerCase().includes(searchText))
 	})
 	/** 返回当前分类选择步骤标题。 */
 	const stepTitle = computed(() => step.value === 1 ? '选择一级分类' : (step.value === 2 ? '选择二级分类' : '选择三级分类'))
 	/** 返回已选一级和二级分类组成的路径。 */
 	const selectedPath = computed(() => {
-		const names = []
+		const names: string[] = []
 		if (selectedLevel1.value?.name) names.push(selectedLevel1.value.name)
 		if (selectedLevel2.value?.name) names.push(selectedLevel2.value.name)
 		return names.length > 0 ? names.join(' / ') : '请选择完整三级疵点类别'
@@ -88,74 +96,76 @@
 	/** 从 App 本地存储恢复最近使用的完整三级分类，剔除无效记录并限制在 8 条内。 */
 	function loadRecentCategories() {
 		try {
-			recentCategories.value = normalizeRecentCategories(getAppSetting(RECENT_CATEGORY_KEY))
+			recentCategories.value = (normalizeRecentCategories(getAppSetting(RECENT_CATEGORY_KEY)) as UTSJSONObject[]).map((row: UTSJSONObject): RecentCategory => toRecentCategory(row))
 		} catch (_) {
 			recentCategories.value = []
 		}
 	}
 	/** 将完整三级分类写入最近使用记录：按疵点编码去重置顶，最多保留 8 条并回写本地存储。 */
-	async function saveRecentCategory(category) {
-		recentCategories.value = pushRecentCategory(recentCategories.value, category)
+	async function saveRecentCategory(category: RecentCategory) {
+		recentCategories.value = (pushRecentCategory(recentCategories.value, category) as UTSJSONObject[]).map((row: UTSJSONObject): RecentCategory => toRecentCategory(row))
 		await setAppSetting(RECENT_CATEGORY_KEY, recentCategories.value)
 	}
 	/** 根据当前疵点表单重置分类选择层级和搜索状态。 */
-	function resetSelection(selected) {
+	function resetSelection(selected: UTSJSONObject) {
 		step.value = 1
 		keyword.value = ''
-		tier1Code.value = String(selected?.tier1Code ?? '')
-		tier2Code.value = String(selected?.tier2Code ?? '')
+		tier1Code.value = (selected['tier1Code'] ?? '').toString()
+		tier2Code.value = (selected['tier2Code'] ?? '').toString()
 		loadRecentCategories()
 	}
 	/** 更新当前层级分类搜索关键词。 */
-	function updateKeyword(event) { keyword.value = String(event?.detail?.value ?? '') }
+	function updateKeyword(event: UniInputEvent) { keyword.value = event.detail.value }
 	/** 逐级选择疵点分类，选中三级叶子节点后回填完整分类字段。 */
-	async function selectCategory(item) {
+	async function selectCategory(item: CategoryNode) {
 		if (step.value === 1) {
-			tier1Code.value = String(item?.code ?? '')
+			tier1Code.value = item.code
 			tier2Code.value = ''
 			keyword.value = ''
 			step.value = 2
 			return
 		}
 		if (step.value === 2) {
-			tier2Code.value = String(item?.code ?? '')
+			tier2Code.value = item.code
 			keyword.value = ''
 			step.value = 3
 			return
 		}
-		const category = {
+		const category: RecentCategory = {
 			tier1Code: tier1Code.value,
 			tier2Code: tier2Code.value,
-			tier3Code: String(item?.code ?? ''),
-			defectCode: String(item?.code ?? ''),
-			defectDesc: String(item?.name ?? '')
+			tier3Code: item.code,
+			defectCode: item.code,
+			defectDesc: item.name
 		}
-		try { await saveRecentCategory(category) } catch (error) { uni.showToast({ title: error?.message ?? t('最近分类保存失败'), icon: 'none' }); return }
+		try { await saveRecentCategory(category) } catch (_) { uni.showToast({ title: t('最近分类保存失败'), icon: 'none' }); return }
 		emit('select', category)
 	}
 	/** 直接应用最近使用的完整三级分类。 */
-	function applyRecentCategory(item) {
+	function applyRecentCategory(item: RecentCategory) {
 		emit('select', {
-			tier1Code: String(item?.tier1Code ?? ''),
-			tier2Code: String(item?.tier2Code ?? ''),
-			tier3Code: String(item?.tier3Code ?? item?.defectCode ?? ''),
-			defectCode: String(item?.defectCode ?? ''),
-			defectDesc: String(item?.defectDesc ?? '')
+			tier1Code: item.tier1Code,
+			tier2Code: item.tier2Code,
+			tier3Code: item.tier3Code !== '' ? item.tier3Code : item.defectCode,
+			defectCode: item.defectCode,
+			defectDesc: item.defectDesc
 		})
 	}
+	/** 关闭疵点分类选择弹层。 */
+	function closeSheet() { emit('close') }
 	/** 返回上一级分类，已在一级时关闭分类弹层。 */
 	function goBack() {
 		if (step.value === 1) { closeSheet(); return }
 		step.value -= 1
 		keyword.value = ''
 	}
-	/** 关闭疵点分类选择弹层。 */
-	function closeSheet() { emit('close') }
 	/** 阻止点击分类内容区域关闭弹层。 */
 	function stopEvent() {}
 
-	watch(() => props.visible, (visible) => { if (visible) resetSelection(props.selected) })
-	watch(() => props.selected, (selected) => { if (props.visible) resetSelection(selected) }, { deep: true })
+	/** 打开分类弹层时从当前疵点恢复选择状态。 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (visible) resetSelection(props.selected as UTSJSONObject) })
+	/** 当前疵点变化时同步分类层级。 */
+	watch((): UTSJSONObject => props.selected as UTSJSONObject, (selected: UTSJSONObject) => { if (props.visible) resetSelection(selected) }, { deep: true })
 </script>
 
 <style>

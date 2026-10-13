@@ -3,7 +3,7 @@
  */
 function parseChecklistRow(row) {
   try {
-    return JSON.parse(row?.jsonData ?? '{}')
+    return JSON.parse(row?.jsonData ?? '{}').checklistItem ?? {}
   } catch (_) {
     return {}
   }
@@ -13,7 +13,7 @@ function parseChecklistRow(row) {
  * 创建报告与检查项 ID 组合的稳定本地主键。
  */
 function buildChecklistKey(reportId, itemId) {
-  return `${String(reportId ?? '').trim()}::${String(itemId ?? '').trim()}`
+  return `${String(reportId ?? '').trim()}::checklist::${String(itemId ?? '').trim()}`
 }
 
 /**
@@ -25,9 +25,9 @@ export function createChecklistRepository(database) {
    */
   async function listByReportId(reportId) {
     const normalizedReportId = String(reportId ?? '').trim()
-    return database.readTable('checklist')
-      .filter((row) => String(row?.reportId ?? '') === normalizedReportId)
-      .sort((left, right) => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+    return database.readTable('item_result')
+      .filter((row) => String(row?.planId ?? '') === normalizedReportId && row?.itemResultId?.startsWith(`${normalizedReportId}::checklist::`))
+      .sort((left, right) => Number(JSON.parse(left.jsonData ?? '{}').sortOrder ?? 0) - Number(JSON.parse(right.jsonData ?? '{}').sortOrder ?? 0))
       .map(parseChecklistRow)
   }
 
@@ -39,21 +39,14 @@ export function createChecklistRepository(database) {
     if (normalizedReportId === '') throw new Error('报告ID不能为空')
     const source = Array.isArray(items) ? items : []
     await database.transaction(async (transaction) => {
-      transaction.removeWhere('checklist', (row) => String(row?.reportId ?? '') === normalizedReportId)
+      transaction.removeWhere('item_result', (row) => String(row?.planId ?? '') === normalizedReportId
+        && row?.itemResultId?.startsWith(`${normalizedReportId}::checklist::`))
       source.forEach((item, index) => {
         const sourceItemId = String(item?.itemId ?? item?.id ?? index)
-        transaction.upsert('checklist', 'itemId', {
-          itemId: buildChecklistKey(normalizedReportId, sourceItemId),
-          sourceItemId,
-          reportId: normalizedReportId,
-          skuNo: (item?.skuNo || item?.subGoodsNo) ?? '',
-          qty: Number(item?.qty ?? 0),
-          checkedQty: Number(item?.checkedQty ?? 0),
-          passQty: Number(item?.passQty ?? 0),
-          defectQty: Number(item?.defectQty ?? 0),
-          sortNo: index,
-          jsonData: JSON.stringify(item),
-          updatedAt: new Date().toISOString()
+        transaction.upsert('item_result', 'itemResultId', {
+          itemResultId: buildChecklistKey(normalizedReportId, sourceItemId),
+          planId: normalizedReportId,
+          jsonData: JSON.stringify({ checklistItem: item, sortOrder: index })
         })
       })
     })

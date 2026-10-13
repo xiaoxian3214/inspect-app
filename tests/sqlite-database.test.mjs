@@ -29,6 +29,308 @@ function createDatabase(driver, legacyStorage = null) {
   return sqliteModule.createSqliteDatabase(driver, schemaModule.schemaSqlList, legacyStorage)
 }
 
+/** 新安装仅建立后端命名的业务表，不建立已经淘汰的合并组表。 */
+test('physical SQLite tables use backend names without obsolete merge tables', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const database = createDatabase(createDriver(sqlite))
+  await database.open()
+  const names = new Set(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name))
+  for (const name of ['qcm_inspection_plan', 'qcm_inspection_report', 'qcm_inspection_item_result', 'qcm_inspection_defect_record']) {
+    assert.ok(names.has(name), `missing ${name}`)
+  }
+  for (const name of ['inspection_plan', 'report', 'item_result', 'defect', 'report_group', 'report_member', 'checklist']) {
+    assert.ok(!names.has(name), `obsolete ${name}`)
+  }
+  sqlite.close()
+})
+
+/** 服务端结果 ID 是唯一主键，模板 ID 仅保存在原始 JSON 中；子项只在录入后产生。 */
+test('stores downloaded result ids unchanged and updates the same child row', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const database = createDatabase(createDriver(sqlite))
+  await database.open()
+  const { createReportRepository } = await loadUtsModule('repositories/reportRepository.uts')
+  const { createInspectionDetailService } = await loadUtsModule('services/inspectionDetailService.uts')
+  const viewModel = await loadUtsModule('domain/detailViewModel.uts')
+  const reports = createReportRepository(database)
+  const source = viewModel.normalizeInspectionDetail({
+    plan: { id: 'child', parentPlanId: 'parent', mergeType: 2 }, report: { id: 'report', planId: 'parent' },
+    inspectionPlans: [{ id: 'parent' }, { id: 'child' }],
+    itemResults: [{ id: 'result-1', standardItemId: 'template-1', itemType: 'Standard' }]
+  }, 'child')
+  await reports.saveDetailSnapshot('child', source)
+  assert.deepEqual(sqlite.prepare('SELECT itemResultId FROM qcm_inspection_item_result').all().map((row) => row.itemResultId), ['result-1'])
+  assert.equal((await reports.getPlanById('child')).itemResults[0].standardItemId, 'template-1')
+  const edited = viewModel.updateChecklistItem(source, 'result-1__child', { result: 'fail', comment: '子项异常' })
+  await createInspectionDetailService({ reportRepository: reports, viewModel }).saveDraft('child', edited, { changes: { itemIds: ['result-1__child'] } })
+  assert.deepEqual(sqlite.prepare('SELECT itemResultId FROM qcm_inspection_item_result ORDER BY itemResultId').all().map((row) => row.itemResultId), ['result-1', 'result-1_child'])
+  assert.equal(JSON.parse(sqlite.prepare("SELECT jsonData FROM qcm_inspection_item_result WHERE itemResultId = 'result-1_child'").get().jsonData).remarks, '子项异常')
+  sqlite.close()
+})
+
+/** 重启后只存 fileId 的下载图片仍能从 JSON 还原，并随页面草稿一起生成提交数据。 */
+test('restores file-id-only report photos and submits current checklist edits', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const driver = createDriver(sqlite)
+  const database = createDatabase(driver)
+  await database.open()
+  const { createReportRepository } = await loadUtsModule('repositories/reportRepository.uts')
+  const viewModel = await loadUtsModule('domain/detailViewModel.uts')
+  const reports = createReportRepository(database)
+  await reports.saveDetailSnapshot('plan', viewModel.normalizeInspectionDetail({
+    plan: { id: 'plan' }, report: { id: 'report' },
+    standardItems: [{ id: 'section', children: [{ id: 'result', standardItemId: 'template' }] }],
+    itemResults: [{ id: 'result', standardItemId: 'template', fileList: [{ fileId: 'file-1', filePath: '/remote.jpg' }] }]
+  }, 'plan'))
+  const reopened = createDatabase(driver)
+  await reopened.open()
+  const restored = viewModel.normalizeInspectionDetail(await createReportRepository(reopened).getPlanById('plan'), 'plan')
+  assert.equal(restored.checklistData.result.photos[0].fileId, 'file-1')
+  assert.equal(restored.checklistData.result.photos[0].localPath, undefined)
+  const edited = viewModel.updateChecklistItem(restored, 'result', { comment: '页面备注' })
+  const payload = viewModel.buildGeneratePayload(edited)
+  assert.equal(payload.itemResults[0].remarks, '页面备注')
+  assert.equal(payload.itemResults[0].fileList[0].fileId, 'file-1')
+  sqlite.close()
+})
+
+/** 已安装版本的复合键迁成真实 ID，不丢失 jsonData 内的草稿及历史清单占位。 */
+test('migrates legacy result keys while retaining draft and checklist markers', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const driver = createDriver(sqlite)
+  const database = createDatabase(driver)
+  await database.open()
+  await database.transaction(async (transaction) => {
+    transaction.upsert('item_result', 'itemResultId', { itemResultId: 'parent::result-1', planId: 'parent', jsonData: JSON.stringify({ id: 'result-1', standardItemId: 'template-1', localData: { comment: '草稿' } }) })
+    transaction.upsert('item_result', 'itemResultId', { itemResultId: 'parent::checklist::legacy', planId: 'parent', jsonData: JSON.stringify({ checklistItem: { id: 'legacy' } }) })
+  })
+  const reopened = createDatabase(driver)
+  await reopened.open()
+  const rows = sqlite.prepare('SELECT itemResultId, jsonData FROM qcm_inspection_item_result ORDER BY itemResultId').all()
+  assert.deepEqual(rows.map((row) => row.itemResultId), ['parent::checklist::legacy', 'result-1'])
+  assert.equal(JSON.parse(rows[1].jsonData).localData.comment, '草稿')
+  sqlite.close()
+})
+
+/** 检查项局部保存跨数据库重启可恢复，且物理 SQLite 只改目标业务行和同步元数据。 */
+test('partial item draft persists into its physical SQLite result row', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const driver = createDriver(sqlite)
+  const database = createDatabase(driver)
+  await database.open()
+  const { createReportRepository } = await loadUtsModule('repositories/reportRepository.uts')
+  const { createInspectionDetailService } = await loadUtsModule('services/inspectionDetailService.uts')
+  const viewModel = await loadUtsModule('domain/detailViewModel.uts')
+  const reports = createReportRepository(database)
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'plan-1' }, standardItems: [{ id: 'section', children: [{ id: 'one' }, { id: 'two' }] }],
+    itemResults: [{ id: 'one' }, { id: 'two' }]
+  }, 'plan-1')
+  await reports.saveDetailSnapshot('plan-1', detail)
+  const previous = sqlite.prepare("SELECT jsonData FROM qcm_inspection_item_result WHERE itemResultId = 'two'").get().jsonData
+  const service = createInspectionDetailService({ reportRepository: reports, viewModel })
+  await service.saveDraft('plan-1', viewModel.updateChecklistItem(detail, 'one', { comment: '已检查' }), { changes: { itemIds: ['one'] } })
+  assert.equal(sqlite.prepare("SELECT jsonData FROM qcm_inspection_item_result WHERE itemResultId = 'two'").get().jsonData, previous)
+  const reopened = createDatabase(driver)
+  await reopened.open()
+  assert.equal((await createReportRepository(reopened).getPlanById('plan-1')).checklistData.one.comment, '已检查')
+  sqlite.close()
+})
+
+/** 本地诊断按计划只读取一条检查点结果，不组装所有报告，也不混入清单定义行。 */
+test('reads itemResults one row at a time for a merged child plan', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const database = createDatabase(createDriver(sqlite))
+  await database.open()
+  await database.transaction(async (transaction) => {
+    transaction.upsert('inspection_plan', 'planId', { planId: 'child', groupPlanId: 'parent' })
+    for (const itemId of ['one', 'two', 'three']) {
+      transaction.upsert('item_result', 'itemResultId', {
+        itemResultId: `parent::${itemId}`, planId: 'parent', jsonData: JSON.stringify({ id: itemId, remarks: itemId })
+      })
+    }
+    transaction.upsert('item_result', 'itemResultId', {
+      itemResultId: 'parent::checklist::one', planId: 'parent', jsonData: '{"checklistItem":{"id":"one"}}'
+    })
+  })
+  const { createReportRepository } = await loadUtsModule('repositories/reportRepository.uts')
+  const reports = createReportRepository({
+    query: (sql) => database.query(sql),
+    snapshot: () => { throw new Error('must not assemble all reports') }
+  })
+  const page = await reports.getStoredItemResultPage('child', 1)
+  assert.equal(page.total, 3)
+  assert.deepEqual(page.itemResult, { id: 'three', remarks: 'three' })
+  assert.deepEqual((await reports.getStoredItemResultPage('child', 3)), { total: 3, itemResult: null })
+  sqlite.close()
+})
+
+/** 旧版单表报告仍可按条检查原始 itemResults，不触发完整详情读取。 */
+test('reads every persisted item result JSON for full detail diagnostics', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const database = createDatabase(createDriver(sqlite))
+  await database.open()
+  await database.transaction(async (transaction) => {
+    transaction.upsert('inspection_plan', 'planId', { planId: 'child', groupPlanId: 'parent' })
+    transaction.upsert('item_result', 'itemResultId', { itemResultId: 'result-1', planId: 'parent',
+      jsonData: JSON.stringify({ id: 'result-1', resultStatus: 'APPROVED', remarks: '你好测试\n' }) })
+    transaction.upsert('item_result', 'itemResultId', { itemResultId: 'parent::checklist::one', planId: 'parent',
+      jsonData: '{"checklistItem":{"id":"one"}}' })
+  })
+  const { createReportRepository } = await loadUtsModule('repositories/reportRepository.uts')
+  const reports = createReportRepository({ query: (sql) => database.query(sql) })
+  assert.deepEqual(await reports.getStoredItemResultRows('child'), [{ itemResultId: 'result-1',
+    jsonData: { id: 'result-1', resultStatus: 'APPROVED', remarks: '你好测试\n' } }])
+  sqlite.close()
+})
+
+/** 旧版单表报告仍可按条检查原始 itemResults，不触发完整详情读取。 */
+test('reads legacy report itemResults without assembling all plans', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const database = createDatabase(createDriver(sqlite))
+  await database.open()
+  await database.transaction(async (transaction) => transaction.upsert('report', 'reportId', {
+    reportId: 'legacy', jsonData: JSON.stringify({ itemResults: [{ id: 'old-one' }, { id: 'old-two' }] })
+  }))
+  const { createReportRepository } = await loadUtsModule('repositories/reportRepository.uts')
+  const reports = createReportRepository({ query: (sql) => database.query(sql) })
+  assert.deepEqual(await reports.getStoredItemResultPage('legacy', 1), { total: 2, itemResult: { id: 'old-two' } })
+  sqlite.close()
+})
+
+/** 合并子检查点只有录入内容后才生成结果行；空草稿和重置不得留下额外 itemResults。 */
+test('persists only filled merged child item results', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const database = createDatabase(createDriver(sqlite))
+  await database.open()
+  const { createReportRepository } = await loadUtsModule('repositories/reportRepository.uts')
+  const viewModel = await loadUtsModule('domain/detailViewModel.uts')
+  const { createInspectionDetailService } = await loadUtsModule('services/inspectionDetailService.uts')
+  const reports = createReportRepository(database)
+  const plans = ['parent', 'child-a', 'child-b'].map((id) => ({ id, parentPlanId: 'parent', mergeType: 2 }))
+  const source = {
+    report: { id: 'report-1', planId: 'parent' }, inspectionPlans: plans,
+    itemResults: [{ id: 'section' }, { id: 'check-1', parentItemId: 'section', standardItemId: 'standard-1' }],
+    standardItems: [{ id: 'section', children: [{ id: 'check-1', standardItemId: 'standard-1' }] }],
+    checklistData: {
+      'check-1': { result: 'pass' },
+      'check-1__child-a': { result: '', measurements: [{ value: '' }] },
+      'check-1__child-b': { result: '', comment: '' }
+    }
+  }
+  await reports.savePlans(plans.map((plan) => ({ ...source, plan, planId: plan.id })))
+  const storedIds = () => sqlite.prepare("SELECT itemResultId FROM qcm_inspection_item_result WHERE instr(itemResultId, '::checklist::') = 0 ORDER BY itemResultId").all().map((row) => row.itemResultId)
+  assert.deepEqual(storedIds(), ['check-1', 'section'])
+
+  const service = createInspectionDetailService({ reportRepository: reports, viewModel })
+  let detail = viewModel.normalizeInspectionDetail(await reports.getPlanById('parent'), 'parent')
+
+  await reports.saveDetailSnapshot('parent', viewModel.normalizeInspectionDetail(detail, 'parent'))
+  assert.deepEqual(storedIds(), ['check-1', 'section'])
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS total FROM qcm_inspection_item_result WHERE itemResultId LIKE '%::checklist::%'").get().total, 0)
+  detail = viewModel.updateChecklistItem(detail, 'check-1__child-a', { result: 'fail' })
+  await service.saveDraft('parent', detail, { changes: { itemIds: ['check-1__child-a'] } })
+  assert.deepEqual(storedIds(), ['check-1', 'check-1_child-a', 'section'])
+
+  await reports.saveDetailSnapshot('parent', viewModel.normalizeInspectionDetail(detail, 'parent'))
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS total FROM qcm_inspection_item_result WHERE itemResultId LIKE '%::checklist::%'").get().total, 0)
+
+  detail = viewModel.updateChecklistItem(detail, 'check-1__child-a', { result: '', measurements: [] })
+  await service.saveDraft('parent', detail, { changes: { itemIds: ['check-1__child-a'] } })
+  assert.deepEqual(storedIds(), ['check-1', 'section'])
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS total FROM qcm_inspection_item_result WHERE itemResultId = 'parent::checklist::check-1__child-a'").get().total, 0)
+  await reports.saveDetailSnapshot('parent', detail)
+  assert.deepEqual(storedIds(), ['check-1', 'section'])
+  sqlite.close()
+})
+
+/** 旧版本误写的空子项可定向移除，原始行和已填写的子项不可受影响。 */
+test('prunes only historical empty merged child rows for the current report', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const database = createDatabase(createDriver(sqlite))
+  await database.open()
+  await database.transaction(async (transaction) => {
+    transaction.upsert('inspection_plan', 'planId', { planId: 'child', groupPlanId: 'parent' })
+    for (const [id, sonPlanId, data] of [
+      ['base', '', { id: 'base', resultStatus: null }],
+      ['base_child', 'child', { id: 'base_child', sonPlanId: 'child', localData: { result: 'pass' } }],
+      ['other_child', 'child', { id: 'other_child', sonPlanId: 'child', localData: { measurements: [{ value: '' }] } }]
+    ]) transaction.upsert('item_result', 'itemResultId', {
+      itemResultId: `parent::${id}`, planId: 'parent', sonPlanId, jsonData: JSON.stringify(data)
+    })
+    transaction.upsert('item_result', 'itemResultId', {
+      itemResultId: 'parent::checklist::other__child', planId: 'parent',
+      jsonData: JSON.stringify({ checklistItem: { itemId: 'other__child', sonPlanId: 'child', data: { result: '' } } })
+    })
+    transaction.upsert('item_result', 'itemResultId', {
+      itemResultId: 'parent::checklist::base', planId: 'parent',
+      jsonData: JSON.stringify({ checklistItem: { itemId: 'base', itemName: '已有结果的检查项' } })
+    })
+    transaction.upsert('app_setting', 'key', {
+      key: 'report_detail:parent', jsonData: JSON.stringify({ standardItems: [{ children: [{ id: 'base' }] }] })
+    })
+    transaction.upsert('item_result', 'itemResultId', {
+      itemResultId: 'unrelated::other_child', planId: 'unrelated', sonPlanId: 'child',
+      jsonData: JSON.stringify({ id: 'other_child', localData: { result: '' } })
+    })
+  })
+  const { createReportRepository } = await loadUtsModule('repositories/reportRepository.uts')
+  const reports = createReportRepository(database)
+  assert.equal(await reports.pruneEmptyChildItemResults('child'), 3)
+  assert.deepEqual(sqlite.prepare("SELECT itemResultId FROM qcm_inspection_item_result ORDER BY itemResultId").all().map((row) => row.itemResultId), [
+    'parent::base', 'parent::base_child', 'unrelated::other_child'
+  ])
+  assert.equal((await reports.getStoredItemResultPage('child', 0)).total, 2)
+  sqlite.close()
+})
+
+/** 已安装版本的组成员和本地图片转入计划关联后，磁盘上彻底删除组表。 */
+test('legacy group tables migrate and drop after preserving shared photos', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  sqlite.exec('CREATE TABLE report_group (groupId TEXT PRIMARY KEY, parentPlanId TEXT, jsonData TEXT, downloadAt TEXT, status INTEGER, syncStatus TEXT, updatedAt TEXT)')
+  sqlite.exec('CREATE TABLE report_member (planId TEXT PRIMARY KEY, groupId TEXT, jsonData TEXT, status INTEGER)')
+  const plans = [{ id: 'parent', parentPlanId: 'parent', mergeType: 2 }, { id: 'child', parentPlanId: 'parent', mergeType: 2 }]
+  sqlite.prepare('INSERT INTO report_group (groupId, parentPlanId, jsonData, status) VALUES (?, ?, ?, ?)').run('remote-report', 'parent',
+    JSON.stringify({ report: { id: 'remote-report', planId: 'parent' }, inspectionPlans: plans,
+      itemResults: [{ id: 'check', planId: 'parent' }], checklistData: { check: { result: 'pass' } }, syncStatus: 'SYNCED' }), 1)
+  for (const plan of plans) sqlite.prepare('INSERT INTO report_member (planId, groupId, jsonData, status) VALUES (?, ?, ?, ?)').run(
+    plan.id, 'remote-report', JSON.stringify({ plan, planId: plan.id }), 1)
+  const driver = createDriver(sqlite)
+  const database = createDatabase(driver)
+  await database.open()
+  await database.transaction(async (transaction) => transaction.upsert('photo', 'photoId', {
+    photoId: 'remote-report::p1', sourcePhotoId: 'p1', reportId: 'remote-report', localPath: '/offline/p1.jpg', uploadStatus: 'pending'
+  }))
+  const repository = (await loadUtsModule('repositories/reportRepository.uts')).createReportRepository(database)
+  await repository.migrateLegacyMergedReports()
+  const names = new Set(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name))
+  assert.ok(!names.has('report_group') && !names.has('report_member'))
+  const reopened = createDatabase(driver)
+  await reopened.open()
+  assert.equal((await (await loadUtsModule('repositories/reportRepository.uts')).createReportRepository(reopened).getPlanById('child')).itemResults.length, 1)
+  assert.equal(reopened.readTable('photo')[0].localPath, '/offline/p1.jpg')
+  sqlite.close()
+})
+
+/** 老清单表的离线检查状态迁入检查项 JSON，删除旧表后仍可离线读取。 */
+test('legacy checklist rows move into item results before dropping their table', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  sqlite.exec('CREATE TABLE checklist (itemId TEXT PRIMARY KEY, sourceItemId TEXT, reportId TEXT, sortNo INTEGER, jsonData TEXT)')
+  sqlite.prepare('INSERT INTO checklist (itemId, sourceItemId, reportId, sortNo, jsonData) VALUES (?, ?, ?, ?, ?)').run(
+    'plan-1::item-1', 'item-1', 'plan-1', 0, JSON.stringify({ itemId: 'item-1', data: { result: 'fail', photos: [{ localPath: '/offline/a.jpg' }] } }))
+  const driver = createDriver(sqlite)
+  const database = createDatabase(driver)
+  await database.open()
+  await (await loadUtsModule('repositories/reportRepository.uts')).createReportRepository(database).migrateLegacyMergedReports()
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name = 'checklist'").get().count, 0)
+  const reopened = createDatabase(driver)
+  await reopened.open()
+  const items = await (await loadUtsModule('repositories/checklistRepository.uts')).createChecklistRepository(reopened).listByReportId('plan-1')
+  assert.equal(items[0].data.result, 'fail')
+  assert.equal(items[0].data.photos[0].localPath, '/offline/a.jpg')
+  sqlite.close()
+})
+
 test('SQLite persists report and photo rows across runtime restarts without uniStorage writes', async () => {
   const sqlite = new DatabaseSync(':memory:')
   const driver = createDriver(sqlite)
@@ -69,7 +371,112 @@ test('merged download shares report edits across SQLite plan entries after reope
   assert.equal(sibling.plan.id, 'plan-1')
   assert.equal(sibling.report.id, 'report-merged')
   assert.equal(sibling.checklistData['item-1'].result, 'fail')
-  assert.equal(reopened.readTable('report').length, 2)
+  const localDownloads = await reportModule.createReportRepository(reopened).listStoredInspectionPlanRows()
+  assert.equal(localDownloads.length, 2)
+  assert.deepEqual(localDownloads.map((row) => row.data.id), ['plan-1', 'plan-2'])
+  assert.equal(localDownloads[1].data.groupPlanId, 'merged-1')
+  assert.equal(reopened.readTable('report').length, 1)
+  assert.equal(reopened.readTable('inspection_plan').length, 2)
+  assert.equal(reopened.readTable('report_group').length, 0)
+  sqlite.close()
+})
+
+/** 旧版 SQLite 两份合并报告升级后只存一份共享检查结果，照片路径保留并可离线重启读取。 */
+test('legacy merged SQLite reports migrate into a shared group without losing photos', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  const driver = createDriver(sqlite)
+  const reportModule = await loadUtsModule('repositories/reportRepository.uts')
+  const photoModule = await loadUtsModule('repositories/photoRepository.uts')
+  const original = createDatabase(driver)
+  await original.open()
+  const inspectionPlans = [
+    { id: 'parent-1', parentPlanId: 'parent-1', mergeType: 2, status: 1 },
+    { id: 'child-1', parentPlanId: 'parent-1', mergeType: 2, status: 1 }
+  ]
+  await original.transaction(async (transaction) => {
+    for (const plan of inspectionPlans) transaction.upsert('report', 'reportId', {
+      reportId: plan.id, status: 1, jsonData: JSON.stringify({
+        planId: plan.id, plan, inspectionPlans, report: { id: 'report-1', planId: 'parent-1' },
+        itemResults: [{ id: 'check-1', sonPlanId: 'child-1' }],
+        standardItems: [{ id: 'check-1' }], syncStatus: 'SYNCED'
+      })
+    })
+    transaction.upsert('photo', 'photoId', {
+      photoId: 'child-1::photo-1', sourcePhotoId: 'photo-1', reportId: 'child-1',
+      localPath: '/offline/photo.jpg', uploadStatus: 'pending',
+      jsonData: JSON.stringify({ photoId: 'photo-1', localPath: '/offline/photo.jpg', uploadStatus: 'pending' })
+    })
+  })
+  const upgraded = createDatabase(driver)
+  await upgraded.open()
+  const reports = reportModule.createReportRepository(upgraded)
+  await reports.migrateLegacyMergedReports()
+  const reopened = createDatabase(driver)
+  await reopened.open()
+  const restored = reportModule.createReportRepository(reopened)
+  const photos = photoModule.createPhotoRepository(reopened)
+  assert.equal(reopened.readTable('report').length, 1)
+  assert.equal(reopened.readTable('inspection_plan').length, 2)
+  assert.equal(reopened.readTable('report_group').length, 0)
+  assert.deepEqual((await restored.getPlanById('parent-1')).itemResults, (await restored.getPlanById('child-1')).itemResults)
+  assert.equal((await photos.listByReportId('parent-1'))[0].localPath, '/offline/photo.jpg')
+  assert.equal((await photos.listByReportId('child-1')).length, 1)
+  sqlite.close()
+})
+
+/** 已安装旧版没有 report.planId 列时，启动自动补列并迁移共享结果。 */
+test('SQLite upgrades an existing report table before loading relational rows', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  sqlite.exec('CREATE TABLE report (reportId TEXT PRIMARY KEY, jsonData TEXT, status INTEGER)')
+  sqlite.prepare('INSERT INTO report (reportId, jsonData, status) VALUES (?, ?, ?)').run('single-1',
+    JSON.stringify({ planId: 'single-1', plan: { id: 'single-1' }, report: { id: 'r1', planId: 'single-1' },
+      itemResults: [{ id: 'check-1', planId: 'single-1' }] }), 1)
+  const database = createDatabase(createDriver(sqlite))
+  await database.open()
+  assert.ok(sqlite.prepare('PRAGMA table_info(qcm_inspection_report)').all().some((column) => column.name === 'planId'))
+  const repository = (await loadUtsModule('repositories/reportRepository.uts')).createReportRepository(database)
+  await repository.migrateLegacyMergedReports()
+  assert.equal(database.readTable('inspection_plan')[0].planId, 'single-1')
+  assert.equal(database.readTable('item_result')[0].planId, 'single-1')
+  sqlite.close()
+})
+
+/** 旧结构化行的业务 JSON 升级后应分列，草稿与本地照片仍可跨进程恢复。 */
+test('v3 business JSON migrates to columns without losing offline draft and photo', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  sqlite.exec('CREATE TABLE inspection_plan (planId TEXT PRIMARY KEY, parentPlanId TEXT, groupPlanId TEXT NOT NULL, status INTEGER, jsonData TEXT)')
+  sqlite.exec('CREATE TABLE defect (defectId TEXT PRIMARY KEY, sourceDefectId TEXT, reportId TEXT, itemId TEXT, defectType TEXT, "desc" TEXT, photoPaths TEXT, sortNo INTEGER, jsonData TEXT, createAt TEXT)')
+  sqlite.prepare('INSERT INTO inspection_plan (planId, parentPlanId, groupPlanId, status, jsonData) VALUES (?, ?, ?, ?, ?)').run(
+    'child', 'parent', 'parent', 1, JSON.stringify({ plan: { id: 'child', parentPlanId: 'parent', mergeType: 2, factoryName: '旧工厂', finishQuantity: 12 }, listCard: { id: 'child' } }))
+  sqlite.prepare('INSERT INTO defect (defectId, sourceDefectId, reportId, jsonData) VALUES (?, ?, ?, ?)').run(
+    'parent::defect', 'defect', 'parent', JSON.stringify({ id: 'defect', defectLevel: 'MINOR', defectDesc: '旧疵点', photos: [{ localPath: '/offline/1.jpg' }] }))
+  const driver = createDriver(sqlite)
+  const database = createDatabase(driver)
+  await database.open()
+  await database.transaction(async (transaction) => {
+    transaction.upsert('report', 'reportId', { reportId: 'parent', planId: 'parent', status: 1,
+      jsonData: JSON.stringify({ report: { id: 'remote-1', planId: 'parent', overallResult: 'PENDING' },
+        syncStatus: 'DIRTY', pendingSyncPayload: { planId: 'parent', finishFlag: 0 } }) })
+    transaction.upsert('item_result', 'itemResultId', { itemResultId: 'parent::item', planId: 'parent', jsonData: JSON.stringify({ id: 'item', localData: { result: 'fail' } }) })
+    transaction.upsert('photo', 'photoId', { photoId: 'parent::p1', reportId: 'parent', localPath: '/offline/1.jpg', uploadStatus: 'pending' })
+  })
+  const repository = (await loadUtsModule('repositories/reportRepository.uts')).createReportRepository(database)
+  await repository.migrateLegacyMergedReports()
+  const reopened = createDatabase(driver)
+  await reopened.open()
+  const restored = (await loadUtsModule('repositories/reportRepository.uts')).createReportRepository(reopened)
+  assert.equal(reopened.readTable('inspection_plan')[0].factory_name, '旧工厂')
+  assert.equal(reopened.readTable('report')[0].overall_result, 'PENDING')
+  assert.equal(reopened.readTable('defect')[0].defect_desc, '旧疵点')
+  assert.equal(JSON.parse(reopened.readTable('inspection_plan')[0].jsonData).plan?.factoryName, undefined)
+  assert.equal(JSON.parse(reopened.readTable('report')[0].jsonData).report, undefined)
+  assert.equal(JSON.parse(reopened.readTable('defect')[0].jsonData).defectDesc, undefined)
+  assert.equal((await restored.getPlanById('child')).plan.factoryName, '旧工厂')
+  assert.equal((await restored.getPlanById('child')).pendingSyncPayload.planId, 'parent')
+  assert.equal(reopened.readTable('photo')[0].uploadStatus, 'pending')
+  assert.equal(reopened.readTable('photo')[0].localPath, '/offline/1.jpg')
+  assert.ok(sqlite.prepare('PRAGMA table_info(qcm_inspection_plan)').all().some((column) => column.name === 'parent_plan_id'))
+  assert.ok(sqlite.prepare('PRAGMA table_info(qcm_inspection_defect_record)').all().some((column) => column.name === 'defect_desc'))
   sqlite.close()
 })
 
@@ -283,7 +690,7 @@ test('remote detail is persisted to SQLite and reopened offline without another 
   const detail = await service.loadDetail('plan-remote')
   assert.equal(detail.plan.goodsName, '线上产品')
   assert.equal(database.readTable('report').length, 1)
-  assert.equal(database.readTable('checklist').length, 1)
+  assert.equal(database.readTable('item_result').filter((row) => JSON.parse(row.jsonData).checklistItem != null).length, 1)
   const reopened = createDatabase(driver)
   await reopened.open()
   const offlineService = serviceModule.createInspectionDetailService({
@@ -330,6 +737,6 @@ test('migration failure keeps legacy records available for a later retry', async
   })
   await assert.rejects(database.open(), /disk full/)
   assert.equal(removed, false)
-  assert.equal(sqlite.prepare('SELECT COUNT(*) AS total FROM report').get().total, 0)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS total FROM qcm_inspection_report').get().total, 0)
   sqlite.close()
 })

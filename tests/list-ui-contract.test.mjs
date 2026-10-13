@@ -137,17 +137,17 @@ test('plan information sheets show a divider under every row', async () => {
   }
 })
 
-test('list has an all-local SQLite tab with raw report rows and no remote pagination', async () => {
+test('list has an all-local SQLite tab with individual plan rows and no remote pagination', async () => {
   const source = await readFile('pages/report/list.uvue', 'utf8')
   const record = await readFile('components/inspection/LocalReportRecord.uvue', 'utf8')
 
   assert.match(source, /key: 'local', label: '本地下载'/)
-  assert.match(source, /reportRepository\.listStoredReportRows\(\)/)
+  assert.match(source, /reportRepository\.listStoredInspectionPlanRows\(\)/)
   assert.match(source, /activeTab === 'local'[\s\S]*?<LocalReportRecord/)
   assert.match(source, /v-if="activeTab !== 'local' && !loading" class="pagination-bar"/)
   assert.match(source, /if \(activeTab\.value === 'local'\) \{[\s\S]*?await refreshLocalList\(\)/)
-  assert.match(record, /JSON\.stringify\(props\.row, null, 2\)/)
-  assert.match(record, /完整 SQLite 数据/)
+  assert.match(record, /JSON\.stringify\(props\.row\.data, null, 2\)/)
+  assert.match(record, /验货计划原始行/)
 })
 
 /** 大体积 SQLite JSON 复制失败时提示原因，同时提供短诊断内容供用户反馈。 */

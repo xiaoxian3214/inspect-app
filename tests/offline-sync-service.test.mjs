@@ -4,6 +4,18 @@ import { loadUtsModule } from './load-uts-module.mjs'
 
 const syncModule = await loadUtsModule('services/offlineSyncService.uts')
 
+test('automatic sync skips full report assembly when summaries have no pending drafts', async () => {
+  const service = syncModule.createOfflineSyncService({
+    reportRepository: {
+      listPlanSummaries: async () => [{ planId: 'clean', status: 1, syncStatus: 'SYNCED', pendingSyncPayload: null }],
+      listPlans: async () => assert.fail('No pending drafts should not reconstruct full reports')
+    },
+    planApi: { generateReport: async () => assert.fail('Nothing to sync') }
+  })
+
+  assert.deepEqual(await service.syncPendingPlans(), { pendingCount: 0, syncedCount: 0, failedCount: 0 })
+})
+
 test('sync completion cannot overwrite edits saved while the network request was in flight', async () => {
   const memoryModule = await loadUtsModule('database/memoryDatabase.uts')
   const reportModule = await loadUtsModule('repositories/reportRepository.uts')

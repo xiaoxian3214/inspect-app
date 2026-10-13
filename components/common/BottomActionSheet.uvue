@@ -1,29 +1,33 @@
 <template>
 	<view v-if="visible" class="menu-overlay" @click="handleCancel">
-		<view class="action-menu" @click.stop>
-			<text v-if="title !== ''" class="menu-header">{{ t(title) }}</text>
+		<view class="action-menu" :style="{ paddingBottom: menuBottomPadding }" @click.stop>
+			<text v-if="title !== ''" class="menu-header">{{ translateText(title) }}</text>
 			<view
-				v-for="item in actions"
+				v-for="item in menuActions"
 				:key="item.key"
 				class="menu-item"
 				:class="{ disabled: item.disabled === true, 'with-icons': showIcons }"
 				@click="handleSelect(item)"
 			>
-				<AppIcon v-if="showIcons && item.icon" class="menu-icon" :type="item.icon" :size="22" color="#333333" />
-				<text class="menu-text" :class="{ 'with-icons-text': showIcons }">{{ t(item.label) }}</text>
+				<AppIcon v-if="showIcons && item.icon !== ''" class="menu-icon" :type="item.icon" :size="22" color="#333333" />
+				<text class="menu-text" :class="{ 'with-icons-text': showIcons }">{{ translateText(item.label) }}</text>
 			</view>
 			<view class="menu-cancel" @click="handleCancel">
-				<text class="menu-cancel-text">{{ t(cancelText) }}</text>
+				<text class="menu-cancel-text">{{ translateText(cancelText) }}</text>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
+	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
 	import AppIcon from '../icons/AppIcon.uvue'
 
-	defineProps({
+	type MenuAction = { key: string, label: string, icon: string, disabled: boolean, raw: UTSJSONObject }
+	const menuBottomPadding = safeBottomPaddingPx(16)
+	const props = defineProps({
 		visible: { type: Boolean, default: false },
 		title: { type: String, default: '' },
 		actions: { type: Array, default: () => [] },
@@ -32,13 +36,23 @@
 	})
 
 	const emit = defineEmits(['select', 'cancel'])
+	/** 为原生模板提供字段明确的菜单项，并保留原始对象供业务事件使用。 */
+	const menuActions = computed((): MenuAction[] => (props.actions as UTSJSONObject[]).map((action: UTSJSONObject): MenuAction => ({
+		key: (action['key'] ?? '').toString(),
+		label: (action['label'] ?? '').toString(),
+		icon: (action['icon'] ?? '').toString(),
+		disabled: action['disabled'] === true,
+		raw: action
+	})))
+	/** 通过本地明确签名调用翻译服务，供原生模板渲染。 */
+	function translateText(key: string): string { return t(key) }
 
 	/**
 	 * 选择可用操作并将完整操作对象交给页面或业务组件处理。
 	 */
-	function handleSelect(item) {
-		if (item?.disabled === true) return
-		emit('select', item)
+	function handleSelect(item: MenuAction) {
+		if (item.disabled) return
+		emit('select', item.raw)
 	}
 
 	/**
@@ -64,7 +78,7 @@
 	.action-menu {
 		width: 100%;
 		padding-top: 8px;
-		padding-bottom: calc(8px + env(safe-area-inset-bottom));
+		padding-bottom: 8px;
 		border-radius: 16px 16px 0 0;
 		background-color: #ffffff;
 	}

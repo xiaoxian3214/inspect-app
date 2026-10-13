@@ -80,21 +80,26 @@ export function createInspectionDetailService(options) {
   async function saveDraft(planId, detail, saveOptions: any = {}) {
     const normalizedPlanId = String(planId ?? detail?.planId ?? '').trim()
     if (normalizedPlanId === '') throw new Error('计划ID缺失，无法保存草稿')
-    const normalized = viewModel.normalizeInspectionDetail(detail, normalizedPlanId)
+    const normalized = saveOptions?.changes != null ? detail : viewModel.normalizeInspectionDetail(detail, normalizedPlanId)
     const markDirty = saveOptions?.markDirty !== false
     const currentStatus = Number(normalized?.status ?? normalized?.plan?.status ?? 0)
     const nextStatus = markDirty && currentStatus === 0 ? 1 : (currentStatus === 2 ? 1 : currentStatus)
     const now = new Date().toISOString()
+    const draftPayload = markDirty ? viewModel.buildGeneratePayload(normalized) : normalized?.pendingSyncPayload
     const saved = {
       ...normalized,
       status: nextStatus,
       plan: { ...(normalized?.plan ?? {}), status: markDirty ? Math.max(Number(normalized?.plan?.status ?? 0), 1) : normalized?.plan?.status },
       progress: normalized.progress,
-      pendingSyncPayload: markDirty ? viewModel.buildGeneratePayload(normalized) : normalized?.pendingSyncPayload,
+      pendingSyncPayload: draftPayload,
       syncStatus: markDirty ? 'DIRTY' : (normalized?.syncStatus ?? 'SYNCED'),
       updatedAt: now
     }
-    await reportRepository.saveDetailSnapshot(normalizedPlanId, saved)
+    if (saveOptions?.changes != null && typeof reportRepository.saveDraftChanges === 'function') {
+      await reportRepository.saveDraftChanges(normalizedPlanId, saved, saveOptions.changes)
+    } else {
+      await reportRepository.saveDetailSnapshot(normalizedPlanId, saved)
+    }
     return saved
   }
 

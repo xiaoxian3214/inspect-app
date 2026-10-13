@@ -21,21 +21,23 @@
 		removable: { type: Boolean, default: true }
 	})
 	const emit = defineEmits(['preview-media', 'remove-media', 'retry-media'])
+	/** 将当前媒体收窄为可索引的 UTS 对象，供状态和时长计算复用。 */
+	const mediaData = computed((): UTSJSONObject => props.media as UTSJSONObject)
 
 	/** 按媒体记录判定当前格子是否为视频，用于叠加播放角标与时长文本。 */
-	const isVideo = computed(() => isVideoMedia(props.media))
+	const isVideo = computed((): boolean => isVideoMedia(mediaData.value))
 	/** 返回视频时长的 mm:ss 角标文本，时长未知时以 00:00 占位。 */
-	const videoDurationLabel = computed(() => {
-		const totalSeconds = Math.max(0, Math.round(Number(props.media?.durationSeconds ?? 0)))
+	const videoDurationLabel = computed((): string => {
+		const totalSeconds = Math.max(0, Math.round(parseFloat((mediaData.value['durationSeconds'] ?? 0).toString())))
 		const minutes = Math.floor(totalSeconds / 60)
 		const seconds = totalSeconds % 60
 		return `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds}`
 	})
 	/** 返回当前媒体上传状态的标准小写值。 */
-	const uploadStatus = computed(() => String(props.media?.uploadStatus || (props.media?.fileId ? 'done' : 'pending')).toLowerCase())
+	const uploadStatus = computed((): string => { const status = (mediaData.value['uploadStatus'] ?? '').toString(); return (status !== '' ? status : ((mediaData.value['fileId'] ?? '').toString() !== '' ? 'done' : 'pending')).toLowerCase() })
 	/** 判断媒体是否已经具备服务端文件 ID 或完成上传状态。 */
 	const isUploaded = computed(() => {
-		if (String(props.media?.fileId ?? '').trim() !== '') return true
+		if ((mediaData.value['fileId'] ?? '').toString().trim() !== '') return true
 		return ['done', 'success', 'uploaded'].includes(uploadStatus.value)
 	})
 	/** 判断是否需要展示未完成上传的蓝色或黄色呼吸点。 */

@@ -1,46 +1,56 @@
 <template>
 	<view class="tab-page">
-		<view class="defects-summary"><view class="summary-item"><text class="summary-label">{{ t('致命缺陷') }}</text><text class="summary-value critical">{{ defectCounts.critical }}</text></view><view class="summary-item"><text class="summary-label">{{ t('主要缺陷') }}</text><text class="summary-value major">{{ defectCounts.major }}</text></view><view class="summary-item"><text class="summary-label">{{ t('次要缺陷') }}</text><text class="summary-value minor">{{ defectCounts.minor }}</text></view></view>
-		<view v-if="defects.length === 0" class="empty-state"><text class="empty-icon">✓</text><text class="empty-text">{{ t('暂无疵点记录') }}</text></view>
+		<view class="defects-summary"><view class="summary-item"><text class="summary-label">{{ translateText('致命缺陷') }}</text><text class="summary-value critical">{{ counts.critical }}</text></view><view class="summary-item"><text class="summary-label">{{ translateText('主要缺陷') }}</text><text class="summary-value major">{{ counts.major }}</text></view><view class="summary-item"><text class="summary-label">{{ translateText('次要缺陷') }}</text><text class="summary-value minor">{{ counts.minor }}</text></view></view>
+		<view v-if="defects.length === 0" class="empty-state"><text class="empty-icon">✓</text><text class="empty-text">{{ translateText('暂无疵点记录') }}</text></view>
 		<view v-else class="defects-list">
-			<view v-for="group in defectGroups" :key="group.key" class="defect-group">
-				<view class="defect-group-title"><text>{{ t(group.label) }}（{{ group.items.length }}）</text><text v-if="group.affectedTotal > 0" class="actual-total">{{ t('实际发现：{count}', { count: group.affectedTotal }) }}</text></view>
-				<view v-for="(defect, index) in group.items" :key="defect.id || defect.defectId || `${group.key}-${index}`" class="defect-card" @click="openDefect(defect)">
-					<InspectionMediaImage v-if="firstPhoto(defect)" class="defect-cover" :media="firstPhoto(defect)" /><view v-else class="defect-cover placeholder"><text class="placeholder-text">{{ t('暂无图片') }}</text></view>
-					<view class="defect-main"><view class="defect-head"><text class="severity" :class="severityClass(defect)">{{ t(severityLabel(defect)) }}</text><text class="defect-time">{{ formatTime(defect.createdAt || defect.updateDate || defect.updatedAt) }}</text></view><text class="defect-code">{{ t(defect.defectCode ?? '未填写编码') }}</text><text v-if="defect.defectDesc" class="defect-desc">{{ defect.defectDesc }}</text><view class="defect-meta"><text v-if="isCommon(defect)" class="defect-meta-text common-label">{{ t('普遍性疵点') }}</text><text v-else-if="defect.quantity || defect.defectCount" class="defect-meta-text">{{ t('受影响数量：{count}个', { count: defect.quantity || defect.defectCount }) }}</text><text v-if="photoCount(defect) > 0" class="defect-meta-text">{{ t('{count} 张图片', { count: photoCount(defect) }) }}</text></view></view>
-					<view class="delete-action" @click.stop="removeDefect(defect)"><text class="delete-action-text">{{ t('删除') }}</text></view>
+			<view v-for="group in groups" :key="group.key" class="defect-group">
+				<view class="defect-group-title"><text>{{ translateText(group.label) }}（{{ group.items.length }}）</text><text v-if="group.affectedTotal > 0" class="actual-total">{{ translateText('实际发现：{count}', { count: group.affectedTotal }) }}</text></view>
+				<view v-for="(defect, index) in group.items" :key="defect.id !== '' ? defect.id : `${group.key}-${index}`" class="defect-card" @click="openDefect(defect.raw)">
+					<InspectionMediaImage v-if="firstPhoto(defect)" class="defect-cover" :media="firstPhoto(defect)" /><view v-else class="defect-cover placeholder"><text class="placeholder-text">{{ translateText('暂无图片') }}</text></view>
+					<view class="defect-main"><view class="defect-head"><text class="severity" :class="severityClass(defect)">{{ translateText(severityLabel(defect)) }}</text><text class="defect-time">{{ formatTime(defect.createdAt) }}</text></view><text class="defect-code">{{ translateText(defect.defectCode ?? '未填写编码') }}</text><text v-if="defect.defectDesc" class="defect-desc">{{ defect.defectDesc }}</text><view class="defect-meta"><text v-if="isCommon(defect)" class="defect-meta-text common-label">{{ translateText('普遍性疵点') }}</text><text v-else-if="defect.quantity !== '' ? defect.quantity : defect.defectCount" class="defect-meta-text">{{ translateText('受影响数量：{count}个', { count: defect.quantity || defect.defectCount }) }}</text><text v-if="photoCount(defect) > 0" class="defect-meta-text">{{ translateText('{count} 张图片', { count: photoCount(defect) }) }}</text></view></view>
+					<view class="delete-action" @click.stop="removeDefect(defect.raw)"><text class="delete-action-text">{{ translateText('删除') }}</text></view>
 				</view>
 			</view>
 		</view>
-		<view class="add-button" @click="addDefect"><text class="add-button-text">{{ t('＋ 添加疵点') }}</text></view>
 	</view>
 </template>
 
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+	import { firstNonEmptyText } from '../../domain/searchViewModel.uts'
 	import InspectionMediaImage from './InspectionMediaImage.uvue'
+	type DefectRow = { id: string, type: string, typeLabel: string, defectCode: string, defectDesc: string, createdAt: string, quantity: string, defectCount: string, commonFlag: string, isCommon: boolean, photos: UTSJSONObject[], raw: UTSJSONObject }
+	type DefectGroup = { key: string, label: string, affectedTotal: number, items: DefectRow[] }
+	type DefectCounts = { critical: number, major: number, minor: number }
 	const props = defineProps({ defects: { type: Array, default: () => [] }, defectCounts: { type: Object, default: () => ({ critical: 0, major: 0, minor: 0 }) }, defectGroups: { type: Array, default: () => [] } })
-	const emit = defineEmits(['add-defect', 'open-defect', 'edit-defect', 'remove-defect'])
+	const emit = defineEmits(['open-defect', 'edit-defect', 'remove-defect'])
+	/** 为原生模板提供可调用的多语言文案方法。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
+	/** 提取列表疵点的固定字段，同时保留原始记录供编辑和删除。 */
+	function toDefectRow(raw: UTSJSONObject): DefectRow { const storedPhotos = raw['photos']; return { id: firstNonEmptyText([raw['id'], raw['defectId']], ''), type: firstNonEmptyText([raw['type'], raw['defectType']], ''), typeLabel: (raw['typeLabel'] ?? '').toString(), defectCode: (raw['defectCode'] ?? '').toString(), defectDesc: (raw['defectDesc'] ?? '').toString(), createdAt: firstNonEmptyText([raw['createdAt'], raw['updateDate'], raw['updatedAt']], ''), quantity: (raw['quantity'] ?? '').toString(), defectCount: (raw['defectCount'] ?? '').toString(), commonFlag: (raw['commonFlag'] ?? '').toString(), isCommon: raw['isCommon'] === true, photos: Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : [], raw } }
+	/** 将动态疵点分组数据转换为模板可访问的结构。 */
+	const groups = computed((): DefectGroup[] => (props.defectGroups as UTSJSONObject[]).map((raw: UTSJSONObject): DefectGroup => { const storedItems = raw['items']; return { key: (raw['key'] ?? '').toString(), label: (raw['label'] ?? '').toString(), affectedTotal: parseFloat((raw['affectedTotal'] ?? 0).toString()), items: Array.isArray(storedItems) ? (storedItems as UTSJSONObject[]).map((item: UTSJSONObject): DefectRow => toDefectRow(item)) : [] } }))
+	/** 将疵点统计转换为三项明确的数字字段。 */
+	const counts = computed((): DefectCounts => { const raw = props.defectCounts as UTSJSONObject; return { critical: parseFloat((raw['critical'] ?? 0).toString()), major: parseFloat((raw['major'] ?? 0).toString()), minor: parseFloat((raw['minor'] ?? 0).toString()) } })
 	/** 返回疵点严重等级标准值。 */
-	function severityValue(defect) { const text = `${String(defect?.type ?? defect?.defectType ?? '').toLowerCase()} ${String(defect?.typeLabel ?? '').toLowerCase()}`; if (text.includes('critical') || text.includes('致命') || text.includes('极严重')) return 'CRITICAL'; if (text.includes('major') || text.includes('主要') || text.includes('严重')) return 'MAJOR'; return 'MINOR' }
+	function severityValue(defect: DefectRow): string { const text = `${defect.type.toLowerCase()} ${defect.typeLabel.toLowerCase()}`; if (text.includes('critical') || text.includes('致命') || text.includes('极严重')) return 'CRITICAL'; if (text.includes('major') || text.includes('主要') || text.includes('严重')) return 'MAJOR'; return 'MINOR' }
 	/** 返回疵点严重等级中文名称。 */
-	function severityLabel(defect) { const value = severityValue(defect); return value === 'CRITICAL' ? '致命缺陷' : (value === 'MAJOR' ? '主要缺陷' : '次要缺陷') }
+	function severityLabel(defect: DefectRow): string { const value = severityValue(defect); return value === 'CRITICAL' ? '致命缺陷' : (value === 'MAJOR' ? '主要缺陷' : '次要缺陷') }
 	/** 返回严重等级样式类。 */
-	function severityClass(defect) { return severityValue(defect).toLowerCase() }
+	function severityClass(defect: DefectRow): string { return severityValue(defect).toLowerCase() }
 	/** 返回疵点图片数量。 */
-	function photoCount(defect) { return Array.isArray(defect?.photos) ? defect.photos.length : 0 }
+	function photoCount(defect: DefectRow): number { return defect.photos.length }
 	/** 返回疵点首张媒体记录。 */
-	function firstPhoto(defect) { const photos = Array.isArray(defect?.photos) ? defect.photos : []; return photos.length > 0 ? photos[0] : null }
+	function firstPhoto(defect: DefectRow): UTSJSONObject | null { return defect.photos.length > 0 ? defect.photos[0] : null }
 	/** 判断疵点是否为普遍性疵点。 */
-	function isCommon(defect) { return Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1 }
+	function isCommon(defect: DefectRow): boolean { return defect.commonFlag === '1' || (defect.commonFlag === '' && defect.isCommon) }
 	/** 将疵点时间格式化为 H5 卡片短时间。 */
-	function formatTime(value) { if (!value) return ''; const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value); const pad = (number) => String(number).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}` }
-	/** 请求父页新增疵点。 */
-	function addDefect() { emit('add-defect') }
+	function formatTime(value: string): string { if (value === '') return ''; const date = new Date(value); if (Number.isNaN(date.getTime())) return value; const pad = (number: number): string => number.toString().padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}` }
 	/** 请求父页打开已有疵点。 */
-	function openDefect(defect) { emit('open-defect', defect); emit('edit-defect', defect) }
+	function openDefect(defect: UTSJSONObject) { emit('open-defect', defect); emit('edit-defect', defect) }
 	/** 请求父页二次确认后删除疵点。 */
-	function removeDefect(defect) { emit('remove-defect', defect) }
+	function removeDefect(defect: UTSJSONObject) { emit('remove-defect', defect) }
 </script>
 
 <style>

@@ -2,6 +2,91 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
+/** 本地数据页应展示全部页面详情与 SQLite 结果，并可复制完整内容而非当前单条。 */
+test('local detail debug shows the full snapshot in bounded pages and copies everything', async () => {
+  const page = await readFile('pages/report/detail.uvue', 'utf8')
+  const tab = await readFile('components/detail/LocalDataTab.uvue', 'utf8')
+  assert.match(page, /buildLocalDetailDebugSnapshot\(storedDetail, detail\.value, itemResultRows\)/)
+  assert.match(page, /getLocalDetailDebugPage\(localReportDebugFullText\.value, index\)/)
+  assert.match(page, /const text = String\(localReportDebugFullText\.value \?\? ''\)/)
+  assert.doesNotMatch(page, /pruneEmptyChildItemResults\(planId\.value\)/)
+  assert.match(tab, /本地完整详情/)
+  assert.match(tab, /复制完整数据/)
+})
+
+/** 普通及合并检查行保持固定高度，备注作为独立区域向下扩展。 */
+test('checklist keeps the check column fixed while multiline remarks expand below it', async () => {
+  const source = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  assert.equal((source.match(/class="checklist-main"/g) ?? []).length, 2)
+  assert.match(source, /\.checklist-item \{[^}]*flex-direction: column;[^}]*align-items: stretch;/)
+  assert.match(source, /\.checklist-main \{[^}]*height: 120rpx;[^}]*flex-direction: row;[^}]*align-items: center;/)
+  assert.match(source, /<\/view>\s*<text v-if="getItemComment\(child\.id\) !== ''" class="item-comment">/)
+  assert.match(source, /<\/view>\s*<text v-if="getItemComment\(child\.id, plan\.id\) !== ''" class="item-comment">/)
+  const rowStyle = source.match(/\.checklist-item \{([^}]*)\}/)?.[1] ?? ''
+  assert.ok(!rowStyle.split(';').some((rule) => rule.trim().startsWith('height:')))
+})
+
+/** 弹层始终取当前检查项状态而非旧 checklistItems 快照。 */
+test('checklist sheet reads the current result data for the selected row', async () => {
+  const page = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.match(page, /if \(direct\) return \{ \.\.\.direct, data: detail\.value\?\.checklistData\?\.\[key\] \?\? direct\.data \?\? \{\} \}/)
+})
+
+/** 相机入口只派发一次业务事件，避免重复调起选图和双份写库。 */
+test('checklist camera dispatches one capture event', async () => {
+  const source = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  assert.ok(source.includes("emit('photo-capture', item, sonPlanId)"))
+  assert.ok(!source.includes("emit('add-photo', item, sonPlanId)"))
+})
+
+/** 输入仅登记受影响的本地业务行，保存完成不以 SQLite 回读覆盖页面内存。 */
+test('detail edits use coalesced row-level writes without rereading the page', async () => {
+  const source = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.ok(source.includes("scheduleDraftSave('item', dataKey)"))
+  assert.ok(source.includes("scheduleDraftSave('item', itemId)"))
+  assert.ok(source.includes('changes: { defectIds: [defectId] }'))
+  assert.ok(source.includes('changes: { removedDefectIds: [defectId] }'))
+  assert.ok(source.includes('if (changes == null) detail.value = saved'))
+  assert.ok(!source.includes('getPlanById(planId.value, snapshot)'))
+})
+
+/** H5 的必传照片标志兼容服务端布尔值和数值 1。 */
+test('required photo badge accepts numeric flags and stays above the camera', async () => {
+  const source = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  assert.ok(source.includes("Number(raw['isPhotoRequired'] ?? 0) === 1"))
+  assert.ok(source.includes('.required-star { position: absolute;'))
+})
+
+/** 订单信息不提供操作栏，疵点新增入口固定在页面右下角。 */
+test('detail actions follow the H5 tab layout', async () => {
+  const page = await readFile('pages/report/detail.uvue', 'utf8')
+  const defects = await readFile('components/detail/DefectListTab.uvue', 'utf8')
+  assert.ok(!page.includes("activeTab === 'info'\" class=\"footer-actions"))
+  assert.ok(page.includes('class="floating-defect-button"'))
+  assert.ok(!defects.includes('class="add-button"'))
+})
+
+/** 上传完成事件可来自合并报告的共享组 ID，页面仍刷新照片状态。 */
+test('upload completion refreshes the visible report across merged members', async () => {
+  const source = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.ok(source.includes("state?.phase === 'uploaded') refreshPhotoState()"))
+})
+
+/** 合并报告最终提交只调用父计划一次，成功确认后以单个事务更新组级状态。 */
+test('merged final submission targets the parent and does not save members one by one', async () => {
+  const source = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.match(source, /submitFinalReport\(\{ planId: payload\.planId, payload, photoPlanId: planId\.value \}\)/)
+  assert.match(source, /getPlanDetail\(payload\.planId\)/)
+  assert.doesNotMatch(source, /markMergedPlansReported/)
+  assert.match(source, /photoPlanId: planId\.value/)
+})
+
+/** 自动上传回写共享组时必须选真实成员入口保存草稿，避免创建旧 report 行。 */
+test('automatic photo refresh resolves group IDs to a member before saving', async () => {
+  const source = await readFile('runtime/appRuntime.uts', 'utf8')
+  assert.match(source, /saveDraft\(localDetail\.planId, refreshed/)
+})
+
 /** 保证详情首次渲染时，总结弹层引用的统计数据已由响应式计算属性提供。 */
 test('detail page defines the finish summary used by the submit sheet', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
@@ -262,15 +347,23 @@ test('check item editor sorts photos through a reusable native bottom sheet', as
   assert.match(page, /scheduleDraftSave\(\)/)
 })
 
+/** 照片重排入口与 H5 一样位于底部操作区的批量移动入口上方。 */
+test('photo sorting action appears immediately above batch move below the media grid', async () => {
+  const editor = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const mediaSection = editor.slice(editor.indexOf('<view class="media-section">'), editor.indexOf('<view v-if="defects.length"'))
+  assert.match(mediaSection, /<InspectionMediaGrid[^>]*\/>[\s\S]*<AppButton[^>]*@press="requestCopyItems"[^>]*>[\s\S]*<AppButton v-if="mediaPhotos\.length > 1" block @press="openPhotoSort">[\s\S]*照片重新排序[\s\S]*<AppButton v-if="mediaPhotos\.length" block @press="requestBatchMove">/)
+  assert.doesNotMatch(mediaSection, /section-title-row[^\n]*openPhotoSort/)
+})
+
 test('checklist tab keeps the H5 section hierarchy and direct photo action', async () => {
   const page = await readFile('pages/report/detail.uvue', 'utf8')
   const checklist = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
 
   assert.match(checklist, /expandedSections/)
   assert.match(checklist, /sectionName/)
-  assert.match(checklist, /add-photo/)
+  assert.match(checklist, /photo-capture/)
   assert.match(checklist, /retry-detail/)
-  assert.match(page, /@add-photo="addChecklistPhoto"/)
+  assert.match(page, /@photo-capture="handleChecklistItemPhotoCapture"/)
   assert.match(page, /@retry-detail="loadDetail"/)
 })
 
@@ -315,8 +408,10 @@ test('check item editor follows the H5 fixed result footer and immediate result 
   assert.match(source, /emit\('open-defect'/)
   assert.match(source, /\.sheet\s*\{[^}]*position:\s*absolute[^}]*top:\s*15%[^}]*bottom:\s*0/)
   assert.doesNotMatch(source, /\.sheet\s*\{[^}]*(?:height|min-height|max-height):\s*\d+vh/)
-  assert.match(source, /\.modal-footer-fixed\s*\{[^}]*position:\s*absolute[^}]*bottom:\s*0/)
-  assert.match(source, /\.sheet-body\s*\{[^}]*padding-bottom:\s*300rpx/)
+  assert.match(source, /\.sheet\s*\{[^}]*flex-direction:\s*column/)
+  assert.match(source, /\.sheet-body\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;[^}]*padding-bottom:\s*24rpx/)
+  assert.match(source, /\.modal-footer-fixed\s*\{[^}]*flex-shrink:\s*0/)
+  assert.doesNotMatch(source, /\.modal-footer-fixed\s*\{[^}]*position:\s*absolute/)
   assert.doesNotMatch(source, /class="result-options"/)
   assert.doesNotMatch(source, /保存检查项/)
 
@@ -345,7 +440,10 @@ test('defect editor consumes the cached defect category tree', async () => {
 test('defect editor occupies the bottom 90 percent of the native screen', async () => {
   const sheet = await readFile('components/detail/QuickDefectSheet.uvue', 'utf8')
 
-  assert.match(sheet, /\.dialog\s*\{[^}]*position:\s*absolute;[^}]*top:\s*10%;[^}]*bottom:\s*0;/)
+  assert.match(sheet, /:style="\{ top: dialogTop, maxHeight: dialogMaxHeight \}"/)
+  assert.match(sheet, /dialogTop = computed\(\(\): string => windowHeightPx\(0\.1\)\)/)
+  assert.match(sheet, /dialogMaxHeight = computed\(\(\): string => windowHeightPx\(0\.9\)\)/)
+  assert.match(sheet, /\.dialog\s*\{[^}]*position:\s*absolute;[^}]*bottom:\s*0;/)
   assert.match(sheet, /\.dialog-body\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;/)
   assert.match(sheet, /<\/scroll-view><view class="actions">/)
   assert.match(sheet, /<DefectCategorySheet/)
@@ -403,6 +501,48 @@ test('native sheet buttons render labels and icons through view-based components
   assert.doesNotMatch(checkItem, /<AppButton v-for="option in resultOptions"/)
   assert.match(defect, /:label-color="draft\.type === option\.value \? '#16a34a' : '#334155'"/)
   assert.match(defect, /class="footer-button save"[^>]*label-color="#ffffff"/)
+})
+
+/** 编辑疵点的类别选择和评论框与 H5 一样展示完整浅灰色边框。 */
+test('defect category picker and comment field have visible H5-style borders', async () => {
+  const sheet = await readFile('components/detail/QuickDefectSheet.uvue', 'utf8')
+  assert.match(sheet, /\.category-trigger \{[^}]*border-width: 2rpx;[^}]*border-style: solid;[^}]*border-color: #e5e7eb;[^}]*border-radius: 16rpx;/)
+  assert.match(sheet, /\.comment-input \{[^}]*border-width: 2rpx;[^}]*border-style: solid;[^}]*border-color: #e5e7eb;[^}]*border-radius: 16rpx;/)
+})
+
+/** 1–19 与“其他”同在横向滚动区，仍可填写和校验自定义数量。 */
+test('defect editor scrolls through 1–19 and the H5 other quantity option', async () => {
+  const sheet = await readFile('components/detail/QuickDefectSheet.uvue', 'utf8')
+  assert.match(sheet, /<scroll-view class="quantity-scroll" direction="horizontal"><view class="quantity-row"[^>]*><AppButton v-for="quantity in 19"[\s\S]*?<AppButton class="qty-other"[^>]*@press="selectQuantity\('other'\)"[\s\S]*?<\/view><\/scroll-view>/)
+  assert.doesNotMatch(sheet, /<\/scroll-view>\s*<AppButton class="qty-other"/)
+  assert.match(sheet, /\.quantity-scroll \{[^}]*width: 100%;/)
+  assert.match(sheet, /\.quantity-row \{[^}]*width: 2100rpx;[^}]*flex-direction: row;/)
+  assert.match(sheet, /\.qty-item, \.qty-other \{[^}]*flex-shrink: 0;/)
+  assert.match(sheet, /<input v-if="draft\.quantity === 'other' && draft\.commonFlag !== 1" class="other-input"[^>]*@input="updateField\('customQuantity', \$event\)"/)
+  assert.match(sheet, /\.other-input \{[^}]*border-width: 2rpx;[^}]*border-style: solid;[^}]*border-color: #e5e7eb;/)
+  assert.match(sheet, /quantity: getDefectQuantity\(draft\.value\)/)
+})
+
+/** 类别标题和必选标签共享一行的垂直中心及下方间距。 */
+test('defect category required marker aligns with its label', async () => {
+  const sheet = await readFile('components/detail/QuickDefectSheet.uvue', 'utf8')
+  assert.match(sheet, /class="label category-label">\{\{ translateText\('疵点类别'\) \}\}/)
+  assert.match(sheet, /\.label-row \{[^}]*align-items: center;[^}]*margin-bottom: 20rpx;/)
+  assert.match(sheet, /\.category-label \{[^}]*margin-bottom: 0;/)
+})
+
+/** 清单备注位于媒体库之前，始终可写且与疵点评论共用白底浅灰边框视觉。 */
+test('check item remarks match H5 placement and defect comment styling', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const defect = await readFile('components/detail/QuickDefectSheet.uvue', 'utf8')
+  assert.ok(sheet.indexOf('class="notes-section"') < sheet.indexOf('class="media-section"'))
+  assert.match(sheet, /<text class="section-title">\{\{ translateText\('备注'\) \}\}<\/text>/)
+  assert.match(sheet, /<textarea class="remarks" :value="noteDraft"[^>]*:placeholder="translateText\('写评论'\)"/)
+  assert.doesNotMatch(sheet, /class="notes-preview"/)
+  for (const source of [sheet, defect]) {
+    const style = source.match(/\.(?:remarks|comment-input) \{([^}]*)\}/)?.[1] ?? ''
+    for (const declaration of ['min-height: 150rpx;', 'padding: 20rpx 24rpx;', 'border-width: 2rpx;', 'border-style: solid;', 'border-color: #e5e7eb;', 'border-radius: 16rpx;', 'font-size: 28rpx;', 'background-color: #ffffff;']) assert.ok(style.includes(declaration), declaration)
+  }
 })
 
 /** 原生弹层不应混排文本节点，检查点文字应直接设置原生 text 样式。 */
@@ -479,8 +619,88 @@ test('checklist rows use compact vertical spacing and visible separators', async
   assert.match(checklist, /\.checklist-row-wrap\s*\{[^}]*border-bottom-width:\s*1rpx/)
   assert.match(checklist, /\.checklist-row-wrap\s*\{[^}]*border-bottom-color:\s*#e5e7eb/)
   assert.match(checklist, /\.inspection-plan-card\s*\{[^}]*border-top-width:\s*1rpx/)
-  assert.match(checklist, /\.checklist-item\s*\{[^}]*min-height:\s*96rpx[^}]*padding:\s*16rpx 24rpx/)
+  assert.match(checklist, /\.checklist-main\s*\{[^}]*height:\s*120rpx/)
+  assert.match(checklist, /\.checklist-item\s*\{[^}]*padding:\s*0 16rpx 0 28rpx/)
+  assert.match(checklist, /\.inspection-plan-row\s*\{[^}]*padding:\s*0 24rpx 0 28rpx/)
   assert.match(checklist, /\.checklist-section\s*\{[^}]*margin-bottom:\s*12rpx/)
+})
+
+/** 疵点标记必须是独立可绘制的原生视图，覆盖普通行和合并子行的整块高度。 */
+test('checklist renders a full-height defect marker in both row types', async () => {
+  const checklist = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  assert.equal((checklist.match(/class="defect-indicator"/g) ?? []).length, 2)
+  assert.match(checklist, /v-if="getItemDefects\(child\.id\)\.length > 0" class="defect-indicator" :class="getItemResult\(child\.id\)"/)
+  assert.match(checklist, /v-if="getItemDefects\(child\.id, plan\.id\)\.length > 0" class="defect-indicator" :class="getItemResult\(child\.id, plan\.id\)"/)
+  assert.match(checklist, /\.defect-indicator\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;[^}]*bottom:\s*0;[^}]*background-color:\s*#ef4444/)
+})
+
+/** 合并子行须与主行共用左边缘，结果色条不能被子行内容内边距推离边框。 */
+test('merged checklist rows place result and defect markers at the outer left edge', async () => {
+  const checklist = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  const listStyle = checklist.match(/\.inspection-plan-list\s*\{([^}]*)\}/)?.[1] ?? ''
+  assert.doesNotMatch(listStyle, /padding-left:\s*34rpx/)
+  assert.match(checklist, /v-if="getItemResult\(child\.id, plan\.id\) !== '' && getItemDefects\(child\.id, plan\.id\)\.length === 0" class="status-indicator checklist-result-indicator"/)
+  assert.match(checklist, /\.checklist-result-indicator\s*\{[^}]*position:\s*absolute;[^}]*left:\s*0;[^}]*top:\s*0;[^}]*bottom:\s*0;/)
+  assert.match(checklist, /class="check-item-block inspection-plan-card"[\s\S]*?class="status-indicator checklist-result-indicator"[\s\S]*?class="inspection-plan-row checklist-item"/)
+})
+
+/** 主行与子行使用相同的内容左距，结果标记贴边且不挤动主行文字。 */
+test('parent checklist row shares merged child left padding regardless of result', async () => {
+  const checklist = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  assert.match(checklist, /v-if="getItemResult\(child\.id\) !== '' && getItemDefects\(child\.id\)\.length === 0" class="status-indicator checklist-result-indicator"/)
+  assert.match(checklist, /class="check-item-block"[\s\S]*?class="status-indicator checklist-result-indicator"[\s\S]*?class="checklist-item"/)
+})
+
+/** 窄屏右划时右侧结果按钮不能从左侧快捷操作下方露出。 */
+test('swipe cell mounts result actions only while swiping left', async () => {
+  const swipeCell = await readFile('components/common/SwipeResultCell.uvue', 'utf8')
+  assert.match(swipeCell, /<view v-if="showRightActions" class="swipe-right-actions">/)
+  assert.match(swipeCell, /\.swipe-left-action\s*\{[^}]*z-index:\s*1/)
+  assert.match(swipeCell, /function close\([^)]*\)[\s\S]*?scheduleRightActionsHide\(\)/)
+  assert.match(swipeCell, /function scheduleRightActionsHide\([^)]*\)[^\n]*setTimeout\([^\n]*SWIPE_TRANSITION_MS/)
+  assert.match(swipeCell, /if \(gestureAxis !== 'horizontal'\) \{ if \(offsetX\.value >= 0\) scheduleRightActionsHide\(\); return \}/)
+})
+
+/** 右滑快捷块缩窄，左滑选择检查结果时不渲染左侧遮挡层。 */
+test('checklist swipe keeps its left result block narrow and out of right actions', async () => {
+  const swipeCell = await readFile('components/common/SwipeResultCell.uvue', 'utf8')
+  assert.match(swipeCell, /<view v-if="offsetX > 0" class="swipe-left-action"/)
+  assert.match(swipeCell, /function leftActionWidth\(\) \{ return uni\.rpx2px\(120\) \}/)
+  assert.match(swipeCell, /\.swipe-left-action \{[^}]*width: 120rpx;/)
+  assert.match(swipeCell, /<view v-if="showRightActions" class="swipe-right-actions">/)
+})
+
+/** 多次快速检查只在空闲后保存最新草稿，不让本地写入压住回弹动画。 */
+test('checklist draft saves after the swipe rebound and flushes on exit', async () => {
+  const detail = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.match(detail, /detail\.value = updateChecklistResult\(detail\.value, dataKey, result\)/)
+  assert.match(detail, /const CHECKLIST_SAVE_IDLE_MS = 750/)
+  assert.match(detail, /saveTimer = setTimeout\(\(\) => \{ saveTimer = null; persistDraft\(\{ markDirty: true, skipIfClean: true \}\) \}, CHECKLIST_SAVE_IDLE_MS\)/)
+  assert.match(detail, /function flushTouchedDraft\(\)/)
+})
+
+/** 检查备注失焦后自动保存，不依赖确认按钮；关闭和选结果也不丢失未失焦输入。 */
+test('check item notes save on blur without separate close or confirm actions', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  assert.match(sheet, /<textarea class="remarks" :value="noteDraft"/)
+  assert.match(sheet, /@blur="saveNotesOnBlur"/)
+  assert.doesNotMatch(sheet, /class="notes-actions"/)
+  assert.match(sheet, /function updateComment\([^)]*\) \{ noteDraft\.value = event\.detail\.value \}/)
+  assert.match(sheet, /function saveNotesOnBlur\([^)]*\)[^\n]*autoSaveDraft\(\)/)
+  assert.match(sheet, /function closeSheet\([^)]*\) \{ saveNotesOnBlur\(\); emit\('close'\) \}/)
+  assert.match(sheet, /function confirmResult\([^)]*\)[^\n]*saveNotesOnBlur\(\)/)
+  assert.doesNotMatch(sheet, /function updateComment\([^)]*\)[^\n]*autoSaveDraft\(\)/)
+})
+
+/** 四态结果按钮不显示外框，其他复用操作按钮仍有原生描边。 */
+test('check item result choices are borderless while other actions keep borders', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const button = await readFile('components/common/AppButton.uvue', 'utf8')
+  assert.doesNotMatch(sheet, /\.result-circle\s*\{[^}]*border-(?:width|style|color):/)
+  assert.doesNotMatch(sheet, /\.result-circle\.active\s*\{[^}]*border-/)
+  assert.match(button, /\.app-button\s*\{[^}]*border-width:\s*2rpx;[^}]*border-style:\s*solid;[^}]*border-color:\s*#cbd5e1/)
+  assert.match(button, /\.app-button\.icon\s*\{[^}]*border-width:\s*2rpx;[^}]*border-color:\s*#cbd5e1/)
+  assert.doesNotMatch(button, /\.app-button\.result\.selected\s*\{\s*border-width:\s*0/)
 })
 
 test('every detail business popup is implemented as a bottom sheet', async () => {
@@ -528,15 +748,25 @@ test('defect tab follows H5 grouping and card fields', async () => {
   assert.match(source, /open-defect/)
 })
 
-test('local data tab exposes the H5 raw JSON refresh and copy workflow', async () => {
+test('local data tab exposes full detail refresh and copy workflow', async () => {
   const page = await readFile('pages/report/detail.uvue', 'utf8')
   const source = await readFile('components/detail/LocalDataTab.uvue', 'utf8')
   assert.match(source, /updatedAt/)
   assert.match(source, /contentText/)
-  assert.match(source, /本地报告数据/)
+  assert.match(source, /本地完整详情/)
   assert.match(source, /emit\('refresh'\)/)
   assert.match(source, /emit\('copy'\)/)
   assert.match(page, /refreshLocalReportDebug/)
   assert.match(page, /copyLocalReportDebug/)
   assert.match(page, /uni\.setClipboardData/)
+})
+
+/** 本地数据默认展示接口式详情，原始绑定排查数据按需切换。 */
+test('local data defaults to API-shaped detail and keeps diagnostic access', async () => {
+  const page = await readFile('pages/report/detail.uvue', 'utf8')
+  const tab = await readFile('components/detail/LocalDataTab.uvue', 'utf8')
+  assert.match(page, /buildLocalDetailResponse\(storedDetail\)/)
+  assert.match(page, /localReportDebugMode\.value === 'diagnostic'/)
+  assert.match(tab, /@click="toggleMode"/)
+  assert.match(tab, /mode === 'diagnostic'/)
 })

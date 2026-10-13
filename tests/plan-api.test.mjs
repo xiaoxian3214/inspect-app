@@ -4,6 +4,16 @@ import { loadUtsModule } from './load-uts-module.mjs'
 
 const apiModule = await loadUtsModule('api/planApi.uts')
 
+test('plan search uses the independent read request lane', async () => {
+  const requests = []
+  const api = apiModule.createPlanApi({ request: async (options) => {
+    requests.push(options)
+    return { records: [], total: 0 }
+  } })
+  await api.searchPlans({ status: 0 })
+  assert.equal(requests[0].lane, 'read')
+})
+
 /**
  * 创建记录请求并按 URL 返回预设数据的计划 API 测试夹具。
  */

@@ -1,7 +1,7 @@
 <template>
 	<view class="home-page">
 		<TopSafeArea background-color="#f5f7fb" />
-		<scroll-view class="home-content" scroll-y="true">
+		<scroll-view class="home-content" :scroll-y="true">
 		<view class="home-header">
 			<view>
 				<text class="welcome">{{ t('你好，{name}', { name: displayName }) }}</text>

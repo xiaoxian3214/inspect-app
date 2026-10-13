@@ -21,6 +21,7 @@ export function createPlanApi(apiClient) {
       query: { current: page, size: pageSize },
       data: searchParams,
       key: `plans:search:${page}:${pageSize}:${JSON.stringify(searchParams)}`,
+      lane: 'read',
       priority: 10
     })
     if (Array.isArray(data)) return { records: data, total: data.length }

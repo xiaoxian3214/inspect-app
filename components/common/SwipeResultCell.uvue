@@ -1,13 +1,13 @@
 <template>
 	<view class="swipe-result-cell">
-		<view class="swipe-left-action" :class="leftActionClass">
+		<view v-if="offsetX > 0" class="swipe-left-action" :class="leftActionClass">
 			<AppIcon :type="resultIcon(normalizedResult)" :size="27" color="#ffffff" />
-			<text class="swipe-left-label">{{ t(resultLabel(normalizedResult)) }}</text>
+			<text class="swipe-left-label">{{ translateText(resultLabel(normalizedResult)) }}</text>
 		</view>
-		<view class="swipe-right-actions">
+		<view v-if="showRightActions" class="swipe-right-actions">
 			<view v-for="action in resultActions" :key="action.value" class="swipe-action" :class="action.value" @click.stop="selectResult(action.value)">
 				<AppIcon :type="action.icon" :size="32" :color="action.color" />
-				<text class="swipe-action-label">{{ t(action.label) }}</text>
+				<text class="swipe-action-label">{{ translateText(action.label) }}</text>
 			</view>
 		</view>
 		<view
@@ -27,7 +27,7 @@
 
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
-	import { computed, ref } from 'vue'
+	import { computed, onUnmounted, ref } from 'vue'
 	import { resolveGestureAxis, resolveSwipeMove, resolveSwipeRelease } from '../../domain/swipeCellGesture.uts'
 	import AppIcon from '../icons/AppIcon.uvue'
 
@@ -36,67 +36,79 @@
 		autoCloseDelay: { type: Number, default: 400 }
 	})
 	const emit = defineEmits(['left-open', 'select-result', 'content-click'])
+	const SWIPE_TRANSITION_MS = 220
 	const offsetX = ref(0)
 	const dragging = ref(false)
+	const showRightActions = ref(false)
 	let touchStartX = 0
 	let touchStartY = 0
 	let gestureStartOffset = 0
 	let gestureAxis = 'pending'
 	let movedDistance = 0
 	let gestureDeltaX = 0
-	let autoCloseTimer = null
+	let autoCloseTimer: number | null = null
+	let hideRightActionsTimer: number | null = null
 
-	const resultActions = [
+	type ResultAction = { value: string, label: string, icon: string, color: string }
+	const resultActions: ResultAction[] = [
 		{ value: 'pass', label: '合格', icon: 'check', color: '#22c55e' },
 		{ value: 'fail', label: '不合格', icon: 'warning', color: '#ef4444' },
 		{ value: 'pending', label: '待定', icon: 'help', color: '#f59e0b' },
 		{ value: 'na', label: '不适用', icon: 'clear', color: '#64748b' }
 	]
+	/** 为原生模板翻译滑动结果操作的文案。 */
+	function translateText(key: string): string { return t(key) }
 
-	/** 返回设备上与 H5 180rpx 一致的左侧快捷操作宽度。 */
-	function leftActionWidth() { return uni.rpx2px(180) }
+	/** 返回设备上较窄的左侧快捷操作宽度，避免遮挡左滑结果选项。 */
+	function leftActionWidth() { return uni.rpx2px(120) }
 	/** 返回设备上与 H5 四个 140rpx 操作一致的右侧操作总宽度。 */
 	function rightActionWidth() { return uni.rpx2px(560) }
 	/** 返回当前设备的横向滑动触发阈值。 */
 	function swipeThreshold() { return uni.rpx2px(96) }
 	/** 将空结果转换为 H5 右滑默认展示的合格状态。 */
-	const normalizedResult = computed(() => String(props.result ?? '').trim() ?? 'pass')
+	const normalizedResult = computed(() => props.result.trim() !== '' ? props.result.trim() : 'pass')
 	/** 返回左侧快捷操作对应的状态颜色类。 */
 	const leftActionClass = computed(() => `action-${normalizedResult.value}`)
 	/** 返回滑动内容层的实时位移和回弹动画。 */
-	const contentStyle = computed(() => ({ transform: `translateX(${offsetX.value}px)`, transitionDuration: dragging.value ? '0ms' : '220ms' }))
+	const contentStyle = computed(() => ({ transform: `translateX(${offsetX.value}px)`, transitionDuration: dragging.value ? '0ms' : `${SWIPE_TRANSITION_MS}ms` }))
 
 	/** 返回 H5 四种检查结果对应的 Uni Icons 图标类型。 */
-	function resultIcon(result) { if (result === 'pass') return 'check'; if (result === 'fail') return 'warning'; if (result === 'pending') return 'help'; return 'clear' }
+	function resultIcon(result: string): string { if (result === 'pass') return 'check'; if (result === 'fail') return 'warning'; if (result === 'pending') return 'help'; return 'clear' }
 	/** 返回 H5 四种检查结果对应的中文名称。 */
-	function resultLabel(result) { if (result === 'pass') return '合格'; if (result === 'fail') return '不合格'; if (result === 'pending') return '待定'; return '不适用' }
+	function resultLabel(result: string): string { if (result === 'pass') return '合格'; if (result === 'fail') return '不合格'; if (result === 'pending') return '待定'; return '不适用' }
 	/** 清理右滑快捷动作的自动回弹计时器。 */
-	function clearAutoCloseTimer() { if (autoCloseTimer != null) { clearTimeout(autoCloseTimer); autoCloseTimer = null } }
-	/** 关闭左右操作区并恢复清单内容到初始位置。 */
-	function close() { clearAutoCloseTimer(); dragging.value = false; offsetX.value = 0 }
+	function clearAutoCloseTimer() { const timer = autoCloseTimer; if (timer != null) { clearTimeout(timer); autoCloseTimer = null } }
+	/** 取消右侧结果按钮的延迟卸载，保证新手势仍能看到操作区。 */
+	function clearRightActionsHideTimer() { const timer = hideRightActionsTimer; if (timer != null) { clearTimeout(timer); hideRightActionsTimer = null } }
+	/** 回弹动画结束后才卸载右侧结果按钮，避免底色先消失导致跳帧。 */
+	function scheduleRightActionsHide() { clearRightActionsHideTimer(); if (!showRightActions.value) return; hideRightActionsTimer = setTimeout(() => { hideRightActionsTimer = null; if (offsetX.value >= 0 && !dragging.value) showRightActions.value = false }, SWIPE_TRANSITION_MS) }
+	/** 关闭左右操作区，并在回弹完成后清理右侧操作层。 */
+	function close() { clearAutoCloseTimer(); dragging.value = false; offsetX.value = 0; scheduleRightActionsHide() }
 	/** 读取触摸事件中第一根手指的横坐标。 */
-	function touchX(event) { return Number(event?.touches?.[0]?.clientX ?? event?.changedTouches?.[0]?.clientX ?? 0) }
+	function touchX(event: TouchEvent): number { return event.touches[0]?.clientX ?? event.changedTouches[0]?.clientX ?? 0 }
 	/** 读取触摸事件中第一根手指的纵坐标。 */
-	function touchY(event) { return Number(event?.touches?.[0]?.clientY ?? event?.changedTouches?.[0]?.clientY ?? 0) }
+	function touchY(event: TouchEvent): number { return event.touches[0]?.clientY ?? event.changedTouches[0]?.clientY ?? 0 }
 	/** 记录手势起点和当前已打开操作区的位置。 */
-	function handleTouchStart(event) { clearAutoCloseTimer(); touchStartX = touchX(event); touchStartY = touchY(event); gestureStartOffset = offsetX.value; gestureAxis = 'pending'; movedDistance = 0; gestureDeltaX = 0; dragging.value = false }
+	function handleTouchStart(event: TouchEvent) { clearAutoCloseTimer(); clearRightActionsHideTimer(); touchStartX = touchX(event); touchStartY = touchY(event); gestureStartOffset = offsetX.value; gestureAxis = 'pending'; movedDistance = 0; gestureDeltaX = 0; dragging.value = false }
 	/** 锁定首个明确手势方向，仅横向手势更新卡片位移，纵向手势完整交还详情页滚动。 */
-	function handleTouchMove(event) { const deltaX = touchX(event) - touchStartX; const deltaY = touchY(event) - touchStartY; movedDistance = Math.max(movedDistance, Math.abs(deltaX), Math.abs(deltaY)); if (gestureAxis === 'pending') gestureAxis = resolveGestureAxis(deltaX, deltaY); if (gestureAxis !== 'horizontal') return; dragging.value = true; gestureDeltaX = deltaX; offsetX.value = resolveSwipeMove(gestureStartOffset, deltaX, leftActionWidth(), rightActionWidth()) }
-	/** 根据松手方向打开对应 H5 操作区，右滑快捷操作触发后自动回弹。 */
-	function handleTouchEnd() { dragging.value = false; if (gestureAxis !== 'horizontal') return; const target = resolveSwipeRelease(offsetX.value, gestureStartOffset, gestureDeltaX, leftActionWidth(), rightActionWidth(), swipeThreshold()); offsetX.value = target.offset; if (target.position === 'left') { emit('left-open'); autoCloseTimer = setTimeout(close, Number(props.autoCloseDelay ?? 400)) } }
+	function handleTouchMove(event: TouchEvent) { const deltaX = touchX(event) - touchStartX; const deltaY = touchY(event) - touchStartY; movedDistance = Math.max(movedDistance, Math.abs(deltaX), Math.abs(deltaY)); if (gestureAxis === 'pending') gestureAxis = resolveGestureAxis(deltaX, deltaY); if (gestureAxis !== 'horizontal') return; dragging.value = true; gestureDeltaX = deltaX; const nextOffset = resolveSwipeMove(gestureStartOffset, deltaX, leftActionWidth(), rightActionWidth()); if (nextOffset < 0) showRightActions.value = true; offsetX.value = nextOffset }
+	/** 松手后确定操作区位置；非横向手势也要清理已结束回弹的底层按钮。 */
+	function handleTouchEnd() { dragging.value = false; if (gestureAxis !== 'horizontal') { if (offsetX.value >= 0) scheduleRightActionsHide(); return }; const target = resolveSwipeRelease(offsetX.value, gestureStartOffset, gestureDeltaX, leftActionWidth(), rightActionWidth(), swipeThreshold()); offsetX.value = target.offset; if (target.offset >= 0) scheduleRightActionsHide(); if (target.position === 'left') { emit('left-open'); autoCloseTimer = setTimeout(close, props.autoCloseDelay) } }
 	/** 手势被系统取消时关闭操作区，避免卡片停留在中间位置。 */
 	function handleTouchCancel() { close() }
 	/** 点击结果操作后先关闭滑层，再把选择结果交给清单业务组件。 */
-	function selectResult(result) { close(); emit('select-result', result) }
+	function selectResult(result: string) { close(); emit('select-result', result) }
 	/** 未发生横向滑动时才透传卡片点击，避免滑动后误打开检查项。 */
 	function handleContentClick() { if (movedDistance > 8) { movedDistance = 0; return }; if (offsetX.value !== 0) { close(); return }; emit('content-click') }
 
+	/** 页面销毁时取消回弹及按钮卸载计时器，避免操作已卸载的清单行。 */
+	onUnmounted(() => { clearAutoCloseTimer(); clearRightActionsHideTimer() })
 	defineExpose({ close })
 </script>
 
 <style>
 	.swipe-result-cell { position: relative; overflow: hidden; background-color: #ffffff; }
-	.swipe-left-action { position: absolute; left: 0; top: 0; bottom: 0; width: 180rpx; flex-direction: column; align-items: center; justify-content: center; }
+	.swipe-left-action { position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; width: 120rpx; flex-direction: column; align-items: center; justify-content: center; }
 	.swipe-left-action.action-pass { background-color: #22c55e; }
 	.swipe-left-action.action-fail { background-color: #ef4444; }
 	.swipe-left-action.action-pending { background-color: #f59e0b; }

@@ -1,17 +1,20 @@
 <template>
 	<view class="record">
 		<view class="record-heading">
-			<text class="record-title">{{ row.productName ? row.productName : row.reportId }}</text>
-			<text class="record-status">{{ t('状态 {status}', { status: row.status }) }}</text>
+			<text class="record-title">{{ reportRow.productName ? reportRow.productName : reportRow.planId }}</text>
+			<text class="record-status">{{ translateText('状态 {status}', { status: reportRow.status }) }}</text>
 		</view>
-		<text class="record-meta">{{ t('计划 ID：{id}', { id: row.reportId }) }}</text>
-		<text class="record-meta">{{ t('订单号：{number}', { number: row.orderNo ? row.orderNo : '-' }) }}</text>
-		<text class="record-meta">{{ t('下载时间：{time}', { time: row.downloadAt ? row.downloadAt : '-' }) }}</text>
+		<text class="record-meta">{{ translateText('计划 ID：{id}', { id: reportRow.planId }) }}</text>
+		<text v-if="reportRow.reportId !== reportRow.planId" class="record-meta">{{ translateText('共享计划 ID：{id}', { id: reportRow.reportId }) }}</text>
+		<text class="record-meta">{{ translateText('订单号：{number}', { number: reportRow.orderNo ? reportRow.orderNo : '-' }) }}</text>
+		<text class="record-meta">{{ translateText('验货类型：{type}', { type: reportRow.data.inspect_type ? reportRow.data.inspect_type : '-' }) }}</text>
+		<text class="record-meta">{{ translateText('工厂：{name}', { name: reportRow.data.factory_name ? reportRow.data.factory_name : '-' }) }}</text>
+		<text class="record-meta">{{ translateText('下载时间：{time}', { time: reportRow.downloadAt ? reportRow.downloadAt : '-' }) }}</text>
 		<view class="record-actions">
-			<view class="record-action" @click="toggleRawData"><text class="record-action-text">{{ t(expanded ? '收起完整 SQLite 数据' : '查看完整 SQLite 数据') }}</text></view>
-			<view class="record-action" @click="copyDiagnostic"><text class="record-action-text">{{ t('复制诊断 JSON') }}</text></view>
-			<view v-if="expanded" class="record-action" @click="copyRawData"><text class="record-action-text">{{ t('复制完整 JSON') }}</text></view>
-			<view v-if="expanded" class="record-action" @click="shareRawData"><text class="record-action-text">{{ t('分享完整 JSON 文件') }}</text></view>
+			<view class="record-action" @click="toggleRawData"><text class="record-action-text">{{ translateText(expanded ? '收起验货计划原始行' : '查看验货计划原始行') }}</text></view>
+			<view class="record-action" @click="copyDiagnostic"><text class="record-action-text">{{ translateText('复制诊断 JSON') }}</text></view>
+			<view v-if="expanded" class="record-action" @click="copyRawData"><text class="record-action-text">{{ translateText('复制完整 JSON') }}</text></view>
+			<view v-if="expanded" class="record-action" @click="shareRawData"><text class="record-action-text">{{ translateText('分享完整 JSON 文件') }}</text></view>
 		</view>
 		<text v-if="expanded" class="record-json">{{ rawData }}</text>
 	</view>
@@ -21,14 +24,19 @@
 	import { t } from '../../i18n/index.uts'
 	import { buildLocalReportDiagnostic } from '../../domain/localReportDiagnostic.uts'
 	import { computed, ref } from 'vue'
+	type ReportRow = { planId: string, reportId: string, productName: string, status: string, orderNo: string, downloadAt: string, data: UTSJSONObject }
 
 	const props = defineProps({ row: { type: Object, required: true } })
 	const expanded = ref(false)
+	/** 将 SQLite 计划行转换成原生模板可读取的固定字段。 */
+	const reportRow = computed((): ReportRow => { const raw = props.row as UTSJSONObject; return { planId: (raw['planId'] ?? '').toString(), reportId: (raw['reportId'] ?? '').toString(), productName: (raw['productName'] ?? '').toString(), status: (raw['status'] ?? '').toString(), orderNo: (raw['orderNo'] ?? '').toString(), downloadAt: (raw['downloadAt'] ?? '').toString(), data: (raw['data'] as UTSJSONObject | null) ?? {} } })
+	/** 为本地计划卡片提供模板可调用的多语言方法。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
 
-	/** 将 report 表原始行序列化展示，保留 jsonData 等全部数据库字段。 */
-	const rawData = computed(() => JSON.stringify(props.row, null, 2))
+	/** 将计划表真实行序列化，复制与分享均使用同一份内容。 */
+	const rawData = computed((): string => JSON.stringify(reportRow.value.data, null, 2) ?? '{}')
 
-	/** 展开或收起当前计划的完整 SQLite 原始行。 */
+	/** 展开或收起当前验货计划的 SQLite 原始行。 */
 	function toggleRawData() { expanded.value = !expanded.value }
 
 	/** 复制无需照片和清单内容的短诊断，方便排查离线详情及剪贴板容量问题。 */
@@ -40,7 +48,7 @@
 		})
 	}
 
-	/** 展开后尝试复制完整数据库行，失败时提示改用文件分享。 */
+	/** 展开后尝试复制计划原始行，失败时提示改用文件分享。 */
 	function copyRawData() {
 		uni.setClipboardData({
 			data: rawData.value,
@@ -49,10 +57,10 @@
 		})
 	}
 
-	/** 将完整报告行写入 App 本地文件并调用系统分享，避免大文本剪贴板限制。 */
+	/** 将计划原始行写入 App 本地文件并调用系统分享，避免大文本剪贴板限制。 */
 	function shareRawData() {
-		const reportId = String(props.row?.reportId ?? 'report').replace(/[^a-zA-Z0-9_-]/g, '_')
-		const filePath = `${uni.env.USER_DATA_PATH}/inspection-report-${reportId}.json`
+		const planId = (reportRow.value.planId !== '' ? reportRow.value.planId : 'plan').replace(/[^a-zA-Z0-9_-]/g, '_')
+		const filePath = `${uni.env.USER_DATA_PATH}/inspection-plan-${planId}.json`
 		uni.getFileSystemManager().writeFile({
 			filePath,
 			data: rawData.value,

@@ -3,13 +3,13 @@
 		<TopSafeArea background-color="#03ae4f" />
 		<view class="nav-row">
 			<view class="nav-button" @click="emitBack"><AppIcon type="back" :size="22" color="#ffffff" /></view>
-			<text class="nav-title">{{ t(headerTitle) }}</text>
+			<text class="nav-title">{{ translateText(headerTitle) }}</text>
 			<OfflineSyncStatus class="sync-entry" :is-online="isOnline" :is-syncing="syncing" :is-uploading="uploading" :pending-count="pendingSyncCount" :failed-count="failedSyncCount" :queue-items="syncQueueItems" />
 		</view>
 		<view class="tabs">
 			<view v-for="tab in tabs" :key="tab.key" class="tab" :class="{ active: activeTab === tab.key }" @click="changeTab(tab.key)">
 				<text class="tab-icon">{{ tab.icon }}</text>
-				<text class="tab-text">{{ t(tab.label) }}</text>
+				<text class="tab-text">{{ translateText(tab.label) }}</text>
 			</view>
 		</view>
 	</view>
@@ -17,6 +17,7 @@
 
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
+	import { firstNonEmptyText } from '../../domain/searchViewModel.uts'
 	import { computed } from 'vue'
 	import TopSafeArea from '../common/TopSafeArea.uvue'
 	import AppIcon from '../icons/AppIcon.uvue'
@@ -34,7 +35,8 @@
 		syncQueueItems: { type: Array, default: () => [] }
 	})
 	const emit = defineEmits(['back', 'change-tab'])
-	const tabs = [
+	type DetailTab = { key: string, label: string, icon: string }
+	const tabs: DetailTab[] = [
 		{ key: 'checklist', label: '清单', icon: '☷' },
 		{ key: 'defects', label: '疵点', icon: '⚠' },
 		{ key: 'info', label: '订单信息', icon: '▤' },
@@ -42,12 +44,14 @@
 	]
 
 	/** 返回与 H5 一致的详情头部货号或计划编号。 */
-	const headerTitle = computed(() => String(props.detail?.plan?.subGoodsNo ?? props.detail?.plan?.planNo ?? props.detail?.planNo ?? props.detail?.plan?.clientOrderNo ?? '验货详情'))
+	const headerTitle = computed((): string => { const detail = props.detail as UTSJSONObject; const plan = (detail['plan'] as UTSJSONObject | null) ?? {}; return firstNonEmptyText([plan['subGoodsNo'], plan['planNo'], detail['planNo'], plan['clientOrderNo']], '验货详情') })
+	/** 为原生头部标签提供可调用的多语言方法。 */
+	function translateText(key: string): string { return t(key) }
 
 	/** 通知页面返回任务列表。 */
 	function emitBack() { emit('back') }
 	/** 通知页面切换详情业务标签。 */
-	function changeTab(tabKey) { emit('change-tab', tabKey) }
+	function changeTab(tabKey: string) { emit('change-tab', tabKey) }
 </script>
 
 <style>

@@ -11,27 +11,27 @@
 			</view>
 
 			<view class="card-middle">
-				<view class="product-name">{{ productName === '未命名产品' ? t('未命名产品') : productName }}</view>
+				<view class="product-name">{{ productName === '未命名产品' ? translateText('未命名产品') : productName }}</view>
 				<view class="status-row">
 					<text class="status-badge">{{ inspectTypeShort }}</text>
 					<text class="goods-no">{{ goodsNoWithBatch }}</text>
 					<view class="status-right">
-					<text class="progress-status" :class="statusClass">{{ t(statusText) }}</text>
+					<text class="progress-status" :class="statusClass">{{ translateText(statusText) }}</text>
 					</view>
 				</view>
 				<view v-if="goodsFlagType === 'raw'" class="goods-extra-line">
 					<view class="goods-extra-item">
-						<text class="goods-extra-label">{{ t('制造令：') }}</text>
+						<text class="goods-extra-label">{{ translateText('制造令：') }}</text>
 						<text class="goods-extra-value">{{ produceNo }}</text>
 					</view>
 					<view class="goods-extra-item goods-extra-spacer">
-						<text class="goods-extra-label">{{ t('模具色卡号：') }}</text>
+						<text class="goods-extra-label">{{ translateText('模具色卡号：') }}</text>
 						<text class="goods-extra-value">{{ modelNo }}</text>
 					</view>
 				</view>
 				<view v-else class="goods-extra-line">
 					<view class="goods-extra-item">
-						<text class="goods-extra-label">{{ t('采购合同号：') }}</text>
+						<text class="goods-extra-label">{{ translateText('采购合同号：') }}</text>
 						<text class="goods-extra-value">{{ domeNo }}</text>
 					</view>
 				</view>
@@ -40,7 +40,7 @@
 					<view class="card-right">
 						<checkbox-group v-if="selectionMode" class="merge-check-wrapper" :class="{ selected: selectionChecked, disabled: selectionDisabled }" @change="toggleMergeSelection" @click.stop>
 							<label class="merge-check-label">
-								<checkbox v-if="!selectionDisabled" class="merge-checkbox" :value="String(getPlanOperationId(item))" :checked="selectionChecked" :disabled="selectionDisabled" color="#16a34a" />
+								<checkbox v-if="!selectionDisabled" class="merge-checkbox" :value="operationId" :checked="selectionChecked" :disabled="selectionDisabled" color="#16a34a" />
 								<text v-if="selectionDisabled" class="merge-disabled-mark">—</text>
 							</label>
 						</checkbox-group>
@@ -63,12 +63,12 @@
 
 		<view v-if="showDownloadModal" class="menu-overlay" @click="closeDownloadModal">
 			<view class="copy-modal download-modal" @click.stop>
-				<text class="copy-modal-title">{{ t('下载验货') }}</text>
+				<text class="copy-modal-title">{{ translateText('下载验货') }}</text>
 				<PlanDownloadDetails :item="props.item" :template-name="downloadTemplateDisplayName" :is-merged="isMerged" :merged-items="downloadMergedItems" :merged-loading="downloadPreviewLoading" @open-template="openDownloadTemplateSheet" />
 					<view class="copy-actions">
-						<button class="copy-btn close" :disabled="submitting" @click="closeDownloadModal">{{ t('取消') }}</button>
+						<button class="copy-btn close" :disabled="submitting" @click="closeDownloadModal">{{ translateText('取消') }}</button>
 						<button class="copy-btn create" :disabled="submitting || downloadTemplateId === '' || (isMerged && (downloadPreviewLoading || downloadMergedItems.length < 2))" @click="confirmDownload">
-						{{ t(submitting ? '下载中...' : '下载') }}
+						{{ translateText(submitting ? '下载中...' : '下载') }}
 					</button>
 				</view>
 			</view>
@@ -77,43 +77,43 @@
 
 			<view v-if="showUnlockModal" class="menu-overlay" @click="closeUnlockModal">
 				<view class="confirm-modal" @click.stop>
-					<text class="confirm-title">{{ t('解锁验货任务') }}</text>
-					<text class="confirm-message">{{ t('当前验货会恢复到已定计划状态。请确认您需要解锁该验货任务？') }}</text>
+					<text class="confirm-title">{{ translateText('解锁验货任务') }}</text>
+					<text class="confirm-message">{{ translateText('当前验货会恢复到已定计划状态。请确认您需要解锁该验货任务？') }}</text>
 					<view class="confirm-actions">
-						<button class="confirm-btn cancel" :disabled="submitting" @click="closeUnlockModal">{{ t('取消') }}</button>
-						<button class="confirm-btn agree" :disabled="submitting" @click="confirmUnlock">{{ t(submitting ? '处理中...' : '同意') }}</button>
+						<button class="confirm-btn cancel" :disabled="submitting" @click="closeUnlockModal">{{ translateText('取消') }}</button>
+						<button class="confirm-btn agree" :disabled="submitting" @click="confirmUnlock">{{ translateText(submitting ? '处理中...' : '同意') }}</button>
 					</view>
 				</view>
 			</view>
 
 			<view v-if="showResetModal" class="menu-overlay" @click="closeResetModal">
-				<view class="copy-modal" @click.stop>
-					<text class="copy-modal-title">{{ t('重置验货任务') }}</text>
+				<view class="copy-modal" :style="{ maxHeight: resetModalMaxHeight }" @click.stop>
+					<text class="copy-modal-title">{{ translateText('重置验货任务') }}</text>
 					<view class="copy-info-card">
-						<view class="copy-info-row"><text class="copy-label">{{ t('订单号') }}</text><text class="copy-value">{{ orderNo }}</text></view>
-						<view class="copy-info-row"><text class="copy-label">{{ t('款号#批次') }}</text><text class="copy-value">{{ goodsNoWithBatch }}</text></view>
-						<view class="copy-info-row"><text class="copy-label">{{ t('产品名称') }}</text><text class="copy-value">{{ productName }}</text></view>
-						<view class="copy-info-row"><text class="copy-label">{{ t('供应商') }}</text><text class="copy-value">{{ supplierName }}</text></view>
-						<view class="copy-info-row"><text class="copy-label">{{ t('计划日期') }}</text><text class="copy-value">{{ detailDate }}</text></view>
-						<view class="copy-info-row"><text class="copy-label">{{ t('检查类型') }}</text><text class="copy-value">{{ inspectType }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ translateText('订单号') }}</text><text class="copy-value">{{ orderNo }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ translateText('款号#批次') }}</text><text class="copy-value">{{ goodsNoWithBatch }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ translateText('产品名称') }}</text><text class="copy-value">{{ productName }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ translateText('供应商') }}</text><text class="copy-value">{{ supplierName }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ translateText('计划日期') }}</text><text class="copy-value">{{ detailDate }}</text></view>
+						<view class="copy-info-row"><text class="copy-label">{{ translateText('检查类型') }}</text><text class="copy-value">{{ inspectType }}</text></view>
 					</view>
-					<text class="reset-tip">{{ t('您确定需要重置该验货任务？') }}</text>
+					<text class="reset-tip">{{ translateText('您确定需要重置该验货任务？') }}</text>
 					<view class="copy-actions">
-						<button class="copy-btn close" :disabled="submitting" @click="closeResetModal">{{ t('取消') }}</button>
-						<button class="copy-btn create" :disabled="submitting" @click="confirmReset">{{ t(submitting ? '处理中...' : '重置') }}</button>
+						<button class="copy-btn close" :disabled="submitting" @click="closeResetModal">{{ translateText('取消') }}</button>
+						<button class="copy-btn create" :disabled="submitting" @click="confirmReset">{{ translateText(submitting ? '处理中...' : '重置') }}</button>
 					</view>
 				</view>
 			</view>
 
 		<view v-if="showInspectorModal" class="menu-overlay" @click="closeInspectorModal">
 			<view class="confirm-modal" @click.stop>
-				<text class="confirm-title">{{ t('当前验货员') }}</text>
+				<text class="confirm-title">{{ translateText('当前验货员') }}</text>
 				<view class="confirm-content">
-					<view class="copy-info-row"><text class="copy-label">{{ t('姓名') }}</text><text class="copy-value">{{ inspectorName }}</text></view>
-					<view class="copy-info-row"><text class="copy-label">{{ t('工号') }}</text><text class="copy-value">{{ inspectorId }}</text></view>
+					<view class="copy-info-row"><text class="copy-label">{{ translateText('姓名') }}</text><text class="copy-value">{{ inspectorName }}</text></view>
+					<view class="copy-info-row"><text class="copy-label">{{ translateText('工号') }}</text><text class="copy-value">{{ inspectorId }}</text></view>
 				</view>
 				<view class="confirm-actions single-row">
-					<button class="confirm-btn agree full" @click="closeInspectorModal">{{ t('关闭') }}</button>
+					<button class="confirm-btn agree full" @click="closeInspectorModal">{{ translateText('关闭') }}</button>
 				</view>
 			</view>
 		</view>
@@ -142,6 +142,7 @@
 </template>
 
 <script setup lang="uts">
+	import { windowHeightPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
 		import { computed, ref } from 'vue'
 		import BottomActionSheet from '../common/BottomActionSheet.uvue'
@@ -152,8 +153,17 @@
 		import AppIcon from '../icons/AppIcon.uvue'
 		import { buildCardActions, resolveCardClickAction, resolveDownloadState } from '../../domain/listActionViewModel.uts'
 		import { normalizePlanStatus } from '../../domain/planViewModel.uts'
-		import { extractCopiedPlanId, getItemInspectType, getItemParentPlanId, getMergePreviewRow, getPlanInspectTypeLabel, getPlanOperationId } from '../../domain/searchViewModel.uts'
+	import { extractCopiedPlanId, firstNonEmptyText, getItemInspectType, getItemParentPlanId, getMergePreviewRow, getPlanInspectTypeLabel, getPlanOperationId } from '../../domain/searchViewModel.uts'
 	import { initializeRuntime, planApi, planDownloadService, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
+	type PlanApiMethods = { searchPlans: (params: UTSJSONObject, page: number, pageSize: number) => Promise<UTSJSONObject>, getPlanTemplates: () => Promise<UTSJSONObject[]>, getInspectTypeDict: () => Promise<UTSJSONObject[]>, updateFinishQuantity: (planId: string, quantity: string) => Promise<any> }
+	type ReadyQuantityRow = { planId: string, productName: string, orderNo: string, goodsNo: string, orderQuantity: number, finishQuantity: string }
+	const nativePlanApi = planApi as PlanApiMethods
+	type ReportRepositoryMethods = { listPlans: () => Promise<UTSJSONObject[]>, savePlan: (plan: UTSJSONObject) => Promise<any> }
+	const nativeReportRepository = reportRepository as ReportRepositoryMethods
+	type PlanOperationMethods = { copyPlan: (planId: string, payload: UTSJSONObject) => Promise<UTSJSONObject>, downloadToLocal: (planId: string, payload: UTSJSONObject, expectedIds?: string[], sourceItems?: UTSJSONObject[]) => Promise<any>, unlockPlan: (item: UTSJSONObject) => Promise<any>, resetPlan: (item: UTSJSONObject) => Promise<any> }
+	const nativePlanOperation = planOperationService as PlanOperationMethods
+	type PlanDownloadMethods = { downloadToLocal: (planId: string, payload: UTSJSONObject, expectedIds: string[], sourceItems: UTSJSONObject[]) => Promise<any> }
+	const nativePlanDownload = planDownloadService as PlanDownloadMethods
 
 	const props = defineProps({
 		item: { type: Object, required: true },
@@ -189,17 +199,17 @@
 	const showInspectorModal = ref(false)
 	const showUnlockModal = ref(false)
 	const showResetModal = ref(false)
-	const downloadTemplates = ref([])
+	const downloadTemplates = ref<UTSJSONObject[]>([])
 	const showDownloadTemplateSheet = ref(false)
-	const downloadMergedItems = ref([])
+	const downloadMergedItems = ref<UTSJSONObject[]>([])
 	const downloadPreviewLoading = ref(false)
 	const downloadTemplateId = ref('')
 	const downloadTemplateName = ref('')
 	const showCopySheet = ref(false)
 	const copyMode = ref(1)
-	const copyInspectTypeOptions = ref([])
-	const copyTemplateOptions = ref([])
-	const copyMergedItems = ref([])
+	const copyInspectTypeOptions = ref<UTSJSONObject[]>([])
+	const copyTemplateOptions = ref<UTSJSONObject[]>([])
+	const copyMergedItems = ref<UTSJSONObject[]>([])
 	const copyMergedLoading = ref(false)
 	const copyInspectType = ref('')
 	const copyTemplateId = ref('')
@@ -207,36 +217,46 @@
 	const copyCreated = ref(false)
 	const copiedPlanId = ref('')
 	const showReadyQuantitySheet = ref(false)
-	const readyQuantityRows = ref([])
+	const readyQuantityRows = ref<ReadyQuantityRow[]>([])
 	const submitting = ref(false)
+	/** 为计划卡片的原生模板提供可调用的多语言方法。 */
+	function translateText(key: string): string { return t(key) }
+	/** 将计划日期格式化为年月日文本。 */
+	function formatDate(value: string): string { if (value.length >= 10) return value.substring(0, 10); return value === '' ? '-' : value }
+	/** 将嵌套卡片计划收窄为可索引的 UTS 对象。 */
+	const itemData = computed((): UTSJSONObject => props.item as UTSJSONObject)
+	/** 提前计算卡片操作 ID，避免原生模板直接调用导入函数。 */
+	const operationId = computed((): string => getPlanOperationId(props.item))
+	/** 限制重置确认弹层的可用窗口高度。 */
+	const resetModalMaxHeight = computed((): string => windowHeightPx(0.9))
 
 	/** 返回卡片使用的计划主体，兼容嵌套与平铺记录。 */
-	const plan = computed(() => (props.item?.plan || props.item) ?? {})
+	const plan = computed((): UTSJSONObject => (itemData.value['plan'] as UTSJSONObject | null) ?? itemData.value)
 	const status = computed(() => normalizePlanStatus(props.item))
 	/** 选择卡片展示的产品名称。 */
-	const productName = computed(() => getMergePreviewRow(props.item).productName)
+	const productName = computed((): string => ((getMergePreviewRow(props.item) as UTSJSONObject)['productName'] ?? '-').toString())
 	/** 选择卡片展示的货号。 */
-	const goodsNo = computed(() => (plan.value?.subGoodsNo || plan.value?.goodsNo || props.item?.subGoodsNo) ?? '-')
+	const goodsNo = computed((): string => firstNonEmptyText([plan.value['subGoodsNo'], plan.value['goodsNo'], itemData.value['subGoodsNo']], '-'))
 	/** 选择卡片展示的批次号。 */
-	const batchNo = computed(() => (plan.value?.batchNo || props.item?.batchNo) ?? '')
+	const batchNo = computed((): string => firstNonEmptyText([plan.value['batchNo'], itemData.value['batchNo']], ''))
 	const goodsNoWithBatch = computed(() => batchNo.value !== '' ? `${goodsNo.value}#${batchNo.value}` : goodsNo.value)
 	/** 选择卡片展示的供应商。 */
-	const supplierName = computed(() => (plan.value?.factoryName || props.item?.supplierName || props.item?.factoryName) ?? '-')
+	const supplierName = computed((): string => firstNonEmptyText([plan.value['factoryName'], itemData.value['supplierName'], itemData.value['factoryName']], '-'))
 	/** 选择卡片分组使用的订单号。 */
-	const orderNo = computed(() => (plan.value?.clientOrderNo || plan.value?.domeNo || props.item?.clientOrderNo || props.item?.orderNo) ?? '未分组')
+	const orderNo = computed((): string => firstNonEmptyText([plan.value['clientOrderNo'], plan.value['domeNo'], itemData.value['clientOrderNo'], itemData.value['orderNo']], '未分组'))
 	/** 按 H5 卡片的类型显示顺序，保留拆分计划平铺字段中的原验货类型。 */
-	const inspectType = computed(() => getPlanInspectTypeLabel(props.item))
+	const inspectType = computed((): string => getPlanInspectTypeLabel(props.item))
 	const inspectTypeShort = computed(() => inspectType.value.length > 2 ? inspectType.value.substring(0, 2) : inspectType.value)
-	const goodsFlagType = computed(() => Number(plan.value?.goodsFlag ?? props.item?.goodsFlag ?? props.item?.raw?.goodsFlag ?? 1) === 0 ? 'raw' : 'finished')
-	const produceNo = computed(() => String(plan.value?.produceNo ?? props.item?.produceNo ?? '-'))
-	const modelNo = computed(() => String(plan.value?.modelNo ?? props.item?.modelNo ?? '-'))
-	const domeNo = computed(() => String(plan.value?.domeNo ?? props.item?.domeNo ?? '-'))
+	const goodsFlagType = computed((): string => (plan.value['goodsFlag'] ?? itemData.value['goodsFlag'] ?? 1).toString() === '0' ? 'raw' : 'finished')
+	const produceNo = computed((): string => firstNonEmptyText([plan.value['produceNo'], itemData.value['produceNo']], '-'))
+	const modelNo = computed((): string => firstNonEmptyText([plan.value['modelNo'], itemData.value['modelNo']], '-'))
+	const domeNo = computed((): string => firstNonEmptyText([plan.value['domeNo'], itemData.value['domeNo']], '-'))
 	/** 格式化卡片展示的交货或创建日期。 */
-	const detailDate = computed(() => formatDate((plan.value?.deliveryDate || plan.value?.createDate || props.item?.deliveryDate || props.item?.createDate) ?? ''))
-	const inspectorId = computed(() => String(plan.value?.inspectorId ?? props.item?.inspectorId ?? props.item?.lockerId ?? '').trim())
-	const inspectorName = computed(() => String(plan.value?.inspectorName ?? props.item?.inspectorName ?? '验货员').trim() ?? '验货员')
-	const lockFlag = computed(() => Number(plan.value?.lockFlag ?? props.item?.lockFlag ?? 0))
-	const isMerged = computed(() => Number(plan.value?.mergeType ?? props.item?.mergeType ?? 0) === 2)
+	const detailDate = computed((): string => formatDate(firstNonEmptyText([plan.value['deliveryDate'], plan.value['createDate'], itemData.value['deliveryDate'], itemData.value['createDate']], '')))
+	const inspectorId = computed((): string => firstNonEmptyText([plan.value['inspectorId'], itemData.value['inspectorId'], itemData.value['lockerId']], '').trim())
+	const inspectorName = computed((): string => firstNonEmptyText([plan.value['inspectorName'], itemData.value['inspectorName']], '验货员').trim())
+	const lockFlag = computed((): number => parseFloat((plan.value['lockFlag'] ?? itemData.value['lockFlag'] ?? 0).toString()))
+	const isMerged = computed((): boolean => (plan.value['mergeType'] ?? itemData.value['mergeType'] ?? 0).toString() === '2')
 		const resolvedDownloadState = computed(() => resolveDownloadState({
 				isLocalDownloaded: props.isLocalDownloaded,
 				lockFlag: lockFlag.value,
@@ -250,28 +270,21 @@
 	const statusClass = computed(() => status.value === 3 ? 'completed' : (status.value === 1 ? 'in-progress' : 'planned'))
 	const canDownload = computed(() => props.showDownload && !isLockedByOther.value && !isDownloaded.value)
 	/** 将下载清单转换为复制验货选择弹层使用的选项。 */
-	const downloadTemplateOptions = computed(() => downloadTemplates.value.map((item) => ({ value: String(item?.id ?? ''), label: String(item?.name ?? ''), raw: item })))
+	type DownloadTemplateOption = { value: string, label: string, raw: UTSJSONObject }
+	type CardAction = { key: string, label: string, icon: string, disabled: boolean }
+	const downloadTemplateOptions = computed((): DownloadTemplateOption[] => downloadTemplates.value.map((item: UTSJSONObject): DownloadTemplateOption => ({ value: (item['id'] ?? '').toString(), label: (item['name'] ?? '').toString(), raw: item })))
 	/** 返回下载弹层当前清单显示名称。 */
 	const downloadTemplateDisplayName = computed(() => downloadTemplateName.value !== '' ? downloadTemplateName.value : '请选择清单')
-		const cardActions = computed(() => buildCardActions({
+		const cardActions = computed((): CardAction[] => (buildCardActions({
 			downloadState: resolvedDownloadState.value,
-			statusKey: props.statusKey || (status.value === 3 ? 'report' : (status.value === 1 ? 'progress' : 'planned')),
+			statusKey: props.statusKey !== '' ? props.statusKey : (status.value === 3 ? 'report' : (status.value === 1 ? 'progress' : 'planned')),
 			manageActionsInCard: props.manageActionsInCard,
 			isMerged: isMerged.value,
 			showSplit: props.showActionSplit
-		}).map((action) => ({
-			...action,
-			disabled: submitting.value
-		})))
+		}) as UTSJSONObject[]).map((action: UTSJSONObject): CardAction => ({ key: (action['key'] ?? '').toString(), label: (action['label'] ?? '').toString(), icon: (action['icon'] ?? '').toString(), disabled: submitting.value })))
 
-		/**
-		 * 将计划日期格式化为年月日文本。
-		 */
-		function formatDate(value) {
-		const text = String(value ?? '')
-		if (text.length >= 10) return text.substring(0, 10)
-		return text === '' ? '-' : text
-	}
+		/** 在合并多选模式下通知页面切换当前计划的选中状态。 */
+		function toggleMergeSelection() { if (!props.selectionMode || props.selectionDisabled) return; emit('merge-toggle', props.item) }
 
 		/**
 		 * 关闭卡片右侧“更多”操作菜单。
@@ -293,14 +306,6 @@
 		}
 
 		/**
-		 * 在合并多选模式下通知页面切换当前计划的选中状态。
-		 */
-		function toggleMergeSelection() {
-			if (!props.selectionMode || props.selectionDisabled) return
-			emit('merge-toggle', props.item)
-		}
-
-		/**
 		 * 关闭计划下载确认弹窗。
 		 */
 	function closeDownloadModal() {
@@ -313,13 +318,15 @@
 	async function loadDownloadMergedItems() {
 		downloadMergedItems.value = []
 		if (!isMerged.value) return
-		const parentPlanId = getItemParentPlanId(props.item) || getPlanOperationId(props.item)
+		const mergedParentPlanId = getItemParentPlanId(props.item)
+		const parentPlanId = mergedParentPlanId !== '' ? mergedParentPlanId : getPlanOperationId(props.item)
 		if (parentPlanId === '') return
 		downloadPreviewLoading.value = true
 		try {
-			const response = await planApi.searchPlans({ parentPlanId }, 1, 100)
-			const seen = new Set()
-			downloadMergedItems.value = (response?.records ?? []).filter((member) => {
+			const response = await nativePlanApi.searchPlans({ parentPlanId }, 1, 100)
+			const seen = new Set<string>()
+			const storedRecords = response['records']
+			downloadMergedItems.value = (Array.isArray(storedRecords) ? storedRecords as UTSJSONObject[] : []).filter((member: UTSJSONObject) => {
 				const memberId = getPlanOperationId(member)
 				if (memberId === '' || seen.has(memberId) || getItemParentPlanId(member) !== parentPlanId) return false
 				seen.add(memberId)
@@ -333,15 +340,15 @@
 		 * 加载 H5 同源清单模板并打开下载确认弹层。
 		 */
 		async function openDownloadModal() {
-			downloadTemplateId.value = String(plan.value?.templateId ?? props.item?.templateId ?? '')
-			downloadTemplateName.value = String(plan.value?.templateName ?? props.item?.templateName ?? '')
+			downloadTemplateId.value = firstNonEmptyText([plan.value['templateId'], itemData.value['templateId']], '')
+			downloadTemplateName.value = firstNonEmptyText([plan.value['templateName'], itemData.value['templateName']], '')
 			showDownloadModal.value = true
 			loadDownloadMergedItems()
 			try {
-				downloadTemplates.value = await planApi.getPlanTemplates()
+				downloadTemplates.value = await nativePlanApi.getPlanTemplates()
 				if (downloadTemplateId.value === '' && downloadTemplates.value.length > 0) {
-					downloadTemplateId.value = String(downloadTemplates.value[0]?.id ?? '')
-					downloadTemplateName.value = String(downloadTemplates.value[0]?.name ?? '')
+					downloadTemplateId.value = (downloadTemplates.value[0]['id'] ?? '').toString()
+					downloadTemplateName.value = (downloadTemplates.value[0]['name'] ?? '').toString()
 				}
 			} catch (error) {
 				uni.showToast({ title: error?.message ?? t('加载清单失败'), icon: 'none' })
@@ -355,10 +362,10 @@
 		function closeDownloadTemplateSheet() { showDownloadTemplateSheet.value = false }
 
 		/** 确认清单选项后同步下载参数及弹框回显。 */
-		function selectDownloadTemplate(option) {
-			const template = option?.raw ?? option
-			downloadTemplateId.value = String(template?.id ?? '')
-			downloadTemplateName.value = String(template?.name ?? '')
+		function selectDownloadTemplate(option: UTSJSONObject) {
+			const template = (option['raw'] as UTSJSONObject | null) ?? option
+			downloadTemplateId.value = (template['id'] ?? '').toString()
+			downloadTemplateName.value = (template['name'] ?? '').toString()
 			closeDownloadTemplateSheet()
 		}
 
@@ -376,42 +383,43 @@
 			showResetModal.value = false
 		}
 
-		/**
-		 * 加载检查类型和清单模板并打开内部复制弹层。
-		 */
-		async function openCopySheet(mode) {
+		/** 更新内部复制流程选择的清单模板。 */
+		function setCopyTemplate(option: UTSJSONObject) { copyTemplateId.value = (option['id'] ?? '').toString(); copyTemplateName.value = (option['name'] ?? '').toString() }
+		/** 查询复制合并验货的全部成员，接口失败时至少展示当前卡片。 */
+		async function loadCopyMergedItems() {
+			const mergedParentPlanId = getItemParentPlanId(props.item)
+			const parentPlanId = mergedParentPlanId !== '' ? mergedParentPlanId : getPlanOperationId(props.item)
+			copyMergedLoading.value = true
 			try {
-				const options = await Promise.all([planApi.getInspectTypeDict(), planApi.getPlanTemplates()])
+				const response = await nativePlanApi.searchPlans({ parentPlanId }, 1, 100)
+				const storedMembers = response['records']
+				const members = Array.isArray(storedMembers) ? storedMembers as UTSJSONObject[] : []
+				copyMergedItems.value = members.length > 0 ? members : [itemData.value]
+			} catch (error) { copyMergedItems.value = [itemData.value]; uni.showToast({ title: error?.message ?? t('加载合并验货成员失败'), icon: 'none' }) }
+			finally { copyMergedLoading.value = false }
+		}
+		/** 加载检查类型和清单模板并打开内部复制弹层。 */
+		async function openCopySheet(mode: number) {
+			try {
+				const options = await Promise.all([nativePlanApi.getInspectTypeDict(), nativePlanApi.getPlanTemplates()])
 				copyInspectTypeOptions.value = options[0] ?? []
 				copyTemplateOptions.value = options[1] ?? []
-				copyMode.value = Number(mode) === 2 ? 2 : 1
+				copyMode.value = mode === 2 ? 2 : 1
 				copyCreated.value = false
 				copiedPlanId.value = ''
 				const currentType = getItemInspectType(props.item)
-				copyInspectType.value = copyInspectTypeOptions.value.some((option) => String(option?.value ?? '') === currentType)
+				copyInspectType.value = copyInspectTypeOptions.value.some((option: UTSJSONObject) => (option['value'] ?? '').toString() === currentType)
 					? currentType
-					: String(copyInspectTypeOptions.value[0]?.value ?? '')
-				const existingTemplateId = String(plan.value?.templateId ?? props.item?.templateId ?? '')
-				const existingTemplate = copyTemplateOptions.value.find((option) => String(option?.id ?? '') === existingTemplateId)
-				setCopyTemplate(existingTemplate ?? { id: existingTemplateId, name: plan.value?.templateName ?? props.item?.templateName ?? '' })
+					: (copyInspectTypeOptions.value[0]?.['value'] ?? '').toString()
+				const existingTemplateId = firstNonEmptyText([plan.value['templateId'], itemData.value['templateId']], '')
+				const existingTemplate = copyTemplateOptions.value.find((option: UTSJSONObject) => (option['id'] ?? '').toString() === existingTemplateId)
+				setCopyTemplate(existingTemplate ?? { id: existingTemplateId, name: firstNonEmptyText([plan.value['templateName'], itemData.value['templateName']], '') })
 				copyMergedItems.value = []
 				showCopySheet.value = true
 				if (copyMode.value === 2) loadCopyMergedItems()
 			} catch (error) {
 				uni.showToast({ title: error?.message ?? t('加载复制选项失败'), icon: 'none' })
 			}
-		}
-
-		/** 查询复制合并验货的全部成员，接口失败时至少展示当前卡片。 */
-		async function loadCopyMergedItems() {
-			const parentPlanId = getItemParentPlanId(props.item) || getPlanOperationId(props.item)
-			copyMergedLoading.value = true
-			try {
-				const response = await planApi.searchPlans({ parentPlanId }, 1, 100)
-				const members = response?.records ?? []
-				copyMergedItems.value = members.length > 0 ? members : [props.item]
-			} catch (error) { copyMergedItems.value = [props.item]; uni.showToast({ title: error?.message ?? t('加载合并验货成员失败'), icon: 'none' }) }
-			finally { copyMergedLoading.value = false }
 		}
 
 		/**
@@ -427,9 +435,9 @@
 		/**
 		 * 从计划字段中读取 H5 备货数量弹层所需的原始订单数量。
 		 */
-		function getOrderQuantity(item) {
-			const source = (item?.plan || item) ?? {}
-			return Number(source?.requiredQuantity ?? source?.quantity ?? source?.orderQuantity ?? source?.totalQuantity ?? 0)
+		function getOrderQuantity(item: UTSJSONObject): number {
+			const source = (item['plan'] as UTSJSONObject | null) ?? item
+			return parseFloat((source['requiredQuantity'] ?? source['quantity'] ?? source['orderQuantity'] ?? source['totalQuantity'] ?? 0).toString())
 		}
 
 		/**
@@ -437,25 +445,26 @@
 		 */
 		async function openReadyQuantitySheet() {
 			try {
-				let items = [props.item]
+			let items: UTSJSONObject[] = [itemData.value]
 				if (isMerged.value) {
 					const candidateParentId = getItemParentPlanId(props.item)
 					const parentPlanId = candidateParentId !== '' ? candidateParentId : getPlanOperationId(props.item)
-					const response = await planApi.searchPlans({ parentPlanId }, 1, 100)
-					if (Array.isArray(response?.records) && response.records.length > 0) items = response.records
+				const response = await nativePlanApi.searchPlans({ parentPlanId }, 1, 100)
+				const storedRecords = response['records']
+				if (Array.isArray(storedRecords) && (storedRecords as UTSJSONObject[]).length > 0) items = storedRecords as UTSJSONObject[]
+			}
+			readyQuantityRows.value = items.map((item: UTSJSONObject): ReadyQuantityRow => {
+				const source = (item['plan'] as UTSJSONObject | null) ?? item
+				const orderQuantity = getOrderQuantity(item)
+				return {
+					planId: getPlanOperationId(item),
+					productName: firstNonEmptyText([source['goodsName'], source['goodsCname']], ''),
+					orderNo: firstNonEmptyText([source['clientOrderNo'], source['domeNo']], ''),
+					goodsNo: firstNonEmptyText([source['subGoodsNo'], source['goodsNo']], ''),
+					orderQuantity,
+					finishQuantity: (source['finishQuantity'] ?? source['readyQuantity'] ?? orderQuantity).toString()
 				}
-				readyQuantityRows.value = items.map((item) => {
-					const source = (item?.plan || item) ?? {}
-					const orderQuantity = getOrderQuantity(item)
-					return {
-						planId: getPlanOperationId(item),
-						productName: (source?.goodsName || source?.goodsCname) ?? '',
-						orderNo: (source?.clientOrderNo || source?.domeNo) ?? '',
-						goodsNo: (source?.subGoodsNo || source?.goodsNo) ?? '',
-						orderQuantity,
-						finishQuantity: String(source?.finishQuantity ?? source?.readyQuantity ?? orderQuantity)
-					}
-				}).filter((row) => row.planId !== '')
+			}).filter((row: ReadyQuantityRow) => row.planId !== '')
 				showReadyQuantitySheet.value = true
 			} catch (error) {
 				uni.showToast({ title: error?.message ?? t('加载备货数量失败'), icon: 'none' })
@@ -472,10 +481,10 @@
 		/**
 		 * 更新备货数量弹层指定行的输入值。
 		 */
-		function updateReadyQuantity(payload) {
-			const index = Number(payload?.index ?? -1)
+		function updateReadyQuantity(payload: UTSJSONObject) {
+			const index = parseInt((payload['index'] ?? -1).toString())
 			if (index < 0 || index >= readyQuantityRows.value.length) return
-			readyQuantityRows.value = readyQuantityRows.value.map((row, rowIndex) => rowIndex === index ? { ...row, finishQuantity: String(payload?.value ?? '') } : row)
+			readyQuantityRows.value = readyQuantityRows.value.map((row: ReadyQuantityRow, rowIndex: number): ReadyQuantityRow => rowIndex === index ? { ...row, finishQuantity: (payload['value'] ?? '').toString() } : row)
 		}
 
 		/**
@@ -485,12 +494,13 @@
 			if (submitting.value) return
 			submitting.value = true
 			try {
-				for (const row of readyQuantityRows.value) await planApi.updateFinishQuantity(row.planId, row.finishQuantity)
-				const localPlans = await reportRepository.listPlans()
+				for (const row of readyQuantityRows.value) await nativePlanApi.updateFinishQuantity(row.planId, row.finishQuantity)
+				const localPlans = await nativeReportRepository.listPlans()
 				for (const row of readyQuantityRows.value) {
-					const localPlan = localPlans.find((item) => getPlanOperationId(item) === row.planId)
+					const localPlan = localPlans.find((item: UTSJSONObject) => getPlanOperationId(item) === row.planId)
 					if (localPlan == null) continue
-					await reportRepository.savePlan({ ...localPlan, plan: { ...(localPlan?.plan ?? {}), finishQuantity: Number(row.finishQuantity) } })
+					const storedPlan = (localPlan['plan'] as UTSJSONObject | null) ?? {}
+					await nativeReportRepository.savePlan({ ...localPlan, plan: { ...storedPlan, finishQuantity: parseFloat(row.finishQuantity) } })
 				}
 				showReadyQuantitySheet.value = false
 				emit('request-refresh')
@@ -505,16 +515,8 @@
 		/**
 		 * 更新内部复制流程选择的检查类型。
 		 */
-		function setCopyInspectType(option) {
-			copyInspectType.value = String(option?.value ?? option ?? '')
-		}
-
-		/**
-		 * 更新内部复制流程选择的清单模板。
-		 */
-		function setCopyTemplate(option) {
-			copyTemplateId.value = String(option?.id ?? '')
-			copyTemplateName.value = String(option?.name ?? '')
+		function setCopyInspectType(option: UTSJSONObject) {
+			copyInspectType.value = (option['value'] ?? '').toString()
 		}
 
 		/**
@@ -527,7 +529,7 @@
 			if (sourcePlanId === '' || copyInspectType.value === '' || copyTemplateId.value === '') return
 			submitting.value = true
 			try {
-				const response = await planOperationService.copyPlan(sourcePlanId, {
+			const response = await nativePlanOperation.copyPlan(sourcePlanId, {
 					inspectType: copyInspectType.value,
 					copyFlag: copyMode.value,
 					templateId: copyTemplateId.value,
@@ -535,10 +537,12 @@
 				})
 				copiedPlanId.value = extractCopiedPlanId(response)
 				if (copyMode.value === 2 && copiedPlanId.value === '') {
-					const parentPlanId = String(response?.parentPlanId ?? '')
+					const parentPlanId = (response['parentPlanId'] ?? '').toString()
 					if (parentPlanId !== '') {
-						const rows = await planApi.searchPlans({ parentPlanId }, 1, 100)
-						copiedPlanId.value = getPlanOperationId(rows?.records?.[0] ?? {})
+						const rows = await nativePlanApi.searchPlans({ parentPlanId }, 1, 100)
+						const storedRecords = rows['records']
+						const records = Array.isArray(storedRecords) ? storedRecords as UTSJSONObject[] : []
+						copiedPlanId.value = getPlanOperationId(records[0] ?? {})
 					}
 				}
 				if (copiedPlanId.value === '') throw new Error('复制成功但未返回新计划ID')
@@ -558,7 +562,7 @@
 			if (copiedPlanId.value === '' || submitting.value) return
 			submitting.value = true
 			try {
-				await planOperationService.downloadToLocal(copiedPlanId.value, { templateId: copyTemplateId.value, templateName: copyTemplateName.value })
+			await nativePlanOperation.downloadToLocal(copiedPlanId.value, { templateId: copyTemplateId.value, templateName: copyTemplateName.value }, [], [])
 				closeCopySheet()
 				emit('request-refresh')
 				uni.showToast({ title: t('已下载到本地'), icon: 'success' })
@@ -592,9 +596,20 @@
 		showInspectorModal.value = true
 	}
 
-		/**
-		 * 从卡片操作菜单打开本地详情或报告摘要。
-		 */
+		/** 提取当前卡片用于本地详情页导航的计划 ID。 */
+		function getDetailPlanId(): string { return getPlanOperationId(props.item).trim() }
+		/** 本机已下载才进入详情；未下载则提示锁定或打开下载确认弹框。 */
+		function openDetailPage() {
+			if (!props.isLocalDownloaded) {
+				if (resolvedDownloadState.value === 'locked') uni.showToast({ title: t('该计划已被其他验货员下载，当前账号不可操作'), icon: 'none' })
+				else openDownloadModal()
+				return
+			}
+			const planId = getDetailPlanId()
+			if (planId === '') { uni.showToast({ title: t('计划ID缺失，无法进入详情'), icon: 'none' }); return }
+			uni.navigateTo({ url: `/pages/report/detail?planId=${encodeURIComponent(planId)}` })
+		}
+		/** 从卡片操作菜单打开本地详情或报告摘要。 */
 		function openDetailPageFromMenu() {
 			closeActionSheet()
 			openDetailPage()
@@ -603,8 +618,8 @@
 		/**
 		 * 分发卡片菜单操作，按当前页面配置执行或委托下载、解锁、重置、复制及拆分。
 		 */
-		function handleCardAction(action) {
-			const actionKey = String(action?.key ?? '')
+		function handleCardAction(action: UTSJSONObject) {
+			const actionKey = (action['key'] ?? '').toString()
 			if (actionKey === 'download') {
 				openDownloadModalFromMenu()
 				return
@@ -665,7 +680,7 @@
 		 * 下载完整计划并事务性保存，同时传入原卡片字段供本地摘要补全。
 		 */
 		async function confirmDownload() {
-		const planId = String(plan.value?.planId ?? plan.value?.id ?? props.item?.planId ?? props.item?.id ?? '').trim()
+		const planId = firstNonEmptyText([plan.value['planId'], plan.value['id'], itemData.value['planId'], itemData.value['id']], '').trim()
 		if (planId === '') {
 			uni.showToast({ title: t('计划ID缺失'), icon: 'none' })
 			return
@@ -676,11 +691,11 @@
 		submitting.value = true
 		try {
 			await initializeRuntime()
-			await planDownloadService.downloadToLocal(downloadPlanId, {
+			await nativePlanDownload.downloadToLocal(downloadPlanId, {
 			templateId: downloadTemplateId.value,
 			templateName: downloadTemplateName.value
-			}, isMerged.value ? downloadMergedItems.value.map((member) => getPlanOperationId(member)) : [],
-			isMerged.value ? downloadMergedItems.value : [props.item])
+			}, isMerged.value ? downloadMergedItems.value.map((member: UTSJSONObject): string => getPlanOperationId(member)) : [],
+			isMerged.value ? downloadMergedItems.value : [itemData.value])
 			showDownloadModal.value = false
 			emit('download', props.item)
 			emit('request-refresh')
@@ -699,7 +714,7 @@
 		submitting.value = true
 		try {
 			await initializeRuntime()
-			const response = await planOperationService.unlockPlan(props.item)
+			const response = await nativePlanOperation.unlockPlan(itemData.value)
 			showUnlockModal.value = false
 			emit('released', response)
 			emit('request-refresh')
@@ -718,7 +733,7 @@
 			submitting.value = true
 			try {
 				await initializeRuntime()
-				const response = await planOperationService.resetPlan(props.item)
+			const response = await nativePlanOperation.resetPlan(itemData.value)
 				showResetModal.value = false
 				emit('released', response)
 				emit('request-refresh')
@@ -728,30 +743,6 @@
 			} finally {
 				submitting.value = false
 			}
-		}
-
-		/**
-		 * 提取当前卡片用于本地详情页导航的计划 ID。
-		 */
-		function getDetailPlanId() {
-			return String(getPlanOperationId(props.item) ?? '').trim()
-		}
-
-		/**
-		 * 本机已下载才进入详情；未下载则提示锁定或打开下载确认弹框。
-		 */
-		function openDetailPage() {
-			if (!props.isLocalDownloaded) {
-				if (resolvedDownloadState.value === 'locked') uni.showToast({ title: t('该计划已被其他验货员下载，当前账号不可操作'), icon: 'none' })
-				else openDownloadModal()
-				return
-			}
-			const planId = getDetailPlanId()
-			if (planId === '') {
-				uni.showToast({ title: t('计划ID缺失，无法进入详情'), icon: 'none' })
-				return
-			}
-			uni.navigateTo({ url: `/pages/report/detail?planId=${encodeURIComponent(planId)}` })
 		}
 
 		/**
@@ -769,10 +760,10 @@
 				isLocalDownloaded: props.isLocalDownloaded,
 				manageActionsInCard: props.manageActionsInCard
 			})
-			if (action === 'toggle-merge') return toggleMergeSelection()
-			if (action === 'open-download') return openDownloadModal()
-			if (action === 'request-download') return emit('action-download', props.item)
-			if (action === 'open-actions') return openActionSheet()
+			if (action === 'toggle-merge') { toggleMergeSelection(); return }
+			if (action === 'open-download') { openDownloadModal(); return }
+			if (action === 'request-download') { emit('action-download', props.item); return }
+			if (action === 'open-actions') { openActionSheet(); return }
 			openDetailPage()
 	}
 </script>
@@ -797,7 +788,7 @@
 	.progress-status.in-progress { background-color: #fef3c7; color: #f59e0b; }
 	.progress-status.completed { background-color: #d1fae5; color: #065f46; }
 	.goods-extra-line { flex-direction: row; align-items: center; margin-top: 10rpx; }
-	.goods-extra-item { flex-direction: row; align-items: baseline; }
+	.goods-extra-item { flex-direction: row; align-items: center; }
 	.goods-extra-spacer { margin-left: 12rpx; }
 	.goods-extra-label { color: #94a3b8; font-size: 20rpx; }
 	.goods-extra-value { color: #64748b; font-size: 20rpx; }
@@ -821,7 +812,7 @@
 	.confirm-btn.cancel { flex: 1; margin-right: 20rpx; color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
 	.confirm-btn.agree { flex: 1; background-color: #03ae4f; color: #ffffff; }
 	.confirm-btn.full { width: 100%; }
-	.copy-modal { width: 100%; background-color: #ffffff; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; padding: 32rpx; max-height: 90vh; }
+	.copy-modal { width: 100%; background-color: #ffffff; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; padding: 32rpx; }
 	.download-modal { height: 85%; }
 	.copy-modal-title { font-size: 40rpx; font-weight: 700; color: #111827; margin-bottom: 24rpx; }
 	.copy-info-card { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; border-radius: 24rpx; padding: 16rpx 24rpx; }
@@ -833,5 +824,5 @@
 	.copy-btn { flex: 1; height: 88rpx; margin: 0 12rpx; border-radius: 20rpx; font-size: 32rpx; font-weight: 600; }
 	.copy-btn.close { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; color: #334155; }
 	.copy-btn.create { background-color: #03ae4f; color: #ffffff; }
-	.reset-tip { display: block; margin-top: 28rpx; color: #b45309; font-size: 28rpx; text-align: center; }
+	.reset-tip { margin-top: 28rpx; color: #b45309; font-size: 28rpx; text-align: center; }
 </style>

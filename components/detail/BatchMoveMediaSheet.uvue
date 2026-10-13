@@ -1,23 +1,29 @@
 <template>
-	<view v-if="visible" class="overlay" @click="closeSheet"><view class="dialog" @click.stop="stopEvent"><text class="title">{{ t('批量移动图片') }}</text><text class="hint">{{ t('选择一张已上传图片并复制到其他检查项。') }}</text><text class="label">{{ t('源图片') }}</text><picker :range="photoLabels" @change="selectPhoto"><view class="picker"><text>{{ t(photoLabels[photoIndex] ?? '暂无已上传图片') }}</text><text>›</text></view></picker><text class="label">{{ t('目标检查项') }}</text><picker :range="itemLabels" @change="selectItem"><view class="picker"><text>{{ t(itemLabels[itemIndex] ?? '请选择目标检查项') }}</text><text>›</text></view></picker><view class="preview" v-if="photos[photoIndex]"><InspectionMediaImage :media="photos[photoIndex]" /></view><view class="actions"><button class="button cancel" @click="closeSheet">{{ t('取消') }}</button><button class="button save" :disabled="submitting" @click="submitMove">{{ t(submitting ? '处理中...' : '确认移动') }}</button></view></view></view>
+	<view v-if="visible" class="overlay" @click="closeSheet"><view class="dialog" :style="{ maxHeight: dialogMaxHeight, paddingBottom: dialogBottomPadding }" @click.stop="stopEvent"><text class="title">{{ translateText('批量移动图片') }}</text><text class="hint">{{ translateText('选择一张已上传图片并复制到其他检查项。') }}</text><text class="label">{{ translateText('源图片') }}</text><picker :range="photoLabels" @change="selectPhoto"><view class="picker"><text>{{ translateText(photoLabels[photoIndex] ?? '暂无已上传图片') }}</text><text>›</text></view></picker><text class="label">{{ translateText('目标检查项') }}</text><picker :range="itemLabels" @change="selectItem"><view class="picker"><text>{{ translateText(itemLabels[itemIndex] ?? '请选择目标检查项') }}</text><text>›</text></view></picker><view class="preview" v-if="photos[photoIndex]"><InspectionMediaImage :media="photos[photoIndex]" /></view><view class="actions"><button class="button cancel" @click="closeSheet">{{ translateText('取消') }}</button><button class="button save" :disabled="submitting" @click="submitMove">{{ translateText(submitting ? '处理中...' : '确认移动') }}</button></view></view></view>
 </template>
 <script setup lang="uts">
+	import { windowHeightPx, safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
 	import { computed, ref, watch } from 'vue'
+	import { firstNonEmptyText } from '../../domain/searchViewModel.uts'
 	import InspectionMediaImage from './InspectionMediaImage.uvue'
+	const dialogMaxHeight = windowHeightPx(0.9)
+	const dialogBottomPadding = safeBottomPaddingPx(30)
 	const props = defineProps({ visible: { type: Boolean, default: false }, photos: { type: Array, default: () => [] }, items: { type: Array, default: () => [] }, submitting: { type: Boolean, default: false } })
 	const emit = defineEmits(['close', 'submit'])
 	const photoIndex = ref(0); const itemIndex = ref(0)
-	/** 返回可移动图片名称。 */ const photoLabels = computed(() => props.photos.map((photo, index) => photo.fileName || photo.photoId || `图片 ${index + 1}`))
-	/** 返回目标检查项名称。 */ const itemLabels = computed(() => props.items.map((item) => item.itemName || item.name || item.itemId || item.id))
-	/** 选择源图片。 */ function selectPhoto(event) { photoIndex.value = Number(event?.detail?.value ?? 0) }
-	/** 选择目标检查项。 */ function selectItem(event) { itemIndex.value = Number(event?.detail?.value ?? 0) }
-	/** 提交图片复制到目标检查项。 */ function submitMove() { const photo = props.photos[photoIndex.value]; const item = props.items[itemIndex.value]; if (!photo?.fileId || !item) return; emit('submit', { photo, targetItem: item }) }
+	/** 为原生弹层翻译选择提示和操作文案。 */
+	function translateText(key: string): string { return t(key) }
+	/** 返回可移动图片名称。 */ const photoLabels = computed(() => (props.photos as UTSJSONObject[]).map((photo: UTSJSONObject, index: number): string => firstNonEmptyText([photo['fileName'], photo['photoId']], `图片 ${index + 1}`)))
+	/** 返回目标检查项名称。 */ const itemLabels = computed(() => (props.items as UTSJSONObject[]).map((item: UTSJSONObject): string => firstNonEmptyText([item['itemName'], item['name'], item['itemId'], item['id']], '')))
+	/** 选择源图片。 */ function selectPhoto(event: UniPickerChangeEvent) { photoIndex.value = parseInt((event.detail.value ?? '0').toString()) }
+	/** 选择目标检查项。 */ function selectItem(event: UniPickerChangeEvent) { itemIndex.value = parseInt((event.detail.value ?? '0').toString()) }
+	/** 提交图片复制到目标检查项。 */ function submitMove() { const photo = (props.photos as UTSJSONObject[])[photoIndex.value]; const item = (props.items as UTSJSONObject[])[itemIndex.value]; if (photo == null || (photo['fileId'] ?? '').toString() === '' || item == null) return; emit('submit', { photo, targetItem: item }) }
 	/** 关闭批量移动弹层。 */ function closeSheet() { emit('close') }
 	/** 阻止点击内容区域关闭弹层。 */ function stopEvent() {}
-	/** 每次打开弹层时重置索引。 */ function resetSelection(visible) { if (visible) { photoIndex.value = 0; itemIndex.value = 0 } }
-	watch(() => props.visible, resetSelection)
+	/** 每次打开弹层时重置索引。 */ function resetSelection(visible: boolean) { if (visible) { photoIndex.value = 0; itemIndex.value = 0 } }
+	watch((): boolean => props.visible, (visible: boolean) => resetSelection(visible))
 </script>
 <style>
-	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2330; justify-content: flex-end; background-color: rgba(15,23,42,.55); }.dialog { width: 100%; max-height: 90vh; padding: 24rpx 30rpx calc(30rpx + env(safe-area-inset-bottom)); border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }.title { color: #172033; font-size: 33rpx; font-weight: 700; }.hint { margin-top: 12rpx; color: #64748b; font-size: 23rpx; }.label { margin: 22rpx 0 10rpx; color: #334155; font-size: 24rpx; font-weight: 600; }.picker { height: 72rpx; padding: 0 18rpx; flex-direction: row; align-items: center; justify-content: space-between; border-width: 2rpx; border-color: #e2e8f0; border-radius: 15rpx; color: #475569; background-color: #f8fafc; }.preview { width: 220rpx; height: 220rpx; margin: 24rpx auto 0; overflow: hidden; border-radius: 18rpx; }.actions { margin-top: 26rpx; flex-direction: row; }.button { flex: 1; height: 80rpx; margin: 0 8rpx; border-radius: 17rpx; font-size: 26rpx; }.button.cancel { color: #475569; background-color: #f1f5f9; }.button.save { color: #fff; background-color: #03ae4f; }
+	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2330; justify-content: flex-end; background-color: rgba(15,23,42,.55); }.dialog { width: 100%; padding: 24rpx 30rpx 30rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }.title { color: #172033; font-size: 33rpx; font-weight: 700; }.hint { margin-top: 12rpx; color: #64748b; font-size: 23rpx; }.label { margin: 22rpx 0 10rpx; color: #334155; font-size: 24rpx; font-weight: 600; }.picker { height: 72rpx; padding: 0 18rpx; flex-direction: row; align-items: center; justify-content: space-between; border-width: 2rpx; border-color: #e2e8f0; border-radius: 15rpx; color: #475569; background-color: #f8fafc; }.preview { width: 220rpx; height: 220rpx; margin: 24rpx auto 0; overflow: hidden; border-radius: 18rpx; }.actions { margin-top: 26rpx; flex-direction: row; }.button { flex: 1; height: 80rpx; margin: 0 8rpx; border-radius: 17rpx; font-size: 26rpx; }.button.cancel { color: #475569; background-color: #f1f5f9; }.button.save { color: #fff; background-color: #03ae4f; }
 </style>

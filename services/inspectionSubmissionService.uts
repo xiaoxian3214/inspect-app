@@ -44,10 +44,11 @@ export function createInspectionSubmissionService(options) {
    */
   async function submitFinalReport(input) {
     const planId = String(input?.planId ?? input?.payload?.planId ?? '').trim()
+    const photoPlanId = String(input?.photoPlanId ?? planId).trim()
     if (planId === '') throw new Error('计划ID缺失，无法提交验货报告')
 
     await assertOnline('最终提交需要联网，请连接网络后重试')
-    await ensurePhotosUploaded(planId)
+    await ensurePhotosUploaded(photoPlanId)
     await assertOnline('网络已断开，请重新联网后提交')
 
     return planApi.generateReport(

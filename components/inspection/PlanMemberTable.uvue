@@ -1,21 +1,21 @@
 <template>
 	<view class="member-table">
 		<view class="member-header">
-			<text class="member-cell member-heading cell-divider">{{ localizedHeaders ? t('单号') : 'Order' }}</text>
-			<text class="member-cell member-heading cell-divider">{{ localizedHeaders ? t('款号#批次') : 'Item' }}</text>
-			<text class="member-cell member-heading" :class="{ 'cell-divider': downloadable }">{{ localizedHeaders ? t('产品名称') : 'Name' }}</text>
-			<text v-if="downloadable" class="member-action member-heading">{{ t('操作') }}</text>
+			<text class="member-cell member-heading cell-divider">{{ localizedHeaders ? translateText('单号') : 'Order' }}</text>
+			<text class="member-cell member-heading cell-divider">{{ localizedHeaders ? translateText('款号#批次') : 'Item' }}</text>
+			<text class="member-cell member-heading" :class="{ 'cell-divider': downloadable }">{{ localizedHeaders ? translateText('产品名称') : 'Name' }}</text>
+			<text v-if="downloadable" class="member-action member-heading">{{ translateText('操作') }}</text>
 		</view>
-		<scroll-view class="member-body" scroll-y="true">
-			<text v-if="loading" class="member-message">{{ t('加载中...') }}</text>
-			<text v-else-if="rows.length === 0" class="member-message">{{ t('暂无可选的验货单据') }}</text>
+		<scroll-view class="member-body" :scroll-y="true">
+			<text v-if="loading" class="member-message">{{ translateText('加载中...') }}</text>
+			<text v-else-if="rows.length === 0" class="member-message">{{ translateText('暂无可选的验货单据') }}</text>
 			<view v-else>
 				<view v-for="row in rows" :key="row.key" class="member-row">
 					<text class="member-cell cell-divider">{{ row.orderNo }}</text>
 					<text class="member-cell cell-divider">{{ row.itemBatch }}</text>
 					<text class="member-cell" :class="{ 'cell-divider': downloadable }">{{ row.productName }}</text>
 					<view v-if="downloadable" class="member-action">
-						<button class="member-download" :disabled="submitting || isDownloaded(row.item)" @click="downloadItem(row.item)">{{ t(isDownloaded(row.item) ? '已下载' : '下载') }}</button>
+						<button class="member-download" :disabled="submitting || isDownloaded(row.item)" @click="downloadItem(row.item)">{{ translateText(isDownloaded(row.item) ? '已下载' : '下载') }}</button>
 					</view>
 				</view>
 			</view>
@@ -27,6 +27,7 @@
 	import { computed } from 'vue'
 	import { t } from '../../i18n/index.uts'
 	import { getMergePreviewRow, getPlanOperationId } from '../../domain/searchViewModel.uts'
+	type MemberRow = { key: string, item: UTSJSONObject, orderNo: string, itemBatch: string, productName: string }
 
 	const props = defineProps({
 		items: { type: Array, default: () => [] },
@@ -37,15 +38,17 @@
 		submitting: { type: Boolean, default: false }
 	})
 	const emit = defineEmits(['download'])
+	/** 为原生验货成员表头和逐项操作提供可调用翻译方法。 */
+	function translateText(key: string): string { return t(key) }
 
 	/** 按 H5 的 Order、Item、Name 三列整理成员，并保留逐项下载的原始计划。 */
-	const rows = computed(() => props.items.map((item, index) => ({ key: `${getPlanOperationId(item)}:${index}`, item, ...getMergePreviewRow(item) })))
+	const rows = computed((): MemberRow[] => (props.items as UTSJSONObject[]).map((item: UTSJSONObject, index: number): MemberRow => { const preview = getMergePreviewRow(item) as UTSJSONObject; return { key: `${getPlanOperationId(item)}:${index}`, item, orderNo: (preview['orderNo'] ?? '').toString(), itemBatch: (preview['itemBatch'] ?? '').toString(), productName: (preview['productName'] ?? '').toString() } }))
 
 	/** 判断拆分结果是否已下载，避免重复提交同一成员。 */
-	function isDownloaded(item) { return props.downloadedIds.includes(getPlanOperationId(item)) }
+	function isDownloaded(item: UTSJSONObject): boolean { return props.downloadedIds.includes(getPlanOperationId(item)) }
 
 	/** 将拆分成员原始计划交给页面执行离线下载。 */
-	function downloadItem(item) { emit('download', item) }
+	function downloadItem(item: UTSJSONObject) { emit('download', item) }
 </script>
 
 <style>

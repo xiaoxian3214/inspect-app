@@ -35,6 +35,34 @@ test('uploads local files with auth and inspection metadata', async () => {
   })
 })
 
+/** 无本地路径的图片通过 H5 fileId 路径鉴权下载，返回给原生 image 可展示的临时文件。 */
+test('downloads a remote inspection image with bearer auth', async () => {
+  const downloads = []
+  const api = apiModule.createReportFileApi({
+    apiClient: { request: async () => null }, baseUrl: 'https://example.com/qcm/',
+    getSession: () => ({ token: 'token-1' }), uploadTransport: async () => null,
+    downloadTransport: async (request) => { downloads.push(request); return { statusCode: 200, tempFilePath: '/tmp/file-1.jpg' } }
+  })
+  assert.equal(await api.downloadInspectFile('file 1', 'thumbnail'), '/tmp/file-1.jpg')
+  assert.deepEqual(downloads[0].header, { Authorization: 'Bearer token-1' })
+  assert.equal(downloads[0].url, 'https://example.com/qcm/api/inspect/file/file%201/thumbnail')
+  assert.equal(await api.downloadInspectFile('file 1', 'preview'), '/tmp/file-1.jpg')
+  assert.match(downloads[1].url, /\/preview$/)
+})
+
+/** 图片预览鉴权失效时使用上传通道相同的会话失效守卫。 */
+test('routes unauthorized inspection image download to the auth guard', async () => {
+  const calls = []
+  const api = apiModule.createReportFileApi({
+    apiClient: { request: async () => null }, baseUrl: 'https://example.com',
+    getSession: () => ({ token: 'expired' }), uploadTransport: async () => null,
+    downloadTransport: async () => ({ statusCode: 401 }),
+    onAuthFailure: async (failure) => { calls.push(failure); throw new Error(failure.fallbackMessage) }
+  })
+  await assert.rejects(() => api.downloadInspectFile('file-1'), /登录已过期/)
+  assert.equal(calls[0].url, '/api/inspect/file/file-1/thumbnail')
+})
+
 test('preserves http status on upload errors for retry classification', async () => {
   const api = apiModule.createReportFileApi({
     apiClient: { request: async () => null },

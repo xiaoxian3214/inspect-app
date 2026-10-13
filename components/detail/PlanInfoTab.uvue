@@ -2,62 +2,72 @@
 	<view class="tab-page">
 		<template v-if="isMergedMode">
 			<view class="info-card merge-card">
-				<view class="merge-header" @click="toggleMerged"><text class="expand-icon">{{ mergedExpanded ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ t('合并验货') }}</text><text class="merge-sub">单号：{{ mergedNo }}</text></view></view>
+				<view class="merge-header" @click="toggleMerged"><text class="expand-icon">{{ mergedExpanded ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ translateText('合并验货') }}</text><text class="merge-sub">单号：{{ mergedNo }}</text></view></view>
 				<view v-if="mergedExpanded" class="merge-content">
-					<view class="sub-info-card"><view v-for="field in mergedCommonFields" :key="field.label" class="info-row"><text class="info-label">{{ t(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view>
-					<view class="merge-table-head"><text class="table-name">{{ t('订单号-款号-款名') }}</text><text class="table-number">{{ t('总数量') }}</text><text class="table-number">{{ t('样品数量') }}</text></view>
-					<view v-for="(row, index) in inspectionPlans" :key="rowKey(row, index)" class="merge-table-row"><text class="table-name">{{ mergeRowName(row, index) }}</text><text class="table-number">{{ displayValue(row.requiredQuantity) }}</text><text class="table-number">{{ displayValue(row.sampleSize) }}</text></view>
-					<view class="merge-table-row total-row"><text class="table-name">{{ t('所有') }}</text><text class="table-number">{{ mergedTotals.requiredQuantity }}</text><text class="table-number">{{ mergedTotals.sampleSize }}</text></view>
+					<view class="sub-info-card"><view v-for="field in mergedCommonFields" :key="field.label" class="info-row"><text class="info-label">{{ translateText(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view>
+					<view class="merge-table-head"><text class="table-name">{{ translateText('订单号-款号-款名') }}</text><text class="table-number">{{ translateText('总数量') }}</text><text class="table-number">{{ translateText('样品数量') }}</text></view>
+					<view v-for="(row, index) in planRows" :key="rowKey(row, index)" class="merge-table-row"><text class="table-name">{{ mergeRowName(row, index) }}</text><text class="table-number">{{ displayValue(row.requiredQuantity) }}</text><text class="table-number">{{ displayValue(row.sampleSize) }}</text></view>
+					<view class="merge-table-row total-row"><text class="table-name">{{ translateText('所有') }}</text><text class="table-number">{{ mergedTotals.requiredQuantity }}</text><text class="table-number">{{ mergedTotals.sampleSize }}</text></view>
 				</view>
 			</view>
-			<view v-for="(row, index) in inspectionPlans" :key="rowKey(row, index)" class="info-card merge-card">
-				<view class="merge-header" @click="togglePlan(row, index)"><text class="expand-icon">{{ isPlanExpanded(row, index) ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ row.goodsName || t('验货项 {index}', { index: index + 1 }) }}</text><text class="merge-sub">{{ t('单号：{number}', { number: (row.clientOrderNo || row.planNo) ?? '-' }) }}</text><text class="merge-sub">{{ t('产品：{number}', { number: `${row.subGoodsNo ?? '-'}#${row.batchNo ?? '-'}` }) }}</text></view></view>
-				<view v-if="isPlanExpanded(row, index)" class="merge-content"><view class="sub-info-card"><view v-for="field in planFields(row)" :key="field.label" class="info-row"><text class="info-label">{{ t(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view></view>
+			<view v-for="(row, index) in planRows" :key="rowKey(row, index)" class="info-card merge-card">
+				<view class="merge-header" @click="togglePlan(row, index)"><text class="expand-icon">{{ isPlanExpanded(row, index) ? '⌄' : '›' }}</text><view class="merge-meta"><text class="merge-title">{{ row.goodsName !== '' ? row.goodsName : translateText('验货项 {index}', { index: index + 1 }) }}</text><text class="merge-sub">{{ translateText('单号：{number}', { number: row.clientOrderNo !== '' ? row.clientOrderNo : row.planNo }) }}</text><text class="merge-sub">{{ translateText('产品：{number}', { number: `${row.subGoodsNo ?? '-'}#${row.batchNo ?? '-'}` }) }}</text></view></view>
+				<view v-if="isPlanExpanded(row, index)" class="merge-content"><view class="sub-info-card"><view v-for="field in planFields(row)" :key="field.label" class="info-row"><text class="info-label">{{ translateText(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view></view>
 			</view>
 		</template>
-		<view v-else class="info-card"><view v-for="field in currentFields" :key="field.label" class="info-row"><text class="info-label">{{ t(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view>
+		<view v-else class="info-card"><view v-for="field in currentFields" :key="field.label" class="info-row"><text class="info-label">{{ translateText(field.label) }}</text><text class="info-value">{{ field.value }}</text></view></view>
 	</view>
 </template>
 
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
+	import { firstNonEmptyText } from '../../domain/searchViewModel.uts'
 	import { computed, ref } from 'vue'
 	import { buildMergedPlanSummary, buildPlanInfoFields } from '../../domain/detailViewModel.uts'
+	type InfoField = { label: string, value: string }
+	type PlanTotals = { requiredQuantity: string, sampleSize: string }
+	type PlanRow = { id: string, goodsName: string, clientOrderNo: string, planNo: string, subGoodsNo: string, batchNo: string, requiredQuantity: string, sampleSize: string, raw: UTSJSONObject }
 	const props = defineProps({ detail: { type: Object, default: () => ({}) }, planData: { type: Object, default: null } })
 	defineEmits(['update'])
 	const mergedExpanded = ref(true)
-	const expandedPlans = ref({})
+	const expandedPlans = ref<UTSJSONObject>({})
 	const detailFieldLabels = ['产品名称', '需验数量', '样品数量', '供应商名称', '交货日期', '清单', '验货类型', '抽样标准', '供应商编号', '客户名称', '客户编号', '货号', '客户订单号', '采购合同号', '制造令', '模具色卡号', '批次', '验货员']
+	/** 将订单字段转换成原生模板可读取的标签和值。 */
+	function displayFields(plan: UTSJSONObject): InfoField[] { return (buildPlanInfoFields(plan) as UTSJSONObject[]).map((raw: UTSJSONObject): InfoField => ({ label: (raw['label'] ?? '').toString(), value: (raw['value'] ?? '-').toString() })) }
 	/** 返回兼容旧 detail prop 与 H5 planData prop 的详情对象。 */
-	const sourceDetail = computed(() => (props.planData || props.detail) ?? {})
+	const sourceDetail = computed((): UTSJSONObject => (props.planData as UTSJSONObject | null) ?? (props.detail as UTSJSONObject))
 	/** 返回当前计划公共字段对象。 */
-	const currentPlan = computed(() => sourceDetail.value?.plan && typeof sourceDetail.value.plan === 'object' ? sourceDetail.value.plan : sourceDetail.value)
+	const currentPlan = computed((): UTSJSONObject => (sourceDetail.value['plan'] as UTSJSONObject | null) ?? sourceDetail.value)
 	/** 判断订单信息是否按 H5 合并验货卡片展示。 */
-	const isMergedMode = computed(() => Number(currentPlan.value?.mergeType ?? 0) === 2)
+	const isMergedMode = computed((): boolean => (currentPlan.value['mergeType'] ?? 0).toString() === '2')
 	/** 返回 H5 合并验货的全部子计划。 */
-	const inspectionPlans = computed(() => Array.isArray(sourceDetail.value?.inspectionPlans) && sourceDetail.value.inspectionPlans.length > 0 ? sourceDetail.value.inspectionPlans : [currentPlan.value])
+	const inspectionPlans = computed((): UTSJSONObject[] => { const storedPlans = sourceDetail.value['inspectionPlans']; return Array.isArray(storedPlans) && (storedPlans as UTSJSONObject[]).length > 0 ? storedPlans as UTSJSONObject[] : [currentPlan.value] })
+	/** 将子计划的动态字段转换为原生订单模板可直接访问的固定字段。 */
+	const planRows = computed((): PlanRow[] => inspectionPlans.value.map((raw: UTSJSONObject): PlanRow => ({ id: firstNonEmptyText([raw['id'], raw['planId'], raw['reportId']], ''), goodsName: (raw['goodsName'] ?? '').toString(), clientOrderNo: (raw['clientOrderNo'] ?? '').toString(), planNo: (raw['planNo'] ?? '').toString(), subGoodsNo: (raw['subGoodsNo'] ?? '').toString(), batchNo: (raw['batchNo'] ?? '').toString(), requiredQuantity: (raw['requiredQuantity'] ?? '').toString(), sampleSize: (raw['sampleSize'] ?? '').toString(), raw })))
 	/** 返回普通验货的十八个 H5 订单字段。 */
-	const currentFields = computed(() => buildPlanInfoFields(currentPlan.value).filter((field) => detailFieldLabels.includes(field.label)))
+	const currentFields = computed((): InfoField[] => displayFields(currentPlan.value).filter((field: InfoField) => detailFieldLabels.includes(field.label)))
 	/** 返回合并验货数量汇总。 */
-	const mergedTotals = computed(() => buildMergedPlanSummary(inspectionPlans.value))
+	const mergedTotals = computed((): PlanTotals => { const raw = buildMergedPlanSummary(inspectionPlans.value) as UTSJSONObject; return { requiredQuantity: (raw['requiredQuantity'] ?? 0).toString(), sampleSize: (raw['sampleSize'] ?? 0).toString() } })
 	/** 返回合并验货公共卡片字段。 */
-	const mergedCommonFields = computed(() => { const plan = { ...currentPlan.value, requiredQuantity: mergedTotals.value.requiredQuantity, sampleSize: mergedTotals.value.sampleSize }; const fields = buildPlanInfoFields(plan); const labels = ['产品名称', '需验数量', '样品数量', '供应商名称', '交货日期', '抽样标准', '验货类型', '客户名称', '客户编号']; return fields.filter((field) => labels.includes(field.label)).map((field) => ({ ...field, label: field.label === '需验数量' ? '总数量' : field.label })) })
+	const mergedCommonFields = computed((): InfoField[] => { const plan: UTSJSONObject = { ...currentPlan.value, requiredQuantity: mergedTotals.value.requiredQuantity, sampleSize: mergedTotals.value.sampleSize }; const labels = ['产品名称', '需验数量', '样品数量', '供应商名称', '交货日期', '抽样标准', '验货类型', '客户名称', '客户编号']; return displayFields(plan).filter((field: InfoField) => labels.includes(field.label)).map((field: InfoField): InfoField => ({ ...field, label: field.label === '需验数量' ? '总数量' : field.label })) })
 	/** 返回合并验货主单号。 */
-	const mergedNo = computed(() => (currentPlan.value?.parentPlanId || currentPlan.value?.planNo || currentPlan.value?.clientOrderNo) ?? '-')
+	const mergedNo = computed((): string => firstNonEmptyText([currentPlan.value['parentPlanId'], currentPlan.value['planNo'], currentPlan.value['clientOrderNo']], '-'))
+	/** 为原生订单信息模板提供可调用的多语言方法。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
 	/** 切换合并验货公共卡片。 */
 	function toggleMerged() { mergedExpanded.value = !mergedExpanded.value }
 	/** 返回子计划稳定渲染键。 */
-	function rowKey(row, index) { return String(row?.id ?? row?.planId ?? row?.reportId ?? index) }
+	function rowKey(row: PlanRow, index: number): string { return row.id !== '' ? row.id : index.toString() }
 	/** 切换指定子计划详情卡。 */
-	function togglePlan(row, index) { const key = rowKey(row, index); expandedPlans.value = { ...expandedPlans.value, [key]: !expandedPlans.value[key] } }
+	function togglePlan(row: PlanRow, index: number) { const key = rowKey(row, index); expandedPlans.value[key] = expandedPlans.value[key] !== true }
 	/** 判断指定子计划详情卡是否展开。 */
-	function isPlanExpanded(row, index) { return expandedPlans.value[rowKey(row, index)] === true }
+	function isPlanExpanded(row: PlanRow, index: number): boolean { return expandedPlans.value[rowKey(row, index)] === true }
 	/** 返回指定子计划的十八个 H5 字段。 */
-	function planFields(plan) { return buildPlanInfoFields(plan).filter((field) => detailFieldLabels.includes(field.label)) }
+	function planFields(plan: PlanRow): InfoField[] { return displayFields(plan.raw).filter((field: InfoField) => detailFieldLabels.includes(field.label)) }
 	/** 将空值显示为 H5 统一占位符。 */
-	function displayValue(value) { return value === 0 ? 0 : (value === null || value === undefined || value === '' ? '-' : value) }
+	function displayValue(value: string): string { return value !== '' ? value : '-' }
 	/** 拼接合并汇总表的订单号、款号和款名。 */
-	function mergeRowName(row, index) { return [row?.planNo || row?.clientOrderNo || `#${index + 1}`, row?.subGoodsNo ?? '', row?.goodsName ?? ''].filter((value) => String(value ?? '') !== '').join('-') }
+	function mergeRowName(row: PlanRow, index: number): string { const number = firstNonEmptyText([row.planNo, row.clientOrderNo], `#${index + 1}`); return [number, row.subGoodsNo, row.goodsName].filter((value: string) => value !== '').join('-') }
 </script>
 
 <style>

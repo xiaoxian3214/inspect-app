@@ -704,6 +704,7 @@
   cursor: pointer;
   padding: 16rpx;
   transition: transform 0.2s;
+  border:none;
 
   &:active { transform: scale(0.95); }
 

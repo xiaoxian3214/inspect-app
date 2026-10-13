@@ -18,8 +18,8 @@
 				<text class="recording-text">{{ formatVideoDurationLabel(videoElapsedSeconds) }} / {{ formatVideoDurationLabel(MAX_VIDEO_DURATION_SECONDS) }}</text>
 			</view>
 			<view class="camera-spacer"></view>
-			<view class="capture-panel">
-				<scroll-view v-if="capturedPaths.length > 0" class="capture-strip" scroll-x="true" show-scrollbar="false">
+			<view class="capture-panel" :style="{ paddingBottom: safeBottomPaddingPx(22) }">
+				<scroll-view v-if="capturedPaths.length > 0" class="capture-strip" :scroll-x="true" :show-scrollbar="false">
 					<view class="capture-strip-row">
 						<view v-for="(path, index) in capturedPaths" :key="path" class="capture-thumb-wrap">
 							<image v-if="capturedMediaKinds[index] !== 'video'" class="capture-thumb" :style="getThumbnailImageStyle(index)" :src="path" mode="aspectFill" />
@@ -50,6 +50,7 @@
 </template>
 
 <script setup lang="uts">
+	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
 	import { computed, ref } from 'vue'
 	import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
@@ -109,7 +110,7 @@
 		return formatVideoDurationLabel(capturedDurations.value[index] ?? 0)
 	}
 	/** 追加媒体路径并记录每个媒体加入时的姿态、类型与视频时长，已有媒体保留原始信息。 */
-	function appendCapturedMedia(paths, captureRotation = thumbnailRotation.value, mediaKind = 'image', durationSeconds = 0) {
+	function appendCapturedMedia(paths, captureRotation: number = thumbnailRotation.value, mediaKind = 'image', durationSeconds = 0) {
 		const currentPaths = [...capturedPaths.value]
 		const currentRotations = [...capturedRotations.value]
 		const currentKinds = [...capturedMediaKinds.value]
@@ -348,7 +349,7 @@
 	.header-action-text { color: #ffffff; font-size: 22rpx; }
 	.camera-title { flex: 1; color: #ffffff; font-size: 30rpx; font-weight: 600; text-align: center; }
 	.camera-spacer { flex: 1; }
-	.capture-panel { padding: 18rpx 22rpx calc(22rpx + env(safe-area-inset-bottom)); background-color: rgba(0, 0, 0, 0.78); }
+	.capture-panel { padding: 18rpx 22rpx 22rpx; background-color: rgba(0, 0, 0, 0.78); }
 	.capture-strip { width: 100%; height: 138rpx; margin-bottom: 12rpx; }
 	.capture-strip-row { height: 138rpx; flex-direction: row; align-items: center; }
 	.capture-thumb-wrap { position: relative; width: 118rpx; height: 118rpx; margin-right: 14rpx; overflow: hidden; border-width: 2rpx; border-color: rgba(255, 255, 255, 0.35); border-radius: 14rpx; }

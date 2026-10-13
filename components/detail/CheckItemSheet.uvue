@@ -4,92 +4,106 @@
 			<view class="sheet-handle"></view>
 			<view class="sheet-head">
 				<AppButton variant="icon" icon-type="close" :icon-size="22" icon-color="#475569" @press="closeSheet" />
-				<text class="sheet-title">{{ t(modalTitle) }}</text>
+				<text class="sheet-title">{{ translateText(modalTitle) }}</text>
 				<AppButton variant="icon camera" icon-type="camera" :icon-size="25" icon-color="#1a5f3f" @press="addPhoto" />
 			</view>
 
-			<scroll-view class="sheet-body" scroll-y="true" show-scrollbar="false">
+			<scroll-view class="sheet-body" :scroll-y="true" :show-scrollbar="false">
 				<view v-if="draft.result" class="current-result-banner" :class="`banner-${draft.result}`">
 					<view class="banner-left"><view class="result-status-dot"></view><text class="result-status-label">{{ currentResultLabel }}</text></view>
-					<text class="banner-right">{{ t('检查 - {label}', { label: t(currentResultLabel) }) }}</text>
+					<text class="banner-right">{{ translateText('检查 - {label}', { label: translateText(currentResultLabel) }) }}</text>
 				</view>
 
-				<view v-if="item?.itemDescription" class="item-description"><text>{{ item.itemDescription }}</text></view>
+				<view v-if="itemDescription !== ''" class="item-description"><text>{{ itemDescription }}</text></view>
 
 				<view v-if="itemType === 'Measurements'" class="type-section">
-					<text class="section-title">{{ t('测量数据') }}</text>
+					<text class="section-title">{{ translateText('测量数据') }}</text>
 					<view class="group-card">
-						<view class="group-head"><text>{{ t('规格组 {current} / {total}', { current: measurementIndex + 1, total: draft.measurements.length }) }}</text><AppButton v-if="draft.measurements.length > 1" variant="remove" @press="removeMeasurement(measurementIndex)">{{ t('删除当前组') }}</AppButton></view>
-						<view v-for="attr in specAttributes" :key="attr.attrId" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.measurements[measurementIndex]?.[attr.attrId]" :placeholder="t('请输入{name}', { name: attr.attrName })" @input="updateMeasurement(measurementIndex, attr.attrId, $event)" /></view>
+						<view class="group-head"><text>{{ translateText('规格组 {current} / {total}', { current: measurementIndex + 1, total: draft.measurements.length }) }}</text><AppButton v-if="draft.measurements.length > 1" variant="remove" @press="removeMeasurement(measurementIndex)">{{ translateText('删除当前组') }}</AppButton></view>
+						<view v-for="attr in specAttributes" :key="attr.attrId" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.measurements[measurementIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateMeasurement(measurementIndex, attr.attrId, $event)" /></view>
 					</view>
-					<view class="group-navigation"><AppButton variant="nav" :disabled="measurementIndex === 0" @press="previousMeasurement">{{ t('上一组') }}</AppButton><AppButton variant="nav" :disabled="measurementIndex >= draft.measurements.length - 1" @press="nextMeasurement">{{ t('下一组') }}</AppButton></view>
-					<AppButton variant="soft" block @press="addMeasurement">{{ t('＋ 新增一组规格') }}</AppButton>
-					<view v-if="draft.measurements.length > 1" class="group-summary"><text>{{ t('规格汇总') }}</text><scroll-view scroll-x="true" class="summary-scroll"><view class="summary-row"><text class="summary-label">{{ t('规格') }}</text><text v-for="(_, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell">{{ summaryIndex + 1 }}</text></view><view v-for="attr in specAttributes" :key="attr.attrId" class="summary-row"><text class="summary-label">{{ attr.attrName }}</text><text v-for="(summaryRow, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell" :class="{ 'summary-current': summaryIndex === measurementIndex }">{{ summaryRow[attr.attrId] || '-' }}</text></view></scroll-view></view>
+					<view class="group-navigation"><AppButton variant="nav" :disabled="measurementIndex === 0" @press="previousMeasurement">{{ translateText('上一组') }}</AppButton><AppButton variant="nav" :disabled="measurementIndex >= draft.measurements.length - 1" @press="nextMeasurement">{{ translateText('下一组') }}</AppButton></view>
+					<AppButton variant="soft" block @press="addMeasurement">{{ translateText('＋ 新增一组规格') }}</AppButton>
+					<view v-if="draft.measurements.length > 1" class="group-summary"><text>{{ translateText('规格汇总') }}</text><scroll-view :scroll-x="true" class="summary-scroll"><view class="summary-row"><text class="summary-label">{{ translateText('规格') }}</text><text v-for="(_, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell">{{ summaryIndex + 1 }}</text></view><view v-for="attr in specAttributes" :key="attr.attrId" class="summary-row"><text class="summary-label">{{ attr.attrName }}</text><text v-for="(summaryRow, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell" :class="{ 'summary-current': summaryIndex === measurementIndex }">{{ summaryRow[attr.attrId] || '-' }}</text></view></scroll-view></view>
 				</view>
 
 				<view v-else-if="itemType === 'Text'" class="type-section">
-					<text class="section-title">{{ t('文本检查内容') }}</text>
+					<text class="section-title">{{ translateText('文本检查内容') }}</text>
 					<view class="group-card">
-						<view class="group-head"><text>{{ t('文本组 {current} / {total}', { current: textGroupIndex + 1, total: draft.textGroups.length }) }}</text><AppButton v-if="draft.textGroups.length > 1" variant="remove" @press="removeTextGroup(textGroupIndex)">{{ t('删除当前组') }}</AppButton></view>
-						<view v-for="attr in specAttributes" :key="attr.attrId" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.textGroups[textGroupIndex]?.[attr.attrId]" :placeholder="t('请输入{name}', { name: attr.attrName })" @input="updateTextField(textGroupIndex, attr.attrId, $event)" /></view>
+						<view class="group-head"><text>{{ translateText('文本组 {current} / {total}', { current: textGroupIndex + 1, total: draft.textGroups.length }) }}</text><AppButton v-if="draft.textGroups.length > 1" variant="remove" @press="removeTextGroup(textGroupIndex)">{{ translateText('删除当前组') }}</AppButton></view>
+						<view v-for="attr in specAttributes" :key="attr.attrId" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.textGroups[textGroupIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateTextField(textGroupIndex, attr.attrId, $event)" /></view>
 					</view>
-					<view class="group-navigation"><AppButton variant="nav" :disabled="textGroupIndex === 0" @press="previousTextGroup">{{ t('上一组') }}</AppButton><AppButton variant="nav" :disabled="textGroupIndex >= draft.textGroups.length - 1" @press="nextTextGroup">{{ t('下一组') }}</AppButton></view>
-					<AppButton variant="soft" block @press="addTextGroup">{{ t('＋ 新增一组文本') }}</AppButton>
+					<view class="group-navigation"><AppButton variant="nav" :disabled="textGroupIndex === 0" @press="previousTextGroup">{{ translateText('上一组') }}</AppButton><AppButton variant="nav" :disabled="textGroupIndex >= draft.textGroups.length - 1" @press="nextTextGroup">{{ translateText('下一组') }}</AppButton></view>
+					<AppButton variant="soft" block @press="addTextGroup">{{ translateText('＋ 新增一组文本') }}</AppButton>
 				</view>
 
 				<view v-else-if="itemType === 'Barcodes'" class="type-section">
-					<text class="section-title">{{ t('条码数据') }}</text>
-					<view v-for="(barcode, index) in draft.barcodeItems" :key="index" class="group-card"><view class="group-head"><text>{{ barcode.name || t('条码 {index}', { index: index + 1 }) }}</text><AppButton variant="small" @press="openBarcodeEditor(index)">{{ t('编辑') }}</AppButton></view><view class="value-row"><text class="value-label">{{ t('条码信息') }}</text><input class="value-input" :value="barcode.code" :placeholder="t('输入或扫描条码')" @input="updateBarcode(index, $event)" /><AppButton variant="primary" @press="scanBarcode(index)">{{ t('扫描条码') }}</AppButton></view><view class="value-row"><text class="value-label">{{ t('扫码格式') }}</text><text>{{ barcode.format || '-' }}</text></view></view>
-					<AppButton block @press="openBarcodeEditor(-1)">{{ t('＋ 增加条码') }}</AppButton>
+					<text class="section-title">{{ translateText('条码数据') }}</text>
+					<view v-for="(barcode, index) in draft.barcodeItems" :key="index" class="group-card"><view class="group-head"><text>{{ barcode.name || translateText('条码 {index}', { index: index + 1 }) }}</text><AppButton variant="small" @press="openBarcodeEditor(index)">{{ translateText('编辑') }}</AppButton></view><view class="value-row"><text class="value-label">{{ translateText('条码信息') }}</text><input class="value-input" :value="barcode.code" :placeholder="translateText('输入或扫描条码')" @input="updateBarcode(index, $event)" /><AppButton variant="primary" @press="scanBarcode(index)">{{ translateText('扫描条码') }}</AppButton></view><view class="value-row"><text class="value-label">{{ translateText('扫码格式') }}</text><text>{{ barcode.format || '-' }}</text></view></view>
+					<AppButton block @press="openBarcodeEditor(-1)">{{ translateText('＋ 增加条码') }}</AppButton>
+				</view>
+
+				<view class="notes-section">
+					<text class="section-title">{{ translateText('备注') }}</text>
+					<textarea class="remarks" :value="noteDraft" maxlength="500" :placeholder="translateText('写评论')" @input="updateComment" @blur="saveNotesOnBlur" />
 				</view>
 
 				<view class="media-section">
-					<view class="section-title-row"><text class="section-title">{{ t('媒体库') }}</text><AppButton v-if="mediaPhotos.length > 1" variant="small" @press="openPhotoSort">{{ t('照片重新排序') }}</AppButton></view>
+					<view class="section-title-row"><text class="section-title">{{ translateText('媒体库') }}</text></view>
 					<InspectionMediaGrid :photos="mediaPhotos" add-label="拍照" @capture-media="addPhoto" @remove-media="removePhoto" @preview-media="previewPhoto" @retry-media="retryPhoto" />
 				</view>
 				<view class="type-section">
-					<AppButton block @press="requestCopyItems">{{ t('复制到其他验货') }}</AppButton>
-				<AppButton v-if="mediaPhotos.length" block @press="requestBatchMove">{{ t('批量移动照片/视频') }}</AppButton>
-				<AppButton v-if="hasContent" variant="danger" block @press="requestResetItem">{{ t('重置检查点') }}</AppButton>
-				<AppButton v-if="showCheckPointUpload" block @press="addCheckPointPhoto">{{ t('上传检查点图片') }}</AppButton>
+					<AppButton block @press="requestCopyItems">{{ translateText('复制到其他验货') }}</AppButton>
+				<AppButton v-if="mediaPhotos.length > 1" block @press="openPhotoSort">{{ translateText('照片重新排序') }}</AppButton>
+				<AppButton v-if="mediaPhotos.length" block @press="requestBatchMove">{{ translateText('批量移动照片/视频') }}</AppButton>
+				<AppButton v-if="hasContent" variant="danger" block @press="requestResetItem">{{ translateText('重置检查点') }}</AppButton>
+				<AppButton v-if="showCheckPointUpload" block @press="addCheckPointPhoto">{{ translateText('上传检查点图片') }}</AppButton>
 				<view v-if="showCheckPointUpload && checkPointPhotos.length" class="media-section">
-					<text class="section-title">{{ t('检查点图片') }}</text>
+					<text class="section-title">{{ translateText('检查点图片') }}</text>
 					<InspectionMediaGrid :photos="checkPointPhotos" add-label="上传检查点图片" @capture-media="addCheckPointPhoto" @remove-media="removePhoto" @preview-media="previewPhoto" @retry-media="retryPhoto" /></view></view>
 
 				<view v-if="defects.length" class="defects-section">
-					<text class="section-title">{{ t('关联疵点（{count}）', { count: defects.length }) }}</text>
-					<view v-for="(defect, index) in defects" :key="defect.id || defect.defectId || index" class="defect-item" @click="openDefect(defect)">
-						<text class="defect-severity-tag" :class="`severity-${normalizeSeverity(defect.type)}`">{{ t(getSeverityLabel(defect.type)) }}</text>
-						<text class="defect-category">{{ (defect.defectCode || defect.categoryName) ?? '-' }}</text>
-						<text class="defect-quantity">× {{ defect.quantity ?? 1 }}</text>
+					<text class="section-title">{{ translateText('关联疵点（{count}）', { count: defects.length }) }}</text>
+					<view v-for="(defect, index) in defectRows" :key="defect.id !== '' ? defect.id : index" class="defect-item" @click="openDefect(defect.raw)">
+						<text class="defect-severity-tag" :class="`severity-${normalizeSeverity(defect.type)}`">{{ translateText(getSeverityLabel(defect.type)) }}</text>
+						<text class="defect-category">{{ defect.defectCode !== '' ? defect.defectCode : defect.categoryName }}</text>
+						<text class="defect-quantity">× {{ defect.quantity }}</text>
 						<AppIcon type="arrowRight" :size="16" color="#94a3b8" />
 					</view>
 				</view>
-
-				<view class="notes-section"><text class="section-title">{{ t('检查备注') }}</text><textarea class="remarks" :value="draft.comment" maxlength="500" :placeholder="t('填写检查情况、异常说明等')" @input="updateComment" /></view>
 			</scroll-view>
 
-			<view class="modal-footer-fixed">
+			<view class="modal-footer-fixed" :style="{ paddingBottom: footerPadding }">
 				<view class="result-circles-row">
 					<view v-for="option in resultOptions" :key="option.value" class="result-circle" :class="[option.value, { active: draft.result === option.value }]" @click="confirmResult(option.value)">
 						<view class="circle-icon" :class="[option.value, { active: draft.result === option.value }]"><AppIcon :type="option.icon" :size="30" :color="draft.result === option.value ? '#ffffff' : option.color" /></view>
-						<text class="circle-text" :class="{ active: draft.result === option.value }">{{ t(option.label) }}</text>
+						<text class="circle-text" :class="{ active: draft.result === option.value }">{{ translateText(option.label) }}</text>
 					</view>
 				</view>
 			</view>
 			</view>
 		<PhotoSortSheet :visible="showPhotoSort" :photos="mediaPhotos" @close="closePhotoSort" @sorted="confirmPhotoSort" />
-		<view v-if="showBarcodeEditor" class="barcode-overlay" @click.stop="closeBarcodeEditor"><view class="barcode-dialog" @click.stop="stopEvent"><text class="section-title">{{ t('条码名称') }}</text><input class="value-input" :value="barcodeName" :placeholder="t('请输入条码名称')" @input="updateBarcodeName" /><view class="group-navigation"><AppButton v-if="editingBarcodeIndex >= 0" variant="small" @press="deleteBarcode">{{ t('删除') }}</AppButton><AppButton variant="small" @press="closeBarcodeEditor">{{ t('取消') }}</AppButton><AppButton variant="primary" @press="saveBarcodeName">{{ t('保存') }}</AppButton></view></view></view>
+		<view v-if="showBarcodeEditor" class="barcode-overlay" @click.stop="closeBarcodeEditor"><view class="barcode-dialog" :style="{ paddingBottom: barcodeDialogPadding }" @click.stop="stopEvent"><text class="section-title">{{ translateText('条码名称') }}</text><input class="value-input" :value="barcodeName" :placeholder="translateText('请输入条码名称')" @input="updateBarcodeName" /><view class="group-navigation"><AppButton v-if="editingBarcodeIndex >= 0" variant="small" @press="deleteBarcode">{{ translateText('删除') }}</AppButton><AppButton variant="small" @press="closeBarcodeEditor">{{ translateText('取消') }}</AppButton><AppButton variant="primary" @press="saveBarcodeName">{{ translateText('保存') }}</AppButton></view></view></view>
 	</view>
 </template>
 
 <script setup lang="uts">
+	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
 	import { computed, ref, watch } from 'vue'
 	import AppIcon from '../icons/AppIcon.uvue'
 	import AppButton from '../common/AppButton.uvue'
 	import InspectionMediaGrid from './InspectionMediaGrid.uvue'
 	import PhotoSortSheet from './PhotoSortSheet.uvue'
+	import { firstNonEmptyText } from '../../domain/searchViewModel.uts'
+	/** 为 uvue 模板提供明确的可调用翻译方法，避免直接导入函数被当作 ref 解包。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
+	type CheckItemDraft = {
+		result: string, comment: string, photos: UTSJSONObject[], measurements: UTSJSONObject[],
+		textGroups: UTSJSONObject[], barcodeItems: UTSJSONObject[], barcodeList?: string[], barcode?: string
+	}
+	type SpecAttribute = { attrId: string, attrName: string }
+	type DefectRow = { id: string, type: string, defectCode: string, categoryName: string, quantity: string, raw: UTSJSONObject }
 
 	const props = defineProps({
 		visible: { type: Boolean, default: false },
@@ -98,22 +112,34 @@
 		goodsFlag: { type: Number, default: 0 }
 	})
 	const emit = defineEmits(['close', 'select-result', 'auto-save', 'add-photo', 'remove-photo', 'preview-photo', 'retry-photo', 'open-defect', 'photos-sorted', 'copy-items', 'batch-move', 'reset-item', 'add-checkpoint-photo'])
-	const draft = ref({ result: '', comment: '', photos: [], measurements: [], textGroups: [], barcodeItems: [] })
+	const itemData = computed((): UTSJSONObject => props.item as UTSJSONObject)
+	/** 将动态疵点数据转换为原生模板可安全访问的固定字段。 */
+	const defectRows = computed((): DefectRow[] => (props.defects as UTSJSONObject[]).map((raw: UTSJSONObject): DefectRow => ({ id: (raw['id'] ?? raw['defectId'] ?? '').toString(), type: (raw['type'] ?? '').toString(), defectCode: (raw['defectCode'] ?? '').toString(), categoryName: (raw['categoryName'] ?? '-').toString(), quantity: (raw['quantity'] ?? 1).toString(), raw })))
+	const draft = ref<CheckItemDraft>({ result: '', comment: '', photos: [], measurements: [], textGroups: [], barcodeItems: [] })
+	const noteDraft = ref('')
 	const showPhotoSort = ref(false)
 	const measurementIndex = ref(0)
 	const textGroupIndex = ref(0)
 	const showBarcodeEditor = ref(false)
 	const editingBarcodeIndex = ref(-1)
 	const barcodeName = ref('')
+	/** 为检查结果底栏计算包含系统安全区的底部留白。 */
+	const footerPadding = computed((): string => safeBottomPaddingPx(20))
+	/** 为条码名称弹窗计算包含系统安全区的底部留白。 */
+	const barcodeDialogPadding = computed((): string => safeBottomPaddingPx(30))
 	/** 返回普通检查结果媒体，避免检查点照片混入排序。 */
 	const mediaPhotos = computed(() => draft.value.photos.filter((photo) => photo?.bizType !== 'checkPoint'))
 	/** 返回与普通检查媒体分开展示的检查点图片。 */
 	const checkPointPhotos = computed(() => draft.value.photos.filter((photo) => photo?.bizType === 'checkPoint'))
 	/** 仅指定货品类型允许上传检查点图片。 */
-	const showCheckPointUpload = computed(() => Number(props.goodsFlag) === 9)
+	const showCheckPointUpload = computed(() => props.goodsFlag === 9)
 	/** 有检查结果或填写内容时才允许显示重置入口。 */
-	const hasContent = computed(() => !!draft.value.result || !!draft.value.comment || draft.value.photos.length > 0 || draft.value.measurements.some((row) => Object.values(row).some(Boolean)) || draft.value.textGroups.some((row) => Object.values(row).some(Boolean)) || draft.value.barcodeItems.some((row) => !!row?.code))
-	const resultOptions = [
+	/** 判断规格或文本行是否包含已填写字段，替代原生端不支持的 Object.values。 */
+	function hasFilledRow(row: UTSJSONObject): boolean { let filled = false; row.toMap().forEach((value: any) => { if (value != null && value.toString().trim() !== '') filled = true }); return filled }
+	/** 判断当前草稿是否包含结果、备注或任何已填写的媒体与属性。 */
+	const hasContent = computed(() => draft.value.result !== '' || draft.value.comment !== '' || draft.value.photos.length > 0 || draft.value.measurements.some((row) => hasFilledRow(row)) || draft.value.textGroups.some((row) => hasFilledRow(row)) || draft.value.barcodeItems.some((row) => (row['code'] ?? '').toString().trim() !== ''))
+	type ResultOption = { value: string, label: string, icon: string, color: string }
+	const resultOptions: ResultOption[] = [
 		{ value: 'pass', label: '检查 - 合格', icon: 'check', color: '#22c55e' },
 		{ value: 'fail', label: '检查 - 不合格', icon: 'warning', color: '#ef4444' },
 		{ value: 'pending', label: '检查 - 待定', icon: 'help', color: '#f59e0b' },
@@ -121,56 +147,77 @@
 	]
 
 	/** 返回标准化检查项类型，用于展示 H5 对应的输入区域。 */
-	const itemType = computed(() => String(props.item?.itemType ?? 'Standard'))
+	const itemType = computed((): string => (itemData.value['itemType'] ?? 'Standard').toString())
+	/** 提取当前检查项的说明文本供原生模板安全渲染。 */
+	const itemDescription = computed((): string => (itemData.value['itemDescription'] ?? '').toString())
 	/** 返回 H5 规格和文本检查项使用的属性定义。 */
-	const specAttributes = computed(() => Array.isArray(props.item?.specAttributes) && props.item.specAttributes.length > 0 ? props.item.specAttributes : [{ attrId: 'value', attrName: itemType.value === 'Text' ? '文本内容' : '测量值' }])
+	const specAttributes = computed((): SpecAttribute[] => { const attributes = itemData.value['specAttributes']; return Array.isArray(attributes) && attributes.length > 0 ? (attributes as UTSJSONObject[]).map((attribute: UTSJSONObject): SpecAttribute => ({ attrId: (attribute['attrId'] ?? '').toString(), attrName: (attribute['attrName'] ?? '').toString() })) : [{ attrId: 'value', attrName: itemType.value === 'Text' ? '文本内容' : '测量值' }] })
 	/** 返回包含检查项类型的弹框标题。 */
-	const modalTitle = computed(() => { const typeLabels = { Measurements: '规格', Barcodes: '条码', Text: '文本', Standard: '标准' }; return `${(props.item?.itemName || props.item?.name) ?? t('检查项详情')} (${t(typeLabels[itemType.value] ?? '标准')})` })
+	const modalTitle = computed((): string => { const typeLabels: UTSJSONObject = { Measurements: '规格', Barcodes: '条码', Text: '文本', Standard: '标准' }; return `${firstNonEmptyText([itemData.value['itemName'], itemData.value['name']], t('检查项详情'))} (${t((typeLabels[itemType.value] ?? '标准').toString())})` })
 	/** 返回当前检查结果的中文标签。 */
-	const currentResultLabel = computed(() => { const option = resultOptions.find((item) => item.value === draft.value.result); return option ? option.label.replace('检查 - ', '') : '' })
+	const currentResultLabel = computed((): string => { const option = resultOptions.find((item) => item.value === draft.value.result); return option != null ? option.label.replace('检查 - ', '') : '' })
 
-	/** 将当前检查项数据复制到弹层草稿，避免未保存输入直接污染页面状态。 */
-	function resetDraft(item) { const data = item?.data ?? {}; const attributes = Array.isArray(item?.specAttributes) && item.specAttributes.length > 0 ? item.specAttributes : [{ attrId: 'value', attrName: item?.itemType === 'Text' ? '文本内容' : '测量值' }]; const emptyRow = {}; attributes.forEach((attr) => { emptyRow[attr.attrId] = '' }); const measurements = Array.isArray(data?.measurements) && data.measurements.length > 0 ? data.measurements.map((row) => ({ ...emptyRow, ...row })) : [{ ...emptyRow }]; const textGroups = Array.isArray(data?.textGroups) && data.textGroups.length > 0 ? data.textGroups.map((row) => ({ ...emptyRow, ...row })) : [{ ...emptyRow }]; const barcodeItems = Array.isArray(data?.barcodeItems) && data.barcodeItems.length > 0 ? data.barcodeItems.map((row) => ({ ...row })) : (Array.isArray(data?.barcodeList) ? data.barcodeList.map((code, index) => ({ name: `条码项${index + 1}`, code, format: '' })) : []); draft.value = { ...data, result: data?.result ?? '', comment: data?.comment ?? '', photos: Array.isArray(data?.photos) ? [...data.photos] : [], measurements, textGroups, barcodeItems }; measurementIndex.value = 0; textGroupIndex.value = 0; showBarcodeEditor.value = false }
+	/** 将当前检查项数据复制到弹层草稿，并重置尚未确认的备注输入。 */
+	function resetDraft(item: UTSJSONObject) {
+		const data = (item['data'] as UTSJSONObject | null) ?? {}
+		const emptyRow: UTSJSONObject = {}
+		specAttributes.value.forEach((attribute: SpecAttribute) => { emptyRow[attribute.attrId] = '' })
+		const storedMeasurements = data['measurements']
+		const storedTextGroups = data['textGroups']
+		const storedBarcodes = data['barcodeItems']
+		const storedBarcodeList = data['barcodeList']
+		const measurements = Array.isArray(storedMeasurements) && storedMeasurements.length > 0 ? (storedMeasurements as UTSJSONObject[]).map((row: UTSJSONObject) => ({ ...emptyRow, ...row })) : [{ ...emptyRow }]
+		const textGroups = Array.isArray(storedTextGroups) && storedTextGroups.length > 0 ? (storedTextGroups as UTSJSONObject[]).map((row: UTSJSONObject) => ({ ...emptyRow, ...row })) : [{ ...emptyRow }]
+		const barcodeItems = Array.isArray(storedBarcodes) && storedBarcodes.length > 0 ? storedBarcodes as UTSJSONObject[] : (Array.isArray(storedBarcodeList) ? (storedBarcodeList as string[]).map((code: string, index: number) => ({ name: `条码项${index + 1}`, code, format: '' })) : [])
+		const storedPhotos = data['photos']
+		draft.value = { ...data, result: (data['result'] ?? '').toString(), comment: (data['comment'] ?? '').toString(), photos: Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : [], measurements, textGroups, barcodeItems }
+		noteDraft.value = draft.value.comment
+		measurementIndex.value = 0
+		textGroupIndex.value = 0
+		showBarcodeEditor.value = false
+	}
 	/** 创建一行与 H5 specAttributes 对齐的空字段对象。 */
-	function createEmptyAttributeRow() { const row = {}; specAttributes.value.forEach((attr) => { row[attr.attrId] = '' }); return row }
+	function createEmptyAttributeRow(): UTSJSONObject { const row: UTSJSONObject = {}; specAttributes.value.forEach((attr: SpecAttribute) => { row[attr.attrId] = '' }); return row }
 	/** 判断当前类型数据是否满足 H5 的完成条件。 */
-	function isDraftCompleted() { const isMergedChild = String(props.item?.sonPlanId ?? '') !== ''; if (!isMergedChild && props.item?.isPhotoRequired && mediaPhotos.value.length === 0) return false; if (itemType.value === 'Measurements') return draft.value.measurements.some((row) => Object.values(row ?? {}).some((value) => String(value ?? '').trim() !== '')); if (itemType.value === 'Text') return draft.value.textGroups.some((row) => Object.values(row ?? {}).some((value) => String(value ?? '').trim() !== '')); if (itemType.value === 'Barcodes') return draft.value.barcodeItems.some((row) => String(row?.code ?? '').trim() !== ''); if (itemType.value === 'Standard') return String(draft.value?.result ?? '') !== ''; return true }
+	function isDraftCompleted(): boolean { const isMergedChild = (itemData.value['sonPlanId'] ?? '').toString() !== ''; if (!isMergedChild && Number(itemData.value['isPhotoRequired'] ?? 0) === 1 && mediaPhotos.value.length === 0) return false; if (itemType.value === 'Measurements') return draft.value.measurements.some((row) => hasFilledRow(row)); if (itemType.value === 'Text') return draft.value.textGroups.some((row) => hasFilledRow(row)); if (itemType.value === 'Barcodes') return draft.value.barcodeItems.some((row) => (row['code'] ?? '').toString().trim() !== ''); if (itemType.value === 'Standard') return draft.value.result !== ''; return true }
 	/** 生成供父页面持久化的完整检查项草稿。 */
 	function buildDraftData() { return { ...draft.value, completed: isDraftCompleted() } }
 	/** 自动保存字段、备注或分组变化，但保持弹框继续打开。 */
 	function autoSaveDraft() { emit('auto-save', { item: props.item, data: buildDraftData() }) }
 	/** 选择检查结果后立即保存并交由父页面关闭弹框或进入疵点录入。 */
-	function confirmResult(result) { const isMergedChild = String(props.item?.sonPlanId ?? '') !== ''; if (!isMergedChild && props.item?.isPhotoRequired && result !== 'na' && mediaPhotos.value.length === 0) { uni.showToast({ title: t('请上传照片(必填项)'), icon: 'none' }); return }; draft.value = { ...draft.value, result }; emit('select-result', { item: props.item, result, data: buildDraftData() }) }
-	/** 更新检查项备注并触发离线草稿自动保存。 */
-	function updateComment(event) { draft.value = { ...draft.value, comment: String(event?.detail?.value ?? '') }; autoSaveDraft() }
+	function confirmResult(result: string) { saveNotesOnBlur(); const isMergedChild = (itemData.value['sonPlanId'] ?? '').toString() !== ''; if (!isMergedChild && Number(itemData.value['isPhotoRequired'] ?? 0) === 1 && result !== 'na' && mediaPhotos.value.length === 0) { uni.showToast({ title: t('请上传照片(必填项)'), icon: 'none' }); return }; draft.value = { ...draft.value, result }; emit('select-result', { item: props.item, result, data: buildDraftData() }) }
+	/** 更新临时备注，输入过程中不触发本地保存。 */
+	function updateComment(event: UniInputEvent) { noteDraft.value = event.detail.value }
+	/** 备注框失焦时提交有变化的输入；弹层关闭或选择结果时也调用，避免输入丢失。 */
+	function saveNotesOnBlur() { if (draft.value.comment === noteDraft.value) return; draft.value = { ...draft.value, comment: noteDraft.value }; autoSaveDraft() }
 	/** 更新指定规格组中的属性值并触发自动保存。 */
-	function updateMeasurement(rowIndex, attrId, event) { const rows = [...draft.value.measurements]; rows[rowIndex] = { ...rows[rowIndex], [attrId]: String(event?.detail?.value ?? '') }; draft.value = { ...draft.value, measurements: rows }; autoSaveDraft() }
+	function updateMeasurement(rowIndex: number, attrId: string, event: UniInputEvent) { const rows = [...draft.value.measurements]; rows[rowIndex] = { ...rows[rowIndex], [attrId]: event.detail.value }; draft.value = { ...draft.value, measurements: rows }; autoSaveDraft() }
 	/** 新增一组 H5 规格属性并触发自动保存。 */
 	function addMeasurement() { draft.value = { ...draft.value, measurements: [...draft.value.measurements, createEmptyAttributeRow()] }; measurementIndex.value = draft.value.measurements.length - 1; autoSaveDraft() }
 	/** 删除指定规格组、至少保留一组空数据并触发自动保存。 */
-	function removeMeasurement(rowIndex) { const rows = draft.value.measurements.filter((_, index) => index !== rowIndex); draft.value = { ...draft.value, measurements: rows.length > 0 ? rows : [createEmptyAttributeRow()] }; measurementIndex.value = Math.min(measurementIndex.value, draft.value.measurements.length - 1); autoSaveDraft() }
+	function removeMeasurement(rowIndex: number) { const rows = draft.value.measurements.filter((_, index) => index !== rowIndex); draft.value = { ...draft.value, measurements: rows.length > 0 ? rows : [createEmptyAttributeRow()] }; measurementIndex.value = Math.min(measurementIndex.value, draft.value.measurements.length - 1); autoSaveDraft() }
 	/** 在规格组之间向前切换，不修改已保存数据。 */
 	function previousMeasurement() { measurementIndex.value = Math.max(0, measurementIndex.value - 1) }
 	/** 在规格组之间向后切换，不修改已保存数据。 */
 	function nextMeasurement() { measurementIndex.value = Math.min(draft.value.measurements.length - 1, measurementIndex.value + 1) }
 	/** 更新指定文本组中的属性值并触发自动保存。 */
-	function updateTextField(rowIndex, attrId, event) { const rows = [...draft.value.textGroups]; rows[rowIndex] = { ...rows[rowIndex], [attrId]: String(event?.detail?.value ?? '') }; draft.value = { ...draft.value, textGroups: rows }; autoSaveDraft() }
+	function updateTextField(rowIndex: number, attrId: string, event: UniInputEvent) { const rows = [...draft.value.textGroups]; rows[rowIndex] = { ...rows[rowIndex], [attrId]: event.detail.value }; draft.value = { ...draft.value, textGroups: rows }; autoSaveDraft() }
 	/** 新增一组 H5 文本属性并触发自动保存。 */
 	function addTextGroup() { draft.value = { ...draft.value, textGroups: [...draft.value.textGroups, createEmptyAttributeRow()] }; textGroupIndex.value = draft.value.textGroups.length - 1; autoSaveDraft() }
 	/** 删除指定文本组、至少保留一组空数据并触发自动保存。 */
-	function removeTextGroup(rowIndex) { const rows = draft.value.textGroups.filter((_, index) => index !== rowIndex); draft.value = { ...draft.value, textGroups: rows.length > 0 ? rows : [createEmptyAttributeRow()] }; textGroupIndex.value = Math.min(textGroupIndex.value, draft.value.textGroups.length - 1); autoSaveDraft() }
+	function removeTextGroup(rowIndex: number) { const rows = draft.value.textGroups.filter((_, index) => index !== rowIndex); draft.value = { ...draft.value, textGroups: rows.length > 0 ? rows : [createEmptyAttributeRow()] }; textGroupIndex.value = Math.min(textGroupIndex.value, draft.value.textGroups.length - 1); autoSaveDraft() }
 	/** 在文本组之间向前切换。 */
 	function previousTextGroup() { textGroupIndex.value = Math.max(0, textGroupIndex.value - 1) }
 	/** 在文本组之间向后切换。 */
 	function nextTextGroup() { textGroupIndex.value = Math.min(draft.value.textGroups.length - 1, textGroupIndex.value + 1) }
-	/** 更新指定条码记录并触发自动保存。 */
-	function updateBarcode(index, event) { const rows = [...draft.value.barcodeItems]; rows[index] = { ...rows[index], code: String(event?.detail?.value ?? '') }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }
 	/** 同步条码对象及旧版条码列表到离线草稿。 */
-	function syncBarcodes() { const barcodeList = draft.value.barcodeItems.map((row) => String(row?.code ?? '').trim()).filter((code) => code !== ''); draft.value = { ...draft.value, barcodeList, barcode: barcodeList[0] ?? '' }; autoSaveDraft() }
+	function syncBarcodes() { const barcodeList = draft.value.barcodeItems.map((row) => (row['code'] ?? '').toString().trim()).filter((code) => code !== ''); draft.value = { ...draft.value, barcodeList, barcode: barcodeList[0] ?? '' }; autoSaveDraft() }
+	/** 更新指定条码记录并触发自动保存。 */
+	function updateBarcode(index: number, event: UniInputEvent) { const rows = [...draft.value.barcodeItems]; rows[index] = { ...rows[index], code: event.detail.value }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }
 	/** 打开新建或编辑条码名称的原生弹层。 */
-	function openBarcodeEditor(index) { editingBarcodeIndex.value = index; barcodeName.value = index >= 0 ? String(draft.value.barcodeItems[index]?.name ?? '') : ''; showBarcodeEditor.value = true }
+	function openBarcodeEditor(index: number) { editingBarcodeIndex.value = index; barcodeName.value = index >= 0 ? (draft.value.barcodeItems[index]?.['name'] ?? '').toString() : ''; showBarcodeEditor.value = true }
 	/** 更新条码名称输入。 */
-	function updateBarcodeName(event) { barcodeName.value = String(event?.detail?.value ?? '') }
+	function updateBarcodeName(event: UniInputEvent) { barcodeName.value = event.detail.value }
 	/** 关闭条码名称弹层。 */
 	function closeBarcodeEditor() { showBarcodeEditor.value = false; editingBarcodeIndex.value = -1 }
 	/** 保存新条码项或当前条码名称。 */
@@ -178,7 +225,7 @@
 	/** 删除当前条码项并同步旧版条码字段。 */
 	function deleteBarcode() { const rows = draft.value.barcodeItems.filter((_, index) => index !== editingBarcodeIndex.value); draft.value = { ...draft.value, barcodeItems: rows }; closeBarcodeEditor(); syncBarcodes() }
 	/** 使用 App 原生扫码，保存扫描值及格式；取消扫码不改草稿。 */
-	function scanBarcode(index) { uni.scanCode({ scanType: ['barCode', 'qrCode'], success: (result) => { const rows = [...draft.value.barcodeItems]; if (!rows[index]) return; rows[index] = { ...rows[index], code: String(result?.result ?? '').trim(), format: String(result?.scanType ?? '') }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }, fail: (error) => { if (!String(error?.errMsg ?? '').toLowerCase().includes('cancel')) uni.showToast({ title: t('扫码失败，请重试'), icon: 'none' }) } }) }
+	function scanBarcode(index: number) { uni.scanCode({ scanType: ['barCode', 'qrCode'], success: (result: ScanCodeSuccess) => { const rows = [...draft.value.barcodeItems]; if (rows[index] == null) return; rows[index] = { ...rows[index], code: result.result.trim(), format: result.scanType }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }, fail: (error: ScanCodeFail) => { if (!(JSON.stringify(error) ?? '').toLowerCase().includes('cancel')) uni.showToast({ title: t('扫码失败，请重试'), icon: 'none' }) } }) }
 	/** 请求复制当前检查项到其他验货计划。 */
 	function requestCopyItems() { emit('copy-items', props.item) }
 	/** 请求批量移动当前检查项已上传的照片或视频。 */
@@ -190,38 +237,39 @@
 	/** 请求页面调用相机或相册添加检查项图片。 */
 	function addPhoto() { emit('add-photo', props.item) }
 	/** 请求页面删除当前检查项中的指定图片。 */
-	function removePhoto(photo) { emit('remove-photo', { item: props.item, photo }) }
+	function removePhoto(photo: UTSJSONObject) { emit('remove-photo', { item: props.item, photo }) }
 	/** 请求页面预览当前检查项图片。 */
-	function previewPhoto(photo) { emit('preview-photo', { item: props.item, photo }) }
+	function previewPhoto(photo: UTSJSONObject) { emit('preview-photo', { item: props.item, photo }) }
 	/** 请求页面将上传失败的检查项图片重新加入上传队列。 */
-	function retryPhoto(photo) { emit('retry-photo', { item: props.item, photo }) }
+	function retryPhoto(photo: UTSJSONObject) { emit('retry-photo', { item: props.item, photo }) }
 	/** 打开当前检查项图片排序底部弹层。 */
 	function openPhotoSort() { if (mediaPhotos.value.length > 1) showPhotoSort.value = true }
 	/** 关闭图片排序底部弹层并放弃临时顺序。 */
 	function closePhotoSort() { showPhotoSort.value = false }
 	/** 应用确认后的图片顺序并通知详情页保存普通草稿。 */
-	function confirmPhotoSort(photos) { let index = 0; const merged = draft.value.photos.map((photo) => photo?.bizType === 'checkPoint' ? photo : photos[index++]); draft.value = { ...draft.value, photos: merged }; showPhotoSort.value = false; emit('photos-sorted', { item: props.item, photos: merged, data: buildDraftData() }) }
+	function confirmPhotoSort(photos: UTSJSONObject[]) { let index = 0; const merged = draft.value.photos.map((photo) => photo?.bizType === 'checkPoint' ? photo : photos[index++]); draft.value = { ...draft.value, photos: merged }; showPhotoSort.value = false; emit('photos-sorted', { item: props.item, photos: merged, data: buildDraftData() }) }
 	/** 打开当前检查项已关联的疵点记录。 */
-	function openDefect(defect) { emit('open-defect', defect) }
+	function openDefect(defect: UTSJSONObject) { emit('open-defect', defect) }
 	/** 将服务端疵点等级标准化为 H5 使用的三级枚举。 */
-	function normalizeSeverity(raw) { const value = String(raw ?? '').toUpperCase(); if (value.includes('CRITICAL') || value.includes('致命')) return 'CRITICAL'; if (value.includes('MAJOR') || value.includes('主要') || value.includes('严重')) return 'MAJOR'; return 'MINOR' }
+	function normalizeSeverity(raw: any): string { const value = (raw ?? '').toString().toUpperCase(); if (value.includes('CRITICAL') || value.includes('致命')) return 'CRITICAL'; if (value.includes('MAJOR') || value.includes('主要') || value.includes('严重')) return 'MAJOR'; return 'MINOR' }
 	/** 返回标准化疵点等级对应的中文名称。 */
-	function getSeverityLabel(raw) { const labels = { CRITICAL: '致命', MAJOR: '主要', MINOR: '次要' }; return labels[normalizeSeverity(raw)] }
-	/** 关闭检查项编辑弹层。 */
-	function closeSheet() { emit('close') }
+	function getSeverityLabel(raw: any): string { const labels: UTSJSONObject = { CRITICAL: '致命', MAJOR: '主要', MINOR: '次要' }; return (labels[normalizeSeverity(raw)] ?? '次要').toString() }
+	/** 关闭检查项弹层前保存仍在编辑的备注。 */
+	function closeSheet() { saveNotesOnBlur(); emit('close') }
 	/** 阻止点击弹层内容区域时触发遮罩关闭。 */
 	function stopEvent() {}
 
-	watch(() => props.item, resetDraft, { immediate: true, deep: true })
+	/** 监听父页面切换的检查项，并初始化与其对应的可编辑草稿。 */
+	watch((): UTSJSONObject => itemData.value, (item: UTSJSONObject) => resetDraft(item), { immediate: true, deep: true })
 </script>
 
 <style>
 	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2200; justify-content: flex-end; background-color: rgba(15,23,42,0.52); }
-	.sheet { position: absolute; left: 0; top: 15%; right: 0; bottom: 0; overflow: hidden; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
+	.sheet { position: absolute; left: 0; top: 15%; right: 0; bottom: 0; overflow: hidden; flex-direction: column; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
 	.sheet-handle { width: 74rpx; height: 8rpx; margin: 14rpx auto 8rpx; border-radius: 4rpx; background-color: #d7dde7; }
 	.sheet-head { height: 92rpx; padding: 0 24rpx; flex-direction: row; align-items: center; border-bottom-width: 1rpx; border-bottom-color: #eef2f7; }
 	.sheet-title { flex: 1; padding: 0 16rpx; color: #172033; font-size: 28rpx; font-weight: 700; text-align: center; }
-	.sheet-body { flex: 1; padding: 24rpx 28rpx; padding-bottom: 300rpx; }
+	.sheet-body { flex: 1; min-height: 0; padding: 24rpx 28rpx; padding-bottom: 24rpx; }
 	.current-result-banner { min-height: 72rpx; padding: 0 22rpx; border-radius: 16rpx; flex-direction: row; align-items: center; justify-content: space-between; }
 	.banner-pass { background-color: #ecfdf3; }.banner-fail { background-color: #fef2f2; }.banner-pending { background-color: #fffbeb; }.banner-na { background-color: #f1f5f9; }
 	.banner-left { flex-direction: row; align-items: center; }.result-status-dot { width: 14rpx; height: 14rpx; margin-right: 12rpx; border-radius: 7rpx; background-color: #64748b; }
@@ -229,12 +277,12 @@
 	.item-description { margin-top: 22rpx; padding: 20rpx; border-radius: 16rpx; color: #64748b; font-size: 24rpx; line-height: 36rpx; background-color: #f8fafc; }
 	.type-section, .media-section, .defects-section, .notes-section { margin-top: 28rpx; }.section-title-row { margin-bottom: 16rpx; flex-direction: row; align-items: center; justify-content: space-between; }.section-title { margin-bottom: 16rpx; color: #334155; font-size: 26rpx; font-weight: 700; }
 	.group-navigation { min-height: 72rpx; flex-direction: row; align-items: center; justify-content: space-around; color: #039447; font-size: 24rpx; }.group-summary { margin-top: 20rpx; color: #64748b; font-size: 22rpx; }.summary-scroll { width: 100%; margin-top: 12rpx; }.summary-row { flex-direction: row; min-height: 58rpx; align-items: center; border-bottom-width: 1rpx; border-bottom-color: #e2e8f0; }.summary-label, .summary-cell { width: 170rpx; padding: 8rpx; color: #475569; font-size: 21rpx; }.summary-current { color: #039447; background-color: #ecfdf3; }
-	.barcode-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 30; justify-content: flex-end; background-color: rgba(15,23,42,.55); }.barcode-dialog { padding: 30rpx; padding-bottom: calc(30rpx + env(safe-area-inset-bottom)); border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
+	.barcode-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 30; justify-content: flex-end; background-color: rgba(15,23,42,.55); }.barcode-dialog { padding: 30rpx; padding-bottom: 30rpx; border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
 	.group-card { margin-bottom: 16rpx; padding: 14rpx 16rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 16rpx; background-color: #ffffff; }.group-head { min-height: 48rpx; flex-direction: row; align-items: center; justify-content: space-between; color: #334155; font-size: 23rpx; font-weight: 600; }
 	.value-row { min-height: 78rpx; flex-direction: row; align-items: center; }.value-label { width: 220rpx; color: #64748b; font-size: 23rpx; }.value-input { flex: 1; height: 66rpx; padding: 0 16rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 14rpx; font-size: 24rpx; background-color: #f8fafc; }
 	.photo-grid { flex-direction: row; flex-wrap: wrap; }.photo-item, .photo-add { position: relative; width: 190rpx; height: 190rpx; margin: 8rpx; overflow: hidden; border-radius: 18rpx; background-color: #f1f5f9; }.photo-image { width: 190rpx; height: 190rpx; }.photo-add { border-width: 2rpx; border-style: dashed; border-color: #b7c1cf; align-items: center; justify-content: center; color: #64748b; font-size: 22rpx; }.photo-state { position: absolute; left: 8rpx; bottom: 8rpx; padding: 5rpx 9rpx; border-radius: 10rpx; color: #ffffff; font-size: 18rpx; background-color: rgba(15,23,42,0.62); }.photo-delete { position: absolute; top: 8rpx; right: 8rpx; width: 42rpx; height: 42rpx; border-radius: 21rpx; align-items: center; justify-content: center; background-color: rgba(15,23,42,0.68); }
 	.defect-item { min-height: 76rpx; padding: 0 16rpx; margin-bottom: 10rpx; border-width: 1rpx; border-color: #e5e7eb; border-radius: 14rpx; flex-direction: row; align-items: center; background-color: #ffffff; }.defect-severity-tag { padding: 7rpx 12rpx; border-radius: 10rpx; color: #ffffff; font-size: 20rpx; }.severity-CRITICAL { background-color: #7f1d1d; }.severity-MAJOR { background-color: #ef4444; }.severity-MINOR { background-color: #f59e0b; }.defect-category { flex: 1; margin-left: 14rpx; color: #334155; font-size: 23rpx; }.defect-quantity { margin-right: 12rpx; color: #64748b; font-size: 22rpx; }
-	.remarks { width: 100%; min-height: 180rpx; padding: 20rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 16rpx; color: #334155; font-size: 25rpx; background-color: #f8fafc; }
-	.modal-footer-fixed { position: absolute; bottom: 0; left: 0; right: 0; z-index: 20; padding: 20rpx 24rpx; padding-bottom: calc(20rpx + env(safe-area-inset-bottom)); border-top-width: 1rpx; border-top-color: #eef2f7; background-color: #ffffff; }
+	.remarks { width: 100%; min-height: 150rpx; padding: 20rpx 24rpx; box-sizing: border-box; border-width: 2rpx; border-style: solid; border-color: #e5e7eb; border-radius: 16rpx; color: #1e293b; font-size: 28rpx; background-color: #ffffff; }
+	.modal-footer-fixed { flex-shrink: 0; z-index: 20; padding: 20rpx 24rpx; padding-bottom: 20rpx; border-top-width: 1rpx; border-top-color: #eef2f7; background-color: #ffffff; }
 	.result-circles-row { flex-direction: row; align-items: flex-start; justify-content: space-around; }.result-circle { width: 25%; padding: 16rpx 2rpx; align-items: center; }.circle-icon { width: 120rpx; height: 120rpx; border-radius: 60rpx; align-items: center; justify-content: center; background-color: #f1f5f9; }.circle-icon.pass { background-color: #dcfce7; }.circle-icon.fail { background-color: #fee2e2; }.circle-icon.pending { background-color: #fef3c7; }.circle-icon.pass.active { background-color: #22c55e; }.circle-icon.fail.active { background-color: #ef4444; }.circle-icon.pending.active { background-color: #f59e0b; }.circle-icon.na.active { background-color: #64748b; }.circle-text { margin-top: 12rpx; color: #64748b; font-size: 22rpx; text-align: center; }.circle-text.active { color: #1e293b; font-weight: 600; }
 </style>

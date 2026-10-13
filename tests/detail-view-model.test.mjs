@@ -4,6 +4,30 @@ import { loadUtsModule } from './load-uts-module.mjs'
 
 const viewModel = await loadUtsModule('domain/detailViewModel.uts')
 
+/** 服务端清单模板 ID 不等于结果 ID 时，列表和弹层必须用结果主键读取状态与备注。 */
+test('binds template checklist nodes to their persisted item result ids', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'plan' },
+    standardItems: [{ id: 'section', children: [{ id: 'template-1', itemName: '外观', itemType: 'Standard' }] }],
+    itemResults: [{ id: 'result-1', standardItemId: 'template-1', resultStatus: 'APPROVED', remarks: '你好测试\n' }]
+  }, 'plan')
+  const child = detail.standardItems[0].children[0]
+  assert.equal(child.id, 'result-1')
+  assert.equal(detail.checklistData[child.id].result, 'pass')
+  assert.equal(detail.checklistData[child.id].comment, '你好测试\n')
+  assert.equal(detail.checklistItems.find((item) => item.itemId === child.id)?.data.comment, '你好测试\n')
+})
+
+/** 未先经 SQLite 落库的详情同样要按 H5 规则回显条码结果和备注。 */
+test('normalizes barcode values from a remote item result for the checklist sheet', () => {
+  const detail = viewModel.normalizeInspectionDetail({ plan: { id: 'plan' }, itemResults: [
+    { id: 'barcode', itemType: 'Barcodes', resultStatus: 'APPROVED', remarks: '扫码正常', barcodeValue: '[{"name":"EAN","code":"12345","format":"EAN13"}]' }
+  ] }, 'plan')
+  assert.equal(detail.checklistData.barcode.result, 'pass')
+  assert.equal(detail.checklistData.barcode.comment, '扫码正常')
+  assert.deepEqual(detail.checklistData.barcode.barcodeItems, [{ name: 'EAN', code: '12345', format: 'EAN13' }])
+})
+
 test('normalizes H5 standard items and item results into editable checklist data', () => {
   const detail = viewModel.normalizeInspectionDetail({
     plan: { id: 'plan-1', inspectorName: '张三' },
@@ -83,6 +107,41 @@ test('updates checklist results and calculates completion progress', () => {
 
   assert.equal(updated.checklistData['item-1'].completed, true)
   assert.equal(updated.progress, 50)
+})
+
+/** 快速结果切换只更新目标行和进度，不重新整理媒体与疵点。 */
+test('quick result updates keep media and unrelated checklist rows intact', () => {
+  const base = viewModel.normalizeInspectionDetail({
+    plan: { id: 'parent' },
+    standardItems: [{ children: [{ id: 'item-1' }, { id: 'item-2' }] }],
+    checklistData: { 'item-1': { comment: '原备注', photos: [{ photoId: 'photo-1', localPath: '/tmp/one.jpg' }] } },
+    defects: [{ id: 'defect-1', checkItemId: 'item-2' }]
+  }, 'parent')
+  const updated = viewModel.updateChecklistResult(base, 'item-1', 'pass')
+  assert.equal(updated.checklistData['item-1'].result, 'pass')
+  assert.equal(updated.checklistData['item-1'].comment, '原备注')
+  assert.equal(updated.checklistData['item-1'].completed, true)
+  assert.equal(updated.progress, 50)
+  assert.strictEqual(updated.photos, base.photos)
+  assert.strictEqual(updated.defects, base.defects)
+  assert.strictEqual(updated.checklistData['item-2'], base.checklistData['item-2'])
+  assert.equal(base.checklistData['item-1'].result, undefined)
+  const pending = viewModel.updateChecklistResult(updated, 'item-1', 'pending')
+  assert.equal(pending.checklistData['item-1'].completed, false)
+  assert.equal(pending.progress, 0)
+})
+
+/** 合并子计划的快速结果只改变子行，不影响主检查项的完成进度。 */
+test('quick result updates isolate merged child rows', () => {
+  const base = viewModel.normalizeInspectionDetail({
+    plan: { id: 'parent' },
+    standardItems: [{ children: [{ id: 'item-1' }] }],
+    checklistData: { 'item-1': { result: 'pass', completed: true }, 'item-1__child-1': { result: 'pending', completed: false } }
+  }, 'parent')
+  const updated = viewModel.updateChecklistResult(base, 'item-1__child-1', 'fail')
+  assert.equal(updated.checklistData['item-1__child-1'].result, 'fail')
+  assert.equal(updated.checklistData['item-1'].result, 'pass')
+  assert.equal(updated.progress, 100)
 })
 
 test('builds H5-compatible draft payload using only uploaded media', () => {
@@ -295,6 +354,33 @@ test('builds merged inspection payload with main rows and edited child rows only
   assert.equal(payload.itemResults[1].resultStatus, 'REJECTED')
 })
 
+/** H5 用当前子计划 ID 提交，结果 ID 与模板 ID 各自保持语义且不发送下载元数据。 */
+test('generates H5-shaped result rows from downloaded JSON for a merged child', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'child', parentPlanId: 'parent', mergeType: 2 }, report: { id: 'report', planId: 'parent' },
+    itemResults: [{ id: 'result-1', standardItemId: 'template-1', itemType: 'Standard', parentItemId: 'section', createBy: 'server' }],
+    standardItems: [{ id: 'section', children: [{ id: 'result-1', standardItemId: 'template-1', itemType: 'Standard' }] }],
+    checklistData: { 'result-1': { result: 'pass' }, 'result-1__child': { result: 'fail', comment: '复检' } }
+  }, 'child')
+  const payload = viewModel.buildGeneratePayload(detail)
+  assert.equal(payload.planId, 'child')
+  assert.deepEqual(payload.itemResults.map((row) => [row.id, row.standardItemId, row.sonPlanId]), [
+    ['result-1', 'template-1', null], ['result-1_child', 'template-1', 'child']
+  ])
+  assert.equal(payload.itemResults[0].parentItemId, undefined)
+  assert.equal(payload.itemResults[0].createBy, undefined)
+})
+
+test('omits untouched merged child rows with empty measurement placeholders', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'parent', mergeType: 2 },
+    standardItems: [{ id: 'section', children: [{ id: 'check', itemType: 'Measurements' }] }],
+    itemResults: [{ id: 'check', itemType: 'Measurements' }],
+    checklistData: { check: { result: 'pass' }, 'check__child': { measurements: [{ value: '' }], textGroups: [{ value: '' }] } }
+  }, 'parent')
+  assert.deepEqual(viewModel.buildGeneratePayload(detail).itemResults.map((row) => row.id), ['check'])
+})
+
 test('builds H5 defect counts and severity groups including affected totals', () => {
   const summary = viewModel.buildDefectViewModel([
     { id: 'd1', type: 'CRITICAL', quantity: 2 },
@@ -344,6 +430,54 @@ test('merges uploaded repository photos back into checklist and defect drafts be
   assert.equal(merged.checklistData['item-1'].photos[0].fileId, 'file-1')
   assert.equal(merged.defects[0].photos[0].fileId, 'file-2')
   assert.equal(merged.photos.length, 2)
+})
+
+/** 上传回填仅替换受影响媒体，不重建无关检查项，并清除已上传照片的待上传状态。 */
+test('refreshes uploaded photos without rebuilding unrelated checklist data', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'plan-1' },
+    standardItems: [{ id: 'section-1', children: [{ id: 'item-1' }, { id: 'item-2' }] }],
+    checklistData: {
+      'item-1': { photos: [{ photoId: 'local-1', ownerType: 'checklist', ownerId: 'item-1', localPath: '/local/one.jpg', uploadStatus: 'pending' }] },
+      'item-2': { result: 'pass', photos: [] }
+    }
+  }, 'plan-1')
+  const untouched = detail.checklistData['item-2']
+  const merged = viewModel.mergeDetailPhotos(detail, [
+    { photoId: 'local-1', ownerType: 'checklist', ownerId: 'item-1', fileId: 'remote-1', uploadStatus: 'done' }
+  ])
+
+  assert.strictEqual(merged.checklistData['item-2'], untouched)
+  assert.equal(merged.checklistData['item-1'].photos.length, 1)
+  assert.equal(merged.checklistData['item-1'].photos[0].uploadStatus, 'done')
+  assert.equal(merged.photos.find((photo) => photo.photoId === 'local-1').fileId, 'remote-1')
+})
+
+/** 总结弹层的订单、备货和抽样数量与 H5 合并计划汇总一致。 */
+test('summarizes finish quantities across merged plans', () => {
+  const totals = viewModel.buildFinishQuantityTotals({
+    plan: { id: 'parent', requiredQuantity: 20, finishQuantity: 18, sampleQuantity: 5 },
+    inspectionPlans: [
+      { id: 'parent', requiredQuantity: 20, finishQuantity: 18, sampleQuantity: 5 },
+      { id: 'child', requiredQuantity: 30, readyQuantity: 25, sampleSize: 8 }
+    ]
+  })
+  assert.deepEqual(totals, { orderQuantity: 50, readyQuantity: 43, sampleQuantity: 13 })
+})
+
+/** 输入弹层的旧媒体数组不能覆盖后台刚回填的上传成功状态。 */
+test('text edits retain fresh uploaded photo state without rebuilding media', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'plan-1' },
+    standardItems: [{ id: 'section', children: [{ id: 'item-1' }] }],
+    checklistData: { 'item-1': { photos: [{ photoId: 'photo-1', fileId: 'remote-1', uploadStatus: 'done' }] } }
+  }, 'plan-1')
+  const updated = viewModel.updateChecklistItem(detail, 'item-1', {
+    comment: '新备注', photos: [{ photoId: 'photo-1', uploadStatus: 'pending' }]
+  })
+  assert.strictEqual(updated.photos, detail.photos)
+  assert.equal(updated.checklistData['item-1'].photos[0].fileId, 'remote-1')
+  assert.strictEqual(updated.standardItems, detail.standardItems)
 })
 
 /** 新拍照片落入独立 photo 表时，保留仅存在于已下载详情中的原有检查点和疵点图片。 */

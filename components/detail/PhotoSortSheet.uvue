@@ -1,25 +1,25 @@
 <template>
 	<view v-if="visible" class="overlay" @click="closeSheet">
-		<view class="sheet" @click.stop="stopEvent">
+		<view class="sheet" :style="{ maxHeight: sheetMaxHeight, paddingBottom: sheetBottomPadding }" @click.stop="stopEvent">
 			<view class="sheet-handle"></view>
 			<view class="sheet-head">
-				<text class="head-action" @click="closeSheet">{{ t('取消') }}</text>
-				<text class="sheet-title">{{ t('调整图片顺序') }}</text>
-				<text class="head-action done" @click="saveOrder">{{ t('完成') }}</text>
+				<text class="head-action" @click="closeSheet">{{ translateText('取消') }}</text>
+				<text class="sheet-title">{{ translateText('调整图片顺序') }}</text>
+				<text class="head-action done" @click="saveOrder">{{ translateText('完成') }}</text>
 			</view>
-			<text class="sort-hint">{{ t('先选择图片，再点击目标位置') }}</text>
-			<scroll-view class="sort-body" scroll-y="true" show-scrollbar="false">
+			<text class="sort-hint">{{ translateText('先选择图片，再点击目标位置') }}</text>
+			<scroll-view class="sort-body" :style="{ maxHeight: bodyMaxHeight }" :scroll-y="true" :show-scrollbar="false">
 				<view class="sort-grid">
 					<view
 						v-for="(photo, index) in sortedPhotos"
-						:key="photo.photoId || photo.fileId || photo.localPath || index"
-						class="sort-cell"
+						:key="index"
+						class="sort-cell" :style="{ height: sortCellHeight }"
 						:class="{ selected: selectedIndex === index }"
 						@click="selectPosition(index)"
 					>
 						<InspectionMediaImage class="sort-image" :media="photo" />
 						<view class="sort-number"><text>{{ index + 1 }}</text></view>
-						<view v-if="selectedIndex === index" class="selected-mask"><text>{{ t('已选择') }}</text></view>
+						<view v-if="selectedIndex === index" class="selected-mask"><text>{{ translateText('已选择') }}</text></view>
 					</view>
 				</view>
 			</scroll-view>
@@ -28,8 +28,9 @@
 </template>
 
 <script setup lang="uts">
+	import { windowHeightPx, safeBottomPaddingPx, photoSortCellPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
-	import { ref, watch } from 'vue'
+	import { computed, ref, watch } from 'vue'
 	import { moveMediaItem, normalizeMediaOrder } from '../../domain/mediaSort.uts'
 	import InspectionMediaImage from './InspectionMediaImage.uvue'
 
@@ -38,17 +39,27 @@
 		photos: { type: Array, default: () => [] }
 	})
 	const emit = defineEmits(['close', 'sorted'])
-	const sortedPhotos = ref([])
+	const sortedPhotos = ref<UTSJSONObject[]>([])
 	const selectedIndex = ref(-1)
+	/** 为原生排序弹层提供可调用的多语言方法。 */
+	function translateText(key: string): string { return t(key) }
+	/** 限制排序弹层的最大高度。 */
+	const sheetMaxHeight = computed((): string => windowHeightPx(0.82))
+	/** 限制排序网格的可滚动区域。 */
+	const bodyMaxHeight = computed((): string => windowHeightPx(0.58))
+	/** 将底部系统安全区纳入排序弹层内边距。 */
+	const sheetBottomPadding = computed((): string => safeBottomPaddingPx(24))
+	/** 根据设备宽度计算三列照片格子高度。 */
+	const sortCellHeight = computed((): string => photoSortCellPx())
 
 	/** 打开排序弹层时复制当前图片顺序，关闭时清除临时选择。 */
-	watch(() => props.visible, (visible) => {
-		if (visible) sortedPhotos.value = normalizeMediaOrder(props.photos)
+	watch((): boolean => props.visible, (visible: boolean) => {
+		if (visible) sortedPhotos.value = normalizeMediaOrder(props.photos) as UTSJSONObject[]
 		selectedIndex.value = -1
 	})
 
 	/** 先记录源图片，再在用户点击目标位置时完成不可变换位。 */
-	function selectPosition(index) {
+	function selectPosition(index: number) {
 		if (selectedIndex.value < 0) {
 			selectedIndex.value = index
 			return
@@ -57,7 +68,7 @@
 			selectedIndex.value = -1
 			return
 		}
-		sortedPhotos.value = moveMediaItem(sortedPhotos.value, selectedIndex.value, index)
+		sortedPhotos.value = moveMediaItem(sortedPhotos.value, selectedIndex.value, index) as UTSJSONObject[]
 		selectedIndex.value = -1
 	}
 
@@ -71,16 +82,16 @@
 
 <style>
 	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2600; justify-content: flex-end; background-color: rgba(15,23,42,.46); }
-	.sheet { width: 100%; max-height: 82vh; padding-bottom: calc(24rpx + env(safe-area-inset-bottom)); border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
+	.sheet { width: 100%; padding-bottom: 24rpx; border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
 	.sheet-handle { width: 72rpx; height: 8rpx; margin: 14rpx auto 4rpx; border-radius: 4rpx; background-color: #cbd5e1; }
 	.sheet-head { height: 92rpx; padding: 0 28rpx; flex-direction: row; align-items: center; justify-content: space-between; border-bottom-width: 1rpx; border-bottom-color: #eef2f7; }
 	.sheet-title { color: #0f172a; font-size: 30rpx; font-weight: 700; }
 	.head-action { width: 100rpx; color: #64748b; font-size: 25rpx; }
 	.head-action.done { color: #039447; text-align: right; font-weight: 600; }
 	.sort-hint { padding: 18rpx 28rpx; color: #64748b; font-size: 23rpx; background-color: #f8fafc; }
-	.sort-body { max-height: 58vh; padding: 18rpx; box-sizing: border-box; }
+	.sort-body { padding: 18rpx; box-sizing: border-box; }
 	.sort-grid { width: 100%; flex-direction: row; flex-wrap: wrap; }
-	.sort-cell { position: relative; width: 33.333333%; aspect-ratio: 1; padding: 8rpx; box-sizing: border-box; }
+	.sort-cell { position: relative; width: 33.333333%; padding: 8rpx; box-sizing: border-box; }
 	.sort-image { width: 100%; height: 100%; overflow: hidden; border-width: 3rpx; border-color: transparent; border-radius: 18rpx; background-color: #f1f5f9; }
 	
 	.sort-number { position: absolute; left: 18rpx; top: 18rpx; min-width: 42rpx; height: 42rpx; padding: 0 8rpx; border-radius: 21rpx; align-items: center; justify-content: center; color: #ffffff; font-size: 21rpx; background-color: rgba(15,23,42,.72); }

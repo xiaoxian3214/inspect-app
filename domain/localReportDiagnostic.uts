@@ -1,16 +1,27 @@
 /** 提取本地报告的精简诊断信息，避免将照片和完整清单塞进剪贴板。 */
 export function buildLocalReportDiagnostic(row) {
-  const jsonData = String(row?.jsonData ?? '')
-  let detail = {}
+  const hasAssembledData = row?.data != null && typeof row.data === 'object'
+  const jsonData = hasAssembledData ? JSON.stringify(row.data) : String(row?.jsonData ?? '')
+  let detail = hasAssembledData ? row.data : {}
   let jsonParseError = false
-  try {
-    detail = jsonData === '' ? {} : JSON.parse(jsonData)
-  } catch (_) {
-    jsonParseError = true
+  if (!hasAssembledData) {
+    try {
+      detail = jsonData === '' ? {} : JSON.parse(jsonData)
+    } catch (_) {
+      jsonParseError = true
+    }
   }
-  const plan = detail?.plan != null && typeof detail.plan === 'object' ? detail.plan : {}
+  const isPlanRow = detail?.groupPlanId != null && detail?.planId != null
+  const plan = isPlanRow ? {
+    id: detail.id ?? detail.planId,
+    goodsName: detail.goods_name,
+    goodsCname: detail.goods_cname,
+    subGoodsNo: detail.sub_goods_no,
+    clientOrderNo: detail.client_order_no
+  } : detail?.plan != null && typeof detail.plan === 'object'
+    ? detail.plan : (Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans[0] ?? {} : {})
   const standardItems = Array.isArray(detail?.standardItems) ? detail.standardItems : []
-  const inspectionPlans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : []
+  const inspectionPlans = isPlanRow ? [plan] : (Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : [])
   const checklistLeafCount = standardItems.reduce((count, section) => {
     return count + (Array.isArray(section?.children) ? section.children.length : 0)
   }, 0)
@@ -18,12 +29,13 @@ export function buildLocalReportDiagnostic(row) {
     reportId: String(row?.reportId ?? ''),
     status: row?.status ?? '',
     downloadAt: row?.downloadAt ?? '',
-    planId: String(plan?.id ?? plan?.planId ?? ''),
+    planId: String(row?.planId ?? plan?.id ?? plan?.planId ?? ''),
     reportEntityId: String(detail?.report?.id ?? ''),
     inspectionPlanIds: inspectionPlans.map((item) => String(item?.id ?? item?.planId ?? '')),
     standardItemsCount: standardItems.length,
     checklistLeafCount,
     itemResultsCount: Array.isArray(detail?.itemResults) ? detail.itemResults.length : 0,
+    defectRecordsCount: Array.isArray(detail?.defectRecords) ? detail.defectRecords.length : 0,
     checklistItemsCount: Array.isArray(detail?.checklistItems) ? detail.checklistItems.length : 0,
     hasPlanDisplayFields: [plan?.goodsName, plan?.goodsCname, plan?.subGoodsNo, plan?.planNo, plan?.clientOrderNo]
       .some((value) => value !== undefined && value !== null && String(value).trim() !== ''),
@@ -31,4 +43,66 @@ export function buildLocalReportDiagnostic(row) {
     jsonLength: jsonData.length,
     jsonParseError
   }, null, 2)
+}
+
+/** 将已落库详情按获取详情接口的 data 字段组织，不伪造网络响应状态和时间。 */
+export function buildLocalDetailResponse(detail) {
+  const itemResults = Array.isArray(detail?.itemResults) ? detail.itemResults : []
+  const defectRecords = Array.isArray(detail?.defectRecords) ? detail.defectRecords
+    : (Array.isArray(detail?.defects) ? detail.defects : [])
+  const passedItems = itemResults.filter((item) => item?.resultStatus === 'APPROVED').length
+  return { data: {
+    report: detail?.report ?? null,
+    itemResults,
+    defectRecords,
+    inspectionPlans: Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : (detail?.plan == null ? [] : [detail.plan]),
+    totalItems: itemResults.length,
+    passedItems,
+    failedItems: itemResults.length - passedItems,
+    template: detail?.template ?? null,
+    standardItems: detail?.standardItems ?? null,
+    criticalCount: detail?.criticalCount ?? 0,
+    majorCount: detail?.majorCount ?? 0,
+    minorCount: detail?.minorCount ?? 0,
+    totalDefects: defectRecords.length
+  } }
+}
+
+/** 将 SQLite 原始结果、组装后的本地详情和页面实际绑定值合成一份可复制的完整诊断。 */
+export function buildLocalDetailDebugSnapshot(sqliteDetail, pageDetail, sqliteItemResultRows) {
+  const rows = Array.isArray(sqliteItemResultRows) ? sqliteItemResultRows : []
+  const itemResults = rows.length > 0 ? rows.map((row) => row.jsonData)
+    : (Array.isArray(sqliteDetail?.itemResults) ? sqliteDetail.itemResults : [])
+  const treeItems = []
+  ;(Array.isArray(pageDetail?.standardItems) ? pageDetail.standardItems : []).forEach((section) => {
+    if (Array.isArray(section?.children) && section.children.length > 0) treeItems.push(...section.children)
+    else treeItems.push(section)
+  })
+  const resultBindings = itemResults.map((row) => {
+    const resultId = String(row?.id ?? row?.itemResultId ?? '')
+    const sonPlanId = String(row?.sonPlanId ?? '').trim()
+    const baseId = sonPlanId !== '' && resultId.endsWith(`_${sonPlanId}`)
+      ? resultId.slice(0, -(`_${sonPlanId}`.length)) : resultId
+    const dataKey = sonPlanId !== '' ? `${baseId}__${sonPlanId}` : resultId
+    const standardItemId = String(row?.standardItemId ?? '')
+    const treeItem = treeItems.find((item) => String(item?.id ?? '') === baseId
+      || (standardItemId !== '' && String(item?.standardItemId ?? '') === standardItemId))
+    const visible = pageDetail?.checklistData?.[dataKey]
+    return {
+      itemResultId: resultId, standardItemId, sonPlanId,
+      resultStatus: row?.resultStatus ?? null, remarks: row?.remarks ?? null,
+      dataKey, treeItemId: String(treeItem?.id ?? ''),
+      visibleResult: visible?.result ?? null, visibleComment: visible?.comment ?? null
+    }
+  })
+  return { resultBindings, sqliteItemResultRows: rows, sqliteDetail, pageDetail }
+}
+
+/** 将完整 JSON 分段供原生 text 渲染；每段无丢失，复制时仍使用原始全文。 */
+export function getLocalDetailDebugPage(text, index = 0, chunkSize = 12000) {
+  const source = String(text ?? '')
+  const size = Math.max(1, Math.floor(Number(chunkSize ?? 12000)))
+  const total = Math.max(1, Math.ceil(source.length / size))
+  const currentIndex = Math.min(total - 1, Math.max(0, Math.floor(Number(index ?? 0))))
+  return { total, currentIndex, contentText: source.slice(currentIndex * size, (currentIndex + 1) * size) }
 }

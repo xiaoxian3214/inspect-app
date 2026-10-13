@@ -1126,6 +1126,17 @@ const appCopy = new Map<string, string[]>([
   ["验货总结结果", ["Inspection summary", "Tổng kết kiểm hàng"]],
   ["填写整体质量情况和结论", ["Describe overall quality and conclusions", "Mô tả chất lượng tổng thể và kết luận"]],
   ["本地报告数据", ["Local report data", "Dữ liệu báo cáo trên máy"]],
+  ["本地完整详情", ["Complete local details", "Chi tiết đầy đủ trên máy"]],
+  ["查看接口格式", ["View API format", "Xem định dạng API"]],
+  ["查看绑定诊断", ["View binding diagnostics", "Xem chẩn đoán liên kết"]],
+  ["从 SQLite 读取，按详情接口 data 格式展示；不是实时接口响应。", ["Read from SQLite in detail API data format; this is not a live API response.", "Đọc từ SQLite theo định dạng data của API chi tiết; không phải phản hồi trực tiếp."]],
+  ["复制完整数据", ["Copy all data", "Sao chép toàn bộ dữ liệu"]],
+  ["第 {current} / {total} 段", ["Part {current} / {total}", "Phần {current} / {total}"]],
+  ["更新时间：", ["Updated: ", "Cập nhật: "]],
+  ["依次包含结果绑定、SQLite 原始结果、SQLite 组装详情和页面当前详情；分段显示，复制包含全部内容。", ["Includes result bindings, raw SQLite results, assembled SQLite details, and current page details. Displayed in parts; copying includes everything.", "Gồm liên kết kết quả, kết quả SQLite gốc, chi tiết SQLite đã ghép và dữ liệu trang hiện tại. Hiển thị theo phần; sao chép gồm toàn bộ."]],
+  ["上一段", ["Previous part", "Phần trước"]],
+  ["下一段", ["Next part", "Phần sau"]],
+  ["已复制完整详情", ["Complete details copied", "Đã sao chép đầy đủ chi tiết"]],
   ["刷新", ["Refresh", "Làm mới"]],
   ["复制", ["Copy", "Sao chép"]],
   ["调整图片顺序", ["Reorder photos", "Sắp xếp lại ảnh"]],
@@ -1164,6 +1175,7 @@ const appCopy = new Map<string, string[]>([
   ["读取本地数据失败", ["Failed to load local data", "Không thể đọc dữ liệu trên máy"]],
   ["暂无本地下载数据", ["No downloaded data", "Chưa có dữ liệu tải về"]],
   ["下载的验货计划会保存到本机 SQLite 的 report 表。", ["Downloaded plans are saved to the local SQLite report table.", "Kế hoạch đã tải được lưu trong bảng report của SQLite trên máy."]],
+  ["下载的验货计划、报告、检查项与疵点会关联保存到本机 SQLite。", ["Downloaded plans, reports, check items and defects are linked in local SQLite.", "Kế hoạch, báo cáo, mục kiểm tra và lỗi đã tải được liên kết trong SQLite trên máy."]],
   ["处理中...", ["Processing...", "Đang xử lý..."]],
   ["暂无已上传图片", ["No uploaded photos", "Chưa có ảnh đã tải lên"]],
   ["请选择目标检查项", ["Select a target check item", "Chọn mục kiểm tra đích"]],
@@ -1188,6 +1200,10 @@ const appCopy = new Map<string, string[]>([
   ["下载中...", ["Downloading...", "Đang tải xuống..."]],
   ["收起完整 SQLite 数据", ["Hide full SQLite data", "Ẩn toàn bộ dữ liệu SQLite"]],
   ["查看完整 SQLite 数据", ["View full SQLite data", "Xem toàn bộ dữ liệu SQLite"]],
+  ["收起完整验货详情", ["Hide full inspection details", "Ẩn chi tiết kiểm hàng đầy đủ"]],
+  ["查看完整验货详情", ["View full inspection details", "Xem chi tiết kiểm hàng đầy đủ"]],
+  ["收起验货计划原始行", ["Hide original inspection plan row", "Ẩn dòng kế hoạch kiểm hàng gốc"]],
+  ["查看验货计划原始行", ["View original inspection plan row", "Xem dòng kế hoạch kiểm hàng gốc"]],
   ["请选择验货类型", ["Select inspection type", "Chọn loại kiểm hàng"]],
   ["创建副本", ["Create copy", "Tạo bản sao"]],
   ["下载到本地", ["Download locally", "Tải về máy"]],
@@ -1204,6 +1220,8 @@ const appCopy = new Map<string, string[]>([
   ["仍有 {count} 张图片等待上传，提交时将先处理图片上传。", ["{count} photos are waiting to upload. They will upload before submission.", "Còn {count} ảnh chờ tải lên. Ảnh sẽ được tải lên trước khi nộp."]],
   ["第 {page} / {pages} 页，共 {total} 条", ["Page {page} / {pages}, {total} items", "Trang {page} / {pages}, tổng {total} mục"]],
   ["本机 SQLite · report 表 · 共 {count} 条（包含所有状态）", ["Local SQLite · report table · {count} rows (all statuses)", "SQLite trên máy · bảng report · {count} dòng (mọi trạng thái)"]],
+  ["本机 SQLite · 四表关联 · 共 {count} 份报告（包含所有状态）", ["Local SQLite · four linked tables · {count} reports (all statuses)", "SQLite trên máy · bốn bảng liên kết · {count} báo cáo (mọi trạng thái)"]],
+  ["本机 SQLite · 验货计划表 · 共 {count} 条（包含所有状态）", ["Local SQLite · inspection plans · {count} rows (all statuses)", "SQLite trên máy · kế hoạch kiểm hàng · {count} dòng (mọi trạng thái)"]],
   ["待同步队列（{count}）", ["Sync queue ({count})", "Hàng đợi đồng bộ ({count})"]],
   ["检查 - {label}", ["Check - {label}", "Kiểm tra - {label}"]],
   ["再按一次退出应用", ["Press again to exit", "Nhấn lần nữa để thoát"]],
@@ -1269,6 +1287,10 @@ const appCopy = new Map<string, string[]>([
   ["产品：{number}", ["Product: {number}", "Sản phẩm: {number}"]],
   ["状态 {status}", ["Status {status}", "Trạng thái {status}"]],
   ["计划 ID：{id}", ["Plan ID: {id}", "Mã kế hoạch: {id}"]],
+  ["共享计划 ID：{id}", ["Shared plan ID: {id}", "Mã kế hoạch chung: {id}"]],
+  ["验货类型：{type}", ["Inspection type: {type}", "Loại kiểm hàng: {type}"]],
+  ["工厂：{name}", ["Factory: {name}", "Nhà máy: {name}"]],
+  ["验货计划 {count} 条 · 检查项 {items} 条 · 疵点 {defects} 条", ["{count} plans · {items} check items · {defects} defects", "{count} kế hoạch · {items} mục kiểm tra · {defects} lỗi"]],
   ["订单号：{number}", ["Order no.: {number}", "Mã đơn hàng: {number}"]],
   ["下载时间：{time}", ["Downloaded: {time}", "Thời gian tải: {time}"]],
   ["已选择 {count} 条计划", ["Selected {count} plans", "Đã chọn {count} kế hoạch"]],
@@ -1389,7 +1411,7 @@ export function normalizeLocale(locale) {
 }
 
 /** 翻译中文源文案并替换命名参数，词条缺失时保留原文而不显示空白。 */
-export function translate(key, locale, params = {}) {
+export function translate(key: string, locale: string, params: UTSJSONObject = {}): string {
   const source = String(key ?? '')
   const unfinishedPhotos = source.match(/^仍有 (\d+) 张图片未上传完成，请联网后重试$/)
   if (unfinishedPhotos != null) return translate('仍有 {count} 张图片未上传完成，请联网后重试', locale, { count: unfinishedPhotos[1] })

@@ -1,6 +1,10 @@
 const TABLE_KEYS = {
   user: 'userId',
+  inspection_plan: 'planId',
   report: 'reportId',
+  item_result: 'itemResultId',
+  report_group: 'groupId',
+  report_member: 'planId',
   checklist: 'itemId',
   defect: 'defectId',
   photo: 'photoId',
@@ -10,9 +14,31 @@ const TABLE_KEYS = {
   app_setting: 'key'
 }
 
+const BUSINESS_TABLES = {
+  inspection_plan: 'qcm_inspection_plan',
+  report: 'qcm_inspection_report',
+  item_result: 'qcm_inspection_item_result',
+  defect: 'qcm_inspection_defect_record'
+}
+
+const LEGACY_GROUP_SCHEMA = {
+  report_group: 'CREATE TABLE IF NOT EXISTS report_group (groupId TEXT PRIMARY KEY, parentPlanId TEXT, jsonData TEXT, downloadAt TEXT, status INTEGER DEFAULT 0, syncStatus TEXT, updatedAt TEXT)',
+  report_member: 'CREATE TABLE IF NOT EXISTS report_member (planId TEXT PRIMARY KEY, groupId TEXT NOT NULL, jsonData TEXT, status INTEGER DEFAULT 0)',
+  checklist: 'CREATE TABLE IF NOT EXISTS checklist (itemId TEXT PRIMARY KEY, sourceItemId TEXT, reportId TEXT, skuNo TEXT, qty INTEGER, checkedQty INTEGER, passQty INTEGER, defectQty INTEGER, sortNo INTEGER, jsonData TEXT, updatedAt TEXT)'
+}
+
+/** 将仓储的逻辑键映射到后端同名的 SQLite 业务表。 */
+function physicalTableName(tableName) {
+  return BUSINESS_TABLES[tableName] ?? tableName
+}
+
 const TABLE_COLUMNS = {
   user: ['userId', 'userName', 'token', 'refreshToken', 'role', 'expireAt', 'encryptedPassword', 'autoLogin', 'rememberPwd', 'updatedAt', 'jsonData'],
-  report: ['reportId', 'orderNo', 'productName', 'jsonData', 'downloadAt', 'lockExpireAt', 'status', 'lockStatus', 'lockerId', 'syncRetry'],
+  inspection_plan: ['planId', 'parentPlanId', 'groupPlanId', 'status', 'jsonData'],
+  report: ['reportId', 'planId', 'orderNo', 'productName', 'jsonData', 'downloadAt', 'lockExpireAt', 'status', 'lockStatus', 'lockerId', 'syncRetry'],
+  item_result: ['itemResultId', 'planId', 'reportId', 'sonPlanId', 'jsonData'],
+  report_group: ['groupId', 'parentPlanId', 'jsonData', 'downloadAt', 'status', 'syncStatus', 'updatedAt'],
+  report_member: ['planId', 'groupId', 'jsonData', 'status'],
   checklist: ['itemId', 'sourceItemId', 'reportId', 'skuNo', 'qty', 'checkedQty', 'passQty', 'defectQty', 'sortNo', 'jsonData', 'updatedAt'],
   defect: ['defectId', 'sourceDefectId', 'reportId', 'itemId', 'defectType', 'desc', 'photoPaths', 'sortNo', 'jsonData', 'createAt'],
   photo: ['photoId', 'sourcePhotoId', 'defectId', 'reportId', 'localPath', 'uploadStatus', 'fileId', 'ownerType', 'ownerId', 'sortNo', 'jsonData', 'md5'],
@@ -20,6 +46,19 @@ const TABLE_COLUMNS = {
   request_queue: ['id', 'taskType', 'method', 'url', 'payload', 'headers', 'priority', 'dedupeKey', 'status', 'retryCount', 'maxRetries', 'nextRunAt', 'lastError', 'createdAt', 'updatedAt'],
   schema_migration: ['version', 'appliedAt'],
   app_setting: ['key', 'jsonData', 'updatedAt']
+}
+
+/** 从受控 schema 的 CREATE TABLE 语句建立写入列白名单，兼容新增业务字段。 */
+function registerSchemaColumns(schemaSqlList) {
+  schemaSqlList.forEach((sql) => {
+    const definition = sql.match(/CREATE TABLE IF NOT EXISTS (\w+)\s*\(([\s\S]*?)\);/)
+    if (definition == null) return
+    const logicalName = Object.keys(BUSINESS_TABLES).find((name) => BUSINESS_TABLES[name] === definition[1]) ?? definition[1]
+    if (TABLE_COLUMNS[logicalName] == null) return
+    TABLE_COLUMNS[logicalName] = definition[2].split(',')
+      .map((part) => part.trim().split(/\s+/)[0])
+      .filter((name) => /^[a-zA-Z_][a-zA-Z_0-9]*$/.test(name))
+  })
 }
 
 /** 深拷贝可序列化的数据库行，使页面不能直接修改事务外的数据。 */
@@ -47,7 +86,7 @@ function upsertSql(tableName, row) {
   const columns = Object.keys(source).filter((column) => allowed.includes(column))
   if (columns.length !== Object.keys(source).length) throw new Error(`${tableName} 存在未知列`)
   if (!columns.includes(TABLE_KEYS[tableName])) throw new Error(`${tableName} 缺少主键`)
-  return `INSERT OR REPLACE INTO ${tableName} (${columns.join(', ')}) VALUES (${columns.map((column) => sqlValue(source[column])).join(', ')})`
+  return `INSERT OR REPLACE INTO ${physicalTableName(tableName)} (${columns.join(', ')}) VALUES (${columns.map((column) => sqlValue(source[column])).join(', ')})`
 }
 
 /** 对比事务前后行的主键与内容，仅写入实际变化的 SQLite 行。 */
@@ -57,7 +96,7 @@ function diffTable(tableName, previous, next) {
   const after = new Map(next.map((row) => [String(row[primaryKey]), row]))
   const statements = []
   before.forEach((_row, key) => {
-    if (!after.has(key)) statements.push(`DELETE FROM ${tableName} WHERE ${primaryKey} = ${sqlValue(key)}`)
+    if (!after.has(key)) statements.push(`DELETE FROM ${physicalTableName(tableName)} WHERE ${primaryKey} = ${sqlValue(key)}`)
   })
   next.forEach((row) => {
     const existing = before.get(String(row[primaryKey]))
@@ -68,14 +107,24 @@ function diffTable(tableName, previous, next) {
 
 /** 提供与现有 Repository 一致的同步读取和串行事务接口，持久层只使用 SQLite。 */
 export function createSqliteDatabase(driver, schemaSqlList, legacyStorage: any | null = null) {
+  registerSchemaColumns(schemaSqlList)
   let state = null
   let opening = null
   let writeTail = Promise.resolve()
 
+  /** 列出磁盘现存表，以便升级旧表及跳过尚不存在的历史组表。 */
+  async function existingTables() {
+    return new Set((await driver.query("SELECT name FROM sqlite_master WHERE type = 'table'")).map((row) => String(row.name)))
+  }
+
   /** 从原生 SQLite 读取所有业务表，启动时仅加载一次。 */
   async function loadState() {
     const loaded = {}
-    for (const tableName of Object.keys(TABLE_KEYS)) loaded[tableName] = await driver.query(`SELECT * FROM ${tableName}`)
+    const available = await existingTables()
+    for (const tableName of Object.keys(TABLE_KEYS)) {
+      const physical = physicalTableName(tableName)
+      loaded[tableName] = available.has(physical) ? await driver.query(`SELECT * FROM ${physical}`) : []
+    }
     return loaded
   }
 
@@ -83,6 +132,8 @@ export function createSqliteDatabase(driver, schemaSqlList, legacyStorage: any |
   async function migrateLegacy(loaded) {
     const legacy = legacyStorage?.read()
     if (legacy == null || typeof legacy !== 'object') return loaded
+    const missingGroups = Object.keys(LEGACY_GROUP_SCHEMA).filter((name) => Array.isArray(legacy[name]) && legacy[name].length > 0)
+    if (missingGroups.length > 0) await driver.executeBatch(missingGroups.map((name) => LEGACY_GROUP_SCHEMA[name]))
     const statements = []
     for (const tableName of Object.keys(TABLE_KEYS)) {
       const existing = new Set(loaded[tableName].map((row) => String(row[TABLE_KEYS[tableName]])))
@@ -107,16 +158,91 @@ export function createSqliteDatabase(driver, schemaSqlList, legacyStorage: any |
     return statements.length > 0 ? loadState() : loaded
   }
 
+  /** 将旧版计划前缀主键还原为 jsonData.id，保留无结果 ID 的清单占位和冲突记录。 */
+  async function migrateItemResultIds(loaded) {
+    const rows = loaded.item_result
+    const occupied = new Set(rows.map((row) => String(row.itemResultId)))
+    const statements = []
+    rows.forEach((row) => {
+      let item = {}
+      try { item = JSON.parse(row.jsonData ?? '{}') } catch (_) {}
+      const resultId = String(item?.id ?? '').trim()
+      const oldId = String(row.itemResultId ?? '')
+      if (resultId === '' || item?.checklistItem != null || oldId === resultId || occupied.has(resultId)) return
+      statements.push(`UPDATE qcm_inspection_item_result SET itemResultId = ${sqlValue(resultId)} WHERE itemResultId = ${sqlValue(oldId)}`)
+      occupied.add(resultId)
+      occupied.delete(oldId)
+    })
+    if (statements.length === 0) return loaded
+    await driver.executeBatch(statements)
+    return loadState()
+  }
+
   /** 创建原生数据库及 schema，成功完成旧数据迁移后才开放读取。 */
   async function open() {
     if (state != null) return
     if (opening != null) return opening
     opening = (async () => {
       await driver.open()
+      const before = await existingTables()
+      const renames = Object.keys(BUSINESS_TABLES).filter((name) => before.has(name) && !before.has(BUSINESS_TABLES[name]))
+        .map((name) => `ALTER TABLE ${name} RENAME TO ${physicalTableName(name)}`)
+      if (renames.length > 0) await driver.executeBatch(renames)
       await driver.executeBatch(schemaSqlList)
-      state = await migrateLegacy(await loadState())
+      for (const tableName of ['report', 'inspection_plan', 'defect']) {
+        const physical = physicalTableName(tableName)
+        const existing = new Set((await driver.query(`PRAGMA table_info(${physical})`)).map((column) => String(column.name)))
+        const definition = schemaSqlList.find((sql) => sql.includes(`CREATE TABLE IF NOT EXISTS ${physical} (`))
+        const additions = definition.slice(definition.indexOf('(') + 1, definition.lastIndexOf(')')).split(',')
+          .map((part) => part.trim()).filter((part) => {
+            const column = part.split(/\s+/)[0]
+            return column !== '' && !existing.has(column) && !/PRIMARY KEY/i.test(part)
+          })
+        if (additions.length > 0) await driver.executeBatch(additions.map((part) => `ALTER TABLE ${physical} ADD COLUMN ${part}`))
+      }
+      const leftovers = Object.keys(BUSINESS_TABLES).filter((name) => before.has(name) && !renames.some((sql) => sql.startsWith(`ALTER TABLE ${name} `)))
+      for (const name of leftovers) {
+        const physical = physicalTableName(name)
+        const oldColumns = new Set((await driver.query(`PRAGMA table_info(${name})`)).map((column) => String(column.name)))
+        const columns = (await driver.query(`PRAGMA table_info(${physical})`)).map((column) => String(column.name)).filter((column) => oldColumns.has(column))
+        await driver.executeBatch([`INSERT OR IGNORE INTO ${physical} (${columns.join(', ')}) SELECT ${columns.join(', ')} FROM ${name}`, `DROP TABLE ${name}`])
+      }
+      state = await migrateItemResultIds(await migrateLegacy(await loadState()))
     })().finally(() => { opening = null })
     return opening
+  }
+
+  /** 旧组数据转换成功后才删除历史表；未解决的冲突行继续保留。 */
+  async function finalizeLegacyTables() {
+    await open()
+    await writeTail
+    if (state.report_group.length > 0 || state.report_member.length > 0) return false
+    const available = await existingTables()
+    if (available.has('checklist') && state.checklist.length > 0) {
+      const existingIds = new Set(state.item_result.map((row) => String(row.itemResultId)))
+      const statements = state.checklist.map((row) => {
+        const itemId = String(row.sourceItemId ?? row.itemId ?? '')
+        const storageId = String(row.reportId ?? '')
+        const storageKey = `${storageId}::checklist::${itemId}`
+        if (existingIds.has(storageKey)) return ''
+        let checklistItem = {}
+        try { checklistItem = JSON.parse(row.jsonData ?? '{}') }
+        catch (_) { checklistItem = { rawJson: row.jsonData } }
+        const marker = { checklistItem, sortOrder: Number(row.sortNo ?? 0) }
+        return upsertSql('item_result', {
+          itemResultId: storageKey, planId: storageId,
+          jsonData: JSON.stringify(marker)
+        })
+      }).filter((statement) => statement !== '')
+      if (statements.length > 0) await driver.executeBatch(statements)
+      state = await loadState()
+    }
+    const obsolete = Object.keys(LEGACY_GROUP_SCHEMA).filter((name) => available.has(name))
+    if (obsolete.length > 0) {
+      await driver.executeBatch(obsolete.map((name) => `DROP TABLE ${name}`))
+      obsolete.forEach((name) => { state[name] = [] })
+    }
+    return true
   }
 
   /** 构造仅在本事务内可写的表上下文，未改动的表不会写回磁盘。 */
@@ -179,6 +305,13 @@ export function createSqliteDatabase(driver, schemaSqlList, legacyStorage: any |
     return clone(state[tableName])
   }
 
+  /** 等待已提交写入后执行只读 SQL，供列表按需 JOIN 查询。 */
+  async function query(sql) {
+    await open()
+    await writeTail
+    return driver.query(sql)
+  }
+
   /** 返回调试页所需的当前已提交数据表快照。 */
   function snapshot() {
     if (state == null) throw new Error('SQLite 尚未初始化')
@@ -192,5 +325,5 @@ export function createSqliteDatabase(driver, schemaSqlList, legacyStorage: any |
     state = null
   }
 
-  return { open, close, transaction, readTable, snapshot }
+  return { open, close, transaction, readTable, query, snapshot, finalizeLegacyTables }
 }

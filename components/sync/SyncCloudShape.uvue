@@ -1,0 +1,23 @@
+<template>
+	<view class="cloud-shape">
+		<view class="cloud-base" :style="{ borderColor: color }"></view>
+		<view class="cloud-notch" :style="{ backgroundColor: background }"></view>
+		<view class="cloud-crown" :style="{ borderColor: color }"></view>
+		<view class="cloud-crown-cover" :style="{ backgroundColor: background }"></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	defineProps({
+		color: { type: String, default: '#ffffff' },
+		background: { type: String, default: '#03ae4f' }
+	})
+</script>
+
+<style>
+	.cloud-shape { position: relative; width: 24px; height: 24px; }
+	.cloud-base { position: absolute; left: 3px; top: 9px; width: 18px; height: 10px; border-width: 2px; border-style: solid; border-radius: 5px; }
+	.cloud-notch { position: absolute; z-index: 1; left: 7px; top: 8px; width: 10px; height: 5px; }
+	.cloud-crown { position: absolute; z-index: 2; left: 7px; top: 5px; width: 10px; height: 10px; border-width: 2px; border-style: solid; border-radius: 5px; }
+	.cloud-crown-cover { position: absolute; z-index: 3; left: 6px; top: 12px; width: 12px; height: 6px; }
+</style>

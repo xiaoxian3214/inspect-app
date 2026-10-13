@@ -14,7 +14,7 @@ export function createPlanDownloadService(options) {
   if (typeof detailViewModel?.isInspectionDetailComplete !== 'function') throw new Error('缺少验货详情完整性校验组件')
 
   /** 保存生成接口返回的完整报告；缺少离线清单时拒绝整组落库，不额外请求详情。 */
-  async function downloadToLocal(planId, payload, expectedPlanIds = [], sourceItems = []) {
+  async function downloadToLocal(planId, payload, expectedPlanIds: string[] = [], sourceItems: any[] = []) {
     const downloadData = await planApi.downloadPlan(planId, payload ?? {})
     const sourceById = new Map()
     for (const item of sourceItems) {
@@ -28,7 +28,7 @@ export function createPlanDownloadService(options) {
         ...completed,
         listCard: source ?? completed?.listCard,
         status: Number.isFinite(Number(completed?.status)) ? Number(completed.status) : 0,
-        downloadedAt: completed?.downloadedAt || new Date().toISOString()
+        downloadedAt: completed?.downloadedAt ?? new Date().toISOString()
       }
     })
     if (records.length === 0) throw new Error('下载数据为空，无法保存到本地')

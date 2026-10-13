@@ -1,4 +1,4 @@
-import { openDatabase, closeDatabase, executeSql, selectSql, getDatabasePath, type DatabaseOptions, type SqlOperationOptions } from '@/uni_modules/lime-sqlite'
+import { openDatabase, closeDatabase, executeSql, selectSql, getDatabasePath } from '@/uni_modules/lime-sqlite'
 import { DATABASE_NAME } from './schema.uts'
 
 /** 将 lime-sqlite 错误对象转换成业务层可读错误。 */
@@ -10,7 +10,7 @@ function openSqlite(name) {
     name,
     success: () => resolve(null),
     fail: (error) => reject(new Error(`打开 SQLite 失败：${sqliteErrorMessage(error)}`))
-  } as DatabaseOptions))
+  }))
 }
 
 /** 使用 lime-sqlite 批量执行 SQL，并保留插件原生事务语义。 */
@@ -20,7 +20,7 @@ function executeSqlBatch(name, statements) {
     sql: statements,
     success: () => resolve(null),
     fail: (error) => reject(new Error(`SQLite 事务失败：${sqliteErrorMessage(error)}`))
-  } as SqlOperationOptions))
+  }))
 }
 
 /** 使用 lime-sqlite 查询数据，并统一提取插件返回的行数组。 */
@@ -30,7 +30,7 @@ function querySql(name, sql) {
     sql: [sql],
     success: (result) => resolve(Array.isArray(result?.result) ? result.result : (Array.isArray(result?.data) ? result.data : [])),
     fail: (error) => reject(new Error(`SQLite 查询失败：${sqliteErrorMessage(error)}`))
-  } as SqlOperationOptions))
+  }))
 }
 
 /** 使用 lime-sqlite 关闭连接，数据库文件继续保留在应用私有目录。 */
@@ -39,7 +39,7 @@ function closeSqlite(name) {
     name,
     success: () => resolve(null),
     fail: (error) => reject(new Error(`关闭 SQLite 失败：${sqliteErrorMessage(error)}`))
-  } as DatabaseOptions))
+  }))
 }
 
 /** 提供现有数据库适配器需要的驱动接口，持久层统一改用 lime-sqlite。 */

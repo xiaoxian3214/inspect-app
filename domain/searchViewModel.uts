@@ -129,7 +129,7 @@ export function isMergeSelectable(item, inspectType, anchorItem: any | null = nu
 }
 
 /** 返回 H5 分组全选目标：未选时取最大兼容组，已有锚点时只取同条件计划。 */
-export function getMergeGroupTargets(group, inspectType, selectedItems = []) {
+export function getMergeGroupTargets(group, inspectType, selectedItems: any[] = []) {
   const items = Array.isArray(group?.items) ? group.items : []
   if (selectedItems.length > 0) {
     const anchor = selectedItems[0]
@@ -163,9 +163,9 @@ export function getMergedPlanId(result) {
 }
 
 /** 从候选字段中取第一个非空文本，避免接口空字符串覆盖后备展示值。 */
-function firstNonEmptyText(values, fallback) {
+export function firstNonEmptyText(values: (any | null)[], fallback: string): string {
   const found = values.find((value) => value !== undefined && value !== null && String(value).trim() !== '')
-  return found === undefined ? fallback : String(found)
+  return found == null ? fallback : found.toString()
 }
 
 /** 生成 H5 合并确认表格的单号、款号#批次和产品名称三列。 */

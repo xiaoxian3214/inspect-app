@@ -2,53 +2,56 @@
 	<view class="tab-content">
 		<view v-if="standardItems.length === 0" class="empty-state">
 			<text class="empty-icon">📋</text>
-			<text class="empty-text">{{ t('暂无检查项') }}</text>
-			<text class="empty-desc">{{ t('本地详情不完整时，请联网重新加载计划详情') }}</text>
-			<view class="retry-button" @click="retryDetail"><text>{{ t('重新加载') }}</text></view>
+			<text class="empty-text">{{ translateText('暂无检查项') }}</text>
+			<text class="empty-desc">{{ translateText('本地详情不完整时，请联网重新加载计划详情') }}</text>
+			<view class="retry-button" @click="retryDetail"><text>{{ translateText('重新加载') }}</text></view>
 		</view>
 
 		<view v-else class="checklist">
-			<view v-for="section in standardItems" :key="section.id" class="checklist-section">
-				<view class="section-header" :class="{ failed: isSectionFailed(section) }" @click="toggleSection(section.id)">
+			<view v-for="section in standardSections" :key="section.id" class="checklist-section">
+				<view class="section-header" :class="{ failed: isSectionFailed(section.raw) }" @click="toggleSection(section.id)">
 					<view class="expand-icon"><AppIcon :type="expandedSections[section.id] ? 'arrowDown' : 'arrowRight'" :size="14" color="#03ae4f" /></view>
-					<text class="section-title">{{ t(section.itemName ?? section.sectionName ?? '检查项') }} ({{ section.children?.length ?? 0 }})</text>
+					<text class="section-title">{{ translateText(section.itemName ?? section.sectionName ?? '检查项') }} ({{ section.children?.length ?? 0 }})</text>
 					<view class="section-progress"><view class="section-progress-bar">
-						<view v-if="getSectionStats(section).pass > 0" class="section-progress-fill pass" :style="{ width: `${getSectionStats(section).pass}%` }"></view>
-						<view v-if="getSectionStats(section).pending > 0" class="section-progress-fill pending" :style="{ width: `${getSectionStats(section).pending}%` }"></view>
-						<view v-if="getSectionStats(section).fail > 0" class="section-progress-fill fail" :style="{ width: `${getSectionStats(section).fail}%` }"></view>
-						<view v-if="getSectionStats(section).na > 0" class="section-progress-fill na" :style="{ width: `${getSectionStats(section).na}%` }"></view>
+						<view v-if="getSectionStats(section.raw).pass > 0" class="section-progress-fill pass" :style="{ width: `${getSectionStats(section.raw).pass}%` }"></view>
+						<view v-if="getSectionStats(section.raw).pending > 0" class="section-progress-fill pending" :style="{ width: `${getSectionStats(section.raw).pending}%` }"></view>
+						<view v-if="getSectionStats(section.raw).fail > 0" class="section-progress-fill fail" :style="{ width: `${getSectionStats(section.raw).fail}%` }"></view>
+						<view v-if="getSectionStats(section.raw).na > 0" class="section-progress-fill na" :style="{ width: `${getSectionStats(section.raw).na}%` }"></view>
 					</view></view>
 				</view>
 
 				<view v-if="expandedSections[section.id]" class="section-children">
 					<view v-for="child in section.children ?? []" :key="child.id" class="checklist-row-wrap">
-						<SwipeResultCell :result="getItemResult(child.id)" @left-open="handleSwipeOpen(child)" @select-result="setResult(child, $event)" @content-click="openItem(child)">
+						<SwipeResultCell :result="getItemResult(child.id)" @left-open="handleSwipeOpen(child.raw)" @select-result="setResult(child.raw, $event)" @content-click="openItem(child.raw)">
 							<view class="check-item-block" :class="rowClass(child.id)">
+								<view v-if="getItemDefects(child.id).length > 0" class="defect-indicator" :class="getItemResult(child.id)"></view>
+								<view v-if="getItemResult(child.id) !== '' && getItemDefects(child.id).length === 0" class="status-indicator checklist-result-indicator" :class="getItemResult(child.id)"></view>
 								<view class="checklist-item" :class="{ requiredError: isItemFailed(child.id) }">
-									<view v-if="getItemResult(child.id) !== '' && getItemDefects(child.id).length === 0" class="status-indicator" :class="getItemResult(child.id)"></view>
-									<view class="item-left"><view class="item-header-row">
+									<view class="checklist-main">
+										<view class="item-left"><view class="item-header-row">
 										<view v-if="hasMergedInspectionPlans" class="sub-expand-btn" @click.stop="toggleItemExpand(child.id)"><AppIcon :type="expandedItems[child.id] ? 'arrowDown' : 'arrowRight'" :size="14" color="#111827" /></view>
-										<text v-if="child.itemType === 'Measurements'" class="type-badge">{{ t('规格') }}</text>
-										<text v-else-if="child.itemType === 'Barcodes'" class="type-badge barcode">{{ t('条码') }}</text>
-										<text v-else-if="child.itemType === 'Text'" class="type-badge text">{{ t('文本') }}</text>
-										<text class="item-name">{{ t(child.itemName ?? child.name ?? '未命名检查项') }}</text>
-									</view></view>
-									<view class="item-right">
+										<text v-if="child.itemType === 'Measurements'" class="type-badge">{{ translateText('规格') }}</text>
+										<text v-else-if="child.itemType === 'Barcodes'" class="type-badge barcode">{{ translateText('条码') }}</text>
+										<text v-else-if="child.itemType === 'Text'" class="type-badge text">{{ translateText('文本') }}</text>
+										<text class="item-name">{{ translateText(child.itemName ?? child.name ?? '未命名检查项') }}</text>
+										</view></view>
+										<view class="item-right">
 										<view v-if="hasMergedInspectionPlans && getMergedProgress(child.id).hasResult" class="item-sub-progress"><view class="section-progress-bar">
 											<view v-if="getMergedProgress(child.id).pass > 0" class="section-progress-fill pass" :style="{ width: `${getMergedProgress(child.id).pass}%` }"></view>
 											<view v-if="getMergedProgress(child.id).pending > 0" class="section-progress-fill pending" :style="{ width: `${getMergedProgress(child.id).pending}%` }"></view>
 											<view v-if="getMergedProgress(child.id).fail > 0" class="section-progress-fill fail" :style="{ width: `${getMergedProgress(child.id).fail}%` }"></view>
 											<view v-if="getMergedProgress(child.id).na > 0" class="section-progress-fill na" :style="{ width: `${getMergedProgress(child.id).na}%` }"></view>
 										</view></view>
-										<view class="photo-button" :class="{ active: getItemPhotoCount(child.id) > 0, requiredError: isPhotoFailed(child.id) }" @click.stop="requestPhoto(child)">
+										<view class="photo-button" :class="{ active: getItemPhotoCount(child.id) > 0, requiredError: isPhotoFailed(child.id) }" @click.stop="requestPhoto(child.raw)">
 											<InspectionMediaImage v-if="getItemFirstPhoto(child.id) != null" class="photo-thumbnail" :media="getItemFirstPhoto(child.id)" />
 											<AppIcon v-else type="camera" :size="26" :color="isPhotoFailed(child.id) ? '#ef4444' : '#111827'" /><text v-if="getItemPhotoCount(child.id) > 0" class="photo-count">{{ getItemPhotoCount(child.id) }}</text><view v-if="child.isPhotoRequired === true && getItemPhotoCount(child.id) === 0" class="required-star"><AppIcon type="star" :size="10" color="#111827" /></view>
+										</view>
 										</view>
 									</view>
 									<text v-if="getItemComment(child.id) !== ''" class="item-comment">{{ getItemComment(child.id) }}</text>
 								</view>
 								<view v-if="getItemDefects(child.id).length > 0" class="item-defect-list">
-									<view v-for="(defect, defectIndex) in getItemDefects(child.id)" :key="defect.id ?? `${child.id}-${defectIndex}`" class="item-defect-row" @click.stop="openDefect(defect)">
+									<view v-for="(defect, defectIndex) in getItemDefects(child.id)" :key="`${child.id}-${defectIndex}`" class="item-defect-row" @click.stop="openDefect(defect)">
 										<text class="item-defect-text">{{ defectSummary(defect) }}</text><view v-if="defectThumb(defect) != null" class="defect-thumb-wrap"><InspectionMediaImage class="defect-thumb" :media="defectThumb(defect)" /><text v-if="defectPhotoCount(defect) > 0" class="defect-photo-count">{{ defectPhotoCount(defect) }}</text></view>
 									</view>
 								</view>
@@ -56,19 +59,22 @@
 						</SwipeResultCell>
 
 						<view v-if="hasMergedInspectionPlans && expandedItems[child.id]" class="inspection-plan-list">
-							<SwipeResultCell v-for="(plan, planIndex) in inspectionPlanRows" :key="`${child.id}-${planId(plan) === '' ? planIndex : planId(plan)}`" :result="getItemResult(child.id, planId(plan))" @left-open="handleSwipeOpen(child, planId(plan))" @select-result="setResult(child, $event, planId(plan))" @content-click="openItem(child, planId(plan))">
-								<view class="check-item-block inspection-plan-card" :class="rowClass(child.id, planId(plan))">
+							<SwipeResultCell v-for="(plan, planIndex) in planRows" :key="`${child.id}-${plan.id === '' ? planIndex : plan.id}`" :result="getItemResult(child.id, plan.id)" @left-open="handleSwipeOpen(child.raw, plan.id)" @select-result="setResult(child.raw, $event, plan.id)" @content-click="openItem(child.raw, plan.id)">
+								<view class="check-item-block inspection-plan-card" :class="rowClass(child.id, plan.id)">
+									<view v-if="getItemDefects(child.id, plan.id).length > 0" class="defect-indicator" :class="getItemResult(child.id, plan.id)"></view>
+									<view v-if="getItemResult(child.id, plan.id) !== '' && getItemDefects(child.id, plan.id).length === 0" class="status-indicator checklist-result-indicator" :class="getItemResult(child.id, plan.id)"></view>
 									<view class="inspection-plan-row checklist-item">
-									<view v-if="getItemResult(child.id, planId(plan)) !== '' && getItemDefects(child.id, planId(plan)).length === 0" class="status-indicator" :class="getItemResult(child.id, planId(plan))"></view>
-										<view class="item-left"><view class="inspection-plan-meta">
-											<text v-if="child.itemType === 'Measurements'" class="type-badge">{{ t('规格') }}</text><text v-else-if="child.itemType === 'Barcodes'" class="type-badge barcode">{{ t('条码') }}</text><text v-else-if="child.itemType === 'Text'" class="type-badge text">{{ t('文本') }}</text>
+										<view class="checklist-main">
+											<view class="item-left"><view class="inspection-plan-meta">
+											<text v-if="child.itemType === 'Measurements'" class="type-badge">{{ translateText('规格') }}</text><text v-else-if="child.itemType === 'Barcodes'" class="type-badge barcode">{{ translateText('条码') }}</text><text v-else-if="child.itemType === 'Text'" class="type-badge text">{{ translateText('文本') }}</text>
 									</view><text class="inspection-plan-order">{{ plan.clientOrderNo ?? '-' }} :</text><text class="inspection-plan-goods">{{ plan.subGoodsNo ?? '-' }}#{{ plan.batchNo ?? '-' }}</text></view>
-										<view class="item-right"><view class="photo-button" :class="{ active: getItemPhotoCount(child.id, planId(plan)) > 0 }" @click.stop="requestPhoto(child, planId(plan))">
-										<InspectionMediaImage v-if="getItemFirstPhoto(child.id, planId(plan)) != null" class="photo-thumbnail" :media="getItemFirstPhoto(child.id, planId(plan))" /><AppIcon v-else type="camera" :size="26" color="#111827" /><text v-if="getItemPhotoCount(child.id, planId(plan)) > 0" class="photo-count">{{ getItemPhotoCount(child.id, planId(plan)) }}</text><view v-if="child.isPhotoRequired === true && getItemPhotoCount(child.id, planId(plan)) === 0" class="required-star"><AppIcon type="star" :size="10" color="#111827" /></view>
+											<view class="item-right"><view class="photo-button" :class="{ active: getItemPhotoCount(child.id, plan.id) > 0, requiredError: isPhotoFailed(child.id) }" @click.stop="requestPhoto(child.raw, plan.id)">
+										<InspectionMediaImage v-if="getItemFirstPhoto(child.id, plan.id) != null" class="photo-thumbnail" :media="getItemFirstPhoto(child.id, plan.id)" /><AppIcon v-else type="camera" :size="26" color="#111827" /><text v-if="getItemPhotoCount(child.id, plan.id) > 0" class="photo-count">{{ getItemPhotoCount(child.id, plan.id) }}</text><view v-if="child.isPhotoRequired === true && getItemPhotoCount(child.id, plan.id) === 0" class="required-star"><AppIcon type="star" :size="10" color="#111827" /></view>
 										</view></view>
-									<text v-if="getItemComment(child.id, planId(plan)) !== ''" class="item-comment">{{ getItemComment(child.id, planId(plan)) }}</text>
+										</view>
+									<text v-if="getItemComment(child.id, plan.id) !== ''" class="item-comment">{{ getItemComment(child.id, plan.id) }}</text>
 									</view>
-									<view v-if="getItemDefects(child.id, planId(plan)).length > 0" class="item-defect-list child-defects"><view v-for="(defect, defectIndex) in getItemDefects(child.id, planId(plan))" :key="defect.id ?? `${child.id}-${planId(plan)}-${defectIndex}`" class="item-defect-row" @click.stop="openDefect(defect)"><text class="item-defect-text">{{ defectSummary(defect) }}</text><view v-if="defectThumb(defect) != null" class="defect-thumb-wrap"><InspectionMediaImage class="defect-thumb" :media="defectThumb(defect)" /><text v-if="defectPhotoCount(defect) > 0" class="defect-photo-count">{{ defectPhotoCount(defect) }}</text></view></view></view>
+									<view v-if="getItemDefects(child.id, plan.id).length > 0" class="item-defect-list child-defects"><view v-for="(defect, defectIndex) in getItemDefects(child.id, plan.id)" :key="`${child.id}-${plan.id}-${defectIndex}`" class="item-defect-row" @click.stop="openDefect(defect)"><text class="item-defect-text">{{ defectSummary(defect) }}</text><view v-if="defectThumb(defect) != null" class="defect-thumb-wrap"><InspectionMediaImage class="defect-thumb" :media="defectThumb(defect)" /><text v-if="defectPhotoCount(defect) > 0" class="defect-photo-count">{{ defectPhotoCount(defect) }}</text></view></view></view>
 								</view>
 							</SwipeResultCell>
 						</view>
@@ -76,77 +82,90 @@
 				</view>
 			</view>
 		</view>
-		<view class="finish-button" @click="finish"><text>{{ t('总结并提交') }}</text></view>
+		<view class="finish-button" @click="finish"><text>{{ translateText('总结并提交') }}</text></view>
 	</view>
 </template>
 
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
-	import { ref, watch } from 'vue'
+	/** 在原生模板中以明确方法调用翻译动态检查项文本。 */
+	function translateText(key: any): string { return t((key ?? '').toString()) }
+	import { computed, ref, watch } from 'vue'
 	import SwipeResultCell from '../common/SwipeResultCell.uvue'
 	import AppIcon from '../icons/AppIcon.uvue'
 	import InspectionMediaImage from './InspectionMediaImage.uvue'
-	const props = defineProps({ standardItems: { type: Array, default: () => [] }, hasMergedInspectionPlans: { type: Boolean, default: false }, inspectionPlanRows: { type: Array, default: () => [] }, checklistData: { type: Object, default: () => ({}) }, defects: { type: Array, default: () => [] }, severityOptions: { type: Array, default: () => [] }, failedItemIds: { type: Array, default: () => [] }, failedPhotoItemIds: { type: Array, default: () => [] } })
-	const emit = defineEmits(['open-item', 'open-defect', 'set-result', 'swipe-open', 'photo-input', 'photo-capture', 'add-photo', 'retry-detail', 'finish'])
-	const expandedSections = ref({})
-	const expandedItems = ref({})
-	/** 默认展开第一个 H5 清单章节，保留用户后续手动折叠状态。 */
-	function ensureInitialSection(items) { if (!Array.isArray(items) || items.length === 0 || Object.keys(expandedSections.value).length > 0) return; expandedSections.value = { [String(items[0]?.id ?? 'section-0')]: true } }
-	/** 切换章节展开状态。 */
-	function toggleSection(sectionId) { const key = String(sectionId ?? ''); expandedSections.value = { ...expandedSections.value, [key]: expandedSections.value[key] !== true } }
-	/** 切换合并验货检查项下的子计划列表。 */
-	function toggleItemExpand(itemId) { const key = String(itemId ?? ''); expandedItems.value = { ...expandedItems.value, [key]: expandedItems.value[key] !== true } }
+	type ChecklistChild = { id: string, itemName: string, name: string, itemType: string, isPhotoRequired: boolean, raw: UTSJSONObject }
+	type ChecklistSection = { id: string, itemName: string, sectionName: string, children: ChecklistChild[], raw: UTSJSONObject }
+	type InspectionPlanRow = { id: string, clientOrderNo: string, subGoodsNo: string, batchNo: string }
+	type ResultStats = { pass: number, fail: number, pending: number, na: number }
+	type MergedProgress = { pass: number, fail: number, pending: number, na: number, hasResult: boolean }
 	/** 返回验货子计划的稳定 ID。 */
-	function planId(plan) { return String(plan?.id ?? plan?.planId ?? plan?.reportId ?? '').trim() }
+	function planId(plan: UTSJSONObject): string { return (plan['id'] ?? plan['planId'] ?? plan['reportId'] ?? '').toString().trim() }
+	const props = defineProps({ standardItems: { type: Array, default: () => [] }, hasMergedInspectionPlans: { type: Boolean, default: false }, inspectionPlanRows: { type: Array, default: () => [] }, checklistData: { type: Object, default: () => ({}) }, defects: { type: Array, default: () => [] }, severityOptions: { type: Array, default: () => [] }, failedItemIds: { type: Array, default: () => [] }, failedPhotoItemIds: { type: Array, default: () => [] } })
+	/** 把服务端章节树转换成原生模板可访问的固定字段，并保留原始检查项供事件回传。 */
+	const standardSections = computed((): ChecklistSection[] => (props.standardItems as UTSJSONObject[]).map((section: UTSJSONObject): ChecklistSection => { const storedChildren = section['children']; const children = Array.isArray(storedChildren) ? (storedChildren as UTSJSONObject[]).map((raw: UTSJSONObject): ChecklistChild => ({ id: (raw['id'] ?? '').toString(), itemName: (raw['itemName'] ?? '').toString(), name: (raw['name'] ?? '').toString(), itemType: (raw['itemType'] ?? '').toString(), isPhotoRequired: raw['isPhotoRequired'] === true || Number(raw['isPhotoRequired'] ?? 0) === 1, raw })) : []; return { id: (section['id'] ?? '').toString(), itemName: (section['itemName'] ?? '').toString(), sectionName: (section['sectionName'] ?? '').toString(), children, raw: section } }))
+	/** 为合并验货的计划行提供固定字段，避免模板读取动态 Object 属性。 */
+	const planRows = computed((): InspectionPlanRow[] => (props.inspectionPlanRows as UTSJSONObject[]).map((raw: UTSJSONObject): InspectionPlanRow => ({ id: planId(raw), clientOrderNo: (raw['clientOrderNo'] ?? '-').toString(), subGoodsNo: (raw['subGoodsNo'] ?? '-').toString(), batchNo: (raw['batchNo'] ?? '-').toString() })))
+	const emit = defineEmits(['open-item', 'open-defect', 'set-result', 'swipe-open', 'photo-input', 'photo-capture', 'retry-detail', 'finish'])
+	const expandedSections = ref<UTSJSONObject>({})
+	const expandedItems = ref<UTSJSONObject>({})
+	const hasInitialSection = ref(false)
+	/** 默认展开第一个 H5 清单章节，保留用户后续手动折叠状态。 */
+	function ensureInitialSection(items: UTSJSONObject[]) { if (items.length === 0 || hasInitialSection.value) return; expandedSections.value = { [(items[0]['id'] ?? 'section-0').toString()]: true }; hasInitialSection.value = true }
+	/** 切换章节展开状态。 */
+	function toggleSection(sectionId: any) { const key = (sectionId ?? '').toString(); expandedSections.value[key] = expandedSections.value[key] !== true }
+	/** 切换合并验货检查项下的子计划列表。 */
+	function toggleItemExpand(itemId: any) { const key = (itemId ?? '').toString(); expandedItems.value[key] = expandedItems.value[key] !== true }
 	/** 生成普通或合并子行的本地清单键。 */
-	function dataKey(itemId, sonPlanId = '') { const childId = String(sonPlanId ?? '').trim(); return childId === '' ? String(itemId ?? '') : `${String(itemId ?? '')}__${childId}` }
+	function dataKey(itemId: any, sonPlanId: string = ''): string { const childId = sonPlanId.trim(); const baseId = (itemId ?? '').toString(); return childId === '' ? baseId : `${baseId}__${childId}` }
 	/** 返回指定主行或合并子行的编辑数据。 */
-	function itemData(itemId, sonPlanId = '') { return props.checklistData?.[dataKey(itemId, sonPlanId)] ?? {} }
+	function itemData(itemId: any, sonPlanId: string = ''): UTSJSONObject { return ((props.checklistData as UTSJSONObject)[dataKey(itemId, sonPlanId)] as UTSJSONObject | null) ?? {} }
 	/** 返回指定主行或合并子行的结果值。 */
-	function getItemResult(itemId, sonPlanId = '') { return String(itemData(itemId, sonPlanId)?.result ?? '') }
+	function getItemResult(itemId: any, sonPlanId: string = ''): string { return (itemData(itemId, sonPlanId)['result'] ?? '').toString() }
 	/** 返回指定主行或合并子行的备注。 */
-	function getItemComment(itemId, sonPlanId = '') { return String(itemData(itemId, sonPlanId)?.comment ?? '') }
+	function getItemComment(itemId: any, sonPlanId: string = ''): string { return (itemData(itemId, sonPlanId)['comment'] ?? '').toString() }
 	/** 返回指定主行或合并子行的图片数量。 */
-	function getItemPhotoCount(itemId, sonPlanId = '') { return Array.isArray(itemData(itemId, sonPlanId)?.photos) ? itemData(itemId, sonPlanId).photos.length : 0 }
+	function getItemPhotoCount(itemId: any, sonPlanId: string = ''): number { const photos = itemData(itemId, sonPlanId)['photos']; return Array.isArray(photos) ? (photos as UTSJSONObject[]).length : 0 }
 	/** 返回指定主行或合并子行的第一张媒体记录。 */
-	function getItemFirstPhoto(itemId, sonPlanId = '') { const photos = itemData(itemId, sonPlanId)?.photos ?? []; return photos.length > 0 ? photos[0] : null }
+	function getItemFirstPhoto(itemId: any, sonPlanId: string = ''): UTSJSONObject | null { const storedPhotos = itemData(itemId, sonPlanId)['photos']; const photos = Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : []; return photos.length > 0 ? photos[0] : null }
 	/** 统计章节四种结果所占百分比。 */
-	function getSectionStats(section) { const children = Array.isArray(section?.children) ? section.children : []; if (children.length === 0) return { pass: 0, fail: 0, pending: 0, na: 0 }; const counts = { pass: 0, fail: 0, pending: 0, na: 0 }; children.forEach((child) => { const result = getItemResult(child?.id); if (result !== '' && counts[result] != null) counts[result] += 1 }); return { pass: Math.round(counts.pass / children.length * 100), fail: Math.round(counts.fail / children.length * 100), pending: Math.round(counts.pending / children.length * 100), na: Math.round(counts.na / children.length * 100) } }
+	function getSectionStats(section: UTSJSONObject): ResultStats { const storedChildren = section['children']; const children = Array.isArray(storedChildren) ? storedChildren as UTSJSONObject[] : []; let passCount = 0; let failCount = 0; let pendingCount = 0; let naCount = 0; children.forEach((child: UTSJSONObject) => { const result = getItemResult(child['id'] ?? ''); if (result === 'pass') passCount++; else if (result === 'fail') failCount++; else if (result === 'pending') pendingCount++; else if (result === 'na') naCount++ }); if (children.length === 0) return { pass: 0, fail: 0, pending: 0, na: 0 }; return { pass: Math.round(passCount / children.length * 100), fail: Math.round(failCount / children.length * 100), pending: Math.round(pendingCount / children.length * 100), na: Math.round(naCount / children.length * 100) } }
 	/** 统计合并验货各子计划在单个检查项上的结果分布。 */
-	function getMergedProgress(itemId) { const ids = props.inspectionPlanRows.map((plan) => planId(plan)).filter((id) => id !== ''); if (ids.length === 0) return { pass: 0, fail: 0, pending: 0, na: 0, hasResult: false }; const counts = { pass: 0, fail: 0, pending: 0, na: 0 }; ids.forEach((childId) => { const result = getItemResult(itemId, childId); if (result !== '' && counts[result] != null) counts[result] += 1 }); return { pass: Math.round(counts.pass / ids.length * 100), fail: Math.round(counts.fail / ids.length * 100), pending: Math.round(counts.pending / ids.length * 100), na: Math.round(counts.na / ids.length * 100), hasResult: counts.pass + counts.fail + counts.pending + counts.na > 0 } }
+	function getMergedProgress(itemId: any): MergedProgress { const ids = (props.inspectionPlanRows as UTSJSONObject[]).map((plan: UTSJSONObject) => planId(plan)).filter((id: string) => id !== ''); if (ids.length === 0) return { pass: 0, fail: 0, pending: 0, na: 0, hasResult: false }; let passCount = 0; let failCount = 0; let pendingCount = 0; let naCount = 0; ids.forEach((childId: string) => { const result = getItemResult(itemId, childId); if (result === 'pass') passCount++; else if (result === 'fail') failCount++; else if (result === 'pending') pendingCount++; else if (result === 'na') naCount++ }); return { pass: Math.round(passCount / ids.length * 100), fail: Math.round(failCount / ids.length * 100), pending: Math.round(pendingCount / ids.length * 100), na: Math.round(naCount / ids.length * 100), hasResult: passCount + failCount + pendingCount + naCount > 0 } }
 	/** 返回疵点关联的主行或合并子行。 */
-	function getItemDefects(itemId, sonPlanId = '') { const baseId = String(itemId ?? ''); const childId = String(sonPlanId ?? '').trim(); const resultId = childId !== '' ? `${baseId}_${childId}` : baseId; return props.defects.filter((defect) => { if (String(defect?.checkItemId ?? '') !== baseId) return false; const linkedResultId = String(defect?.checkItemResultId ?? defect?.itemResultId ?? '').trim(); return childId !== '' ? linkedResultId === resultId : (linkedResultId === '' || linkedResultId === baseId) }) }
+	function getItemDefects(itemId: any, sonPlanId: string = ''): UTSJSONObject[] { const baseId = (itemId ?? '').toString(); const childId = sonPlanId.trim(); const resultId = childId !== '' ? `${baseId}_${childId}` : baseId; return (props.defects as UTSJSONObject[]).filter((defect: UTSJSONObject) => { if ((defect['checkItemId'] ?? '').toString() !== baseId) return false; const linkedResultId = (defect['checkItemResultId'] ?? defect['itemResultId'] ?? '').toString().trim(); return childId !== '' ? linkedResultId === resultId : (linkedResultId === '' || linkedResultId === baseId) }) }
 	/** 返回 H5 疵点严重等级中文名称。 */
-	function severityLabel(defect) { const raw = `${String(defect?.type ?? defect?.defectType ?? '').toLowerCase()} ${String(defect?.typeLabel ?? '').toLowerCase()}`; if (raw.includes('critical') || raw.includes('致命') || raw.includes('极严重')) return '致命缺陷'; if (raw.includes('major') || raw.includes('主要') || raw.includes('严重')) return '主要缺陷'; return '次要缺陷' }
+	function severityLabel(defect: UTSJSONObject): string { const raw = `${(defect['type'] ?? defect['defectType'] ?? '').toString().toLowerCase()} ${(defect['typeLabel'] ?? '').toString().toLowerCase()}`; if (raw.includes('critical') || raw.includes('致命') || raw.includes('极严重')) return '致命缺陷'; if (raw.includes('major') || raw.includes('主要') || raw.includes('严重')) return '主要缺陷'; return '次要缺陷' }
 	/** 拼接清单行内的疵点摘要。 */
-	function defectSummary(defect) { const common = Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1; const quantity = Number(defect?.quantity ?? defect?.defectCount ?? 0); return [t(severityLabel(defect)), `${defect?.defectCode ?? '-'}${defect?.defectDesc ? `:${defect.defectDesc}` : ''}`, common ? t('普遍性疵点') : (quantity > 0 ? t('{count}个受影响数量', { count: quantity }) : ''), defect?.description ?? defect?.remark ?? '-'].filter((text) => String(text ?? '').trim() !== '').join('-') }
+	function defectSummary(defect: UTSJSONObject): string { const common = (defect['commonFlag'] ?? (defect['isCommon'] === true ? 1 : 0)).toString() === '1'; const quantity = parseFloat((defect['quantity'] ?? defect['defectCount'] ?? 0).toString()); const description = (defect['defectDesc'] ?? '').toString(); const code = (defect['defectCode'] ?? '-').toString(); const parts: string[] = [t(severityLabel(defect)), `${code}${description !== '' ? `:${description}` : ''}`, common ? t('普遍性疵点') : (quantity > 0 ? t('{count}个受影响数量', { count: quantity }) : ''), (defect['description'] ?? defect['remark'] ?? '-').toString()]; return parts.filter((text: string) => text.trim() !== '').join('-') }
 	/** 返回疵点包含的图片数量。 */
-	function defectPhotoCount(defect) { return Array.isArray(defect?.photos) ? defect.photos.length : 0 }
+	function defectPhotoCount(defect: UTSJSONObject): number { const photos = defect['photos']; return Array.isArray(photos) ? (photos as UTSJSONObject[]).length : 0 }
 	/** 返回疵点第一张图片路径。 */
-	function defectThumb(defect) { const photos = Array.isArray(defect?.photos) ? defect.photos : []; return photos.length > 0 ? photos[0] : null }
+	function defectThumb(defect: UTSJSONObject): UTSJSONObject | null { const storedPhotos = defect['photos']; const photos = Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : []; return photos.length > 0 ? photos[0] : null }
 	/** 返回行结果和疵点状态对应的样式类。 */
-	function rowClass(itemId, sonPlanId = '') { const result = getItemResult(itemId, sonPlanId); return { [result]: result !== '', hasDefects: getItemDefects(itemId, sonPlanId).length > 0 } }
+	function rowClass(itemId: any, sonPlanId: string = '') { const result = getItemResult(itemId, sonPlanId); return { pass: result === 'pass', fail: result === 'fail', pending: result === 'pending', na: result === 'na', hasDefects: getItemDefects(itemId, sonPlanId).length > 0 } }
 	/** 判断检查项是否在最终提交必填校验中失败。 */
-	function isItemFailed(itemId) { return props.failedItemIds.includes(String(itemId ?? '')) }
+	function isItemFailed(itemId: any): boolean { return props.failedItemIds.includes((itemId ?? '').toString()) }
 	/** 判断检查项是否在最终提交必传图片校验中失败。 */
-	function isPhotoFailed(itemId) { return props.failedPhotoItemIds.includes(String(itemId ?? '')) }
+	function isPhotoFailed(itemId: any): boolean { return props.failedPhotoItemIds.includes((itemId ?? '').toString()) }
 	/** 判断章节内是否存在必填或必传图片失败项。 */
-	function isSectionFailed(section) { return (section?.children ?? []).some((child) => isItemFailed(child?.id) || isPhotoFailed(child?.id)) }
+	function isSectionFailed(section: UTSJSONObject): boolean { const storedChildren = section['children']; const children = Array.isArray(storedChildren) ? storedChildren as UTSJSONObject[] : []; return children.some((child: UTSJSONObject) => isItemFailed(child['id'] ?? '') || isPhotoFailed(child['id'] ?? '')) }
 	/** 打开普通检查项或指定合并子计划检查项。 */
-	function openItem(item, sonPlanId = '') { emit('open-item', item, sonPlanId) }
+	function openItem(item: UTSJSONObject, sonPlanId: string = '') { emit('open-item', item, sonPlanId) }
 	/** 打开清单行关联的疵点详情。 */
-	function openDefect(defect) { emit('open-defect', defect) }
+	function openDefect(defect: UTSJSONObject) { emit('open-defect', defect) }
 	/** 将左侧快捷动作打开事件交给父页面，未检查时由父页面自动设为合格。 */
-	function handleSwipeOpen(item, sonPlanId = '') { emit('swipe-open', item?.id, sonPlanId) }
+	function handleSwipeOpen(item: UTSJSONObject, sonPlanId: string = '') { emit('swipe-open', item['id'], sonPlanId) }
 	/** 发送普通或合并子行的 H5 四态检查结果。 */
-	function setResult(item, result, sonPlanId = '') { emit('set-result', item?.id, result, sonPlanId, item) }
+	function setResult(item: UTSJSONObject, result: any, sonPlanId: string = '') { emit('set-result', item['id'], (result ?? '').toString(), sonPlanId, item) }
 	/** 打开检查项拍照；已有图片时进入检查项编辑，无图片时直接调用相机。 */
-	function requestPhoto(item, sonPlanId = '') { if (getItemPhotoCount(item?.id, sonPlanId) > 0) emit('open-item', item, sonPlanId); else { emit('photo-capture', item, sonPlanId); emit('add-photo', item, sonPlanId) } }
+	function requestPhoto(item: UTSJSONObject, sonPlanId: string = '') { if (getItemPhotoCount(item['id'] ?? '', sonPlanId) > 0) emit('open-item', item, sonPlanId); else emit('photo-capture', item, sonPlanId) }
 	/** 通知父页面重新加载当前计划详情。 */
 	function retryDetail() { emit('retry-detail') }
 	/** 打开总结并提交弹层。 */
 	function finish() { emit('finish') }
-	watch(() => props.standardItems, ensureInitialSection, { immediate: true })
+	/** 在清单数据首次到达时展开首个章节。 */
+	watch((): UTSJSONObject[] => props.standardItems as UTSJSONObject[], (items: UTSJSONObject[]) => ensureInitialSection(items), { immediate: true })
 </script>
 
 <style>
@@ -172,17 +191,19 @@
 	.section-children { border-top-width: 1rpx; border-top-color: #e5e7eb; }
 	.checklist-row-wrap { border-bottom-width: 1rpx; border-bottom-color: #e5e7eb; }
 	.check-item-block { position: relative; background-color: #ffffff;}
-	.check-item-block.hasDefects { border-left-width: 12rpx; border-left-color: #ef4444; }
-	.check-item-block.hasDefects.pass { border-left-color: #22c55e; }
-	.check-item-block.hasDefects.pending { border-left-color: #f59e0b; }
-	.check-item-block.hasDefects.na { border-left-color: #64748b; }
-	.checklist-item { height: 120rpx; border-bottom: 2rpx solid #f5f5f5; padding: 4rpx 16rpx 4rpx 4rpx; flex-direction: row; flex-wrap: wrap; align-items: center; background-color: #ffffff; }
+	.defect-indicator { position: absolute; left: 0; top: 0; bottom: 0; z-index: 3; width: 12rpx; border-radius: 0 12rpx 12rpx 0; background-color: #ef4444; }
+	.defect-indicator.pass { background-color: #22c55e; }
+	.defect-indicator.pending { background-color: #f59e0b; }
+	.defect-indicator.na { background-color: #64748b; }
+	.checklist-item { min-height: 120rpx; border-bottom: 2rpx solid #f5f5f5; padding: 0 16rpx 0 28rpx; flex-direction: column; align-items: stretch; background-color: #ffffff; }
 	.checklist-item.requiredError { background-color: #fff7f7; }
-	.status-indicator {padding-left: -4rpx; width: 10rpx; align-self: stretch; margin-right: 16rpx; border-radius: 0 8rpx 8rpx 0; background-color: #cbd5e1; }
+	.checklist-main { width: 100%; height: 120rpx; flex-direction: row; align-items: center; }
+	.status-indicator { width: 10rpx; border-radius: 0 8rpx 8rpx 0; background-color: #cbd5e1; }
 	.status-indicator.pass { background-color: #22c55e; }
 	.status-indicator.pending { background-color: #f59e0b; }
 	.status-indicator.fail { background-color: #ef4444; }
 	.status-indicator.na { background-color: #64748b; }
+	.checklist-result-indicator { position: absolute; left: 0; top: 0; bottom: 0; z-index: 3; }
 	.item-left { flex: 1; min-width: 0;margin-left: 12rpx; }
 	.item-header-row, .inspection-plan-meta { flex-direction: row; align-items: center; }
 	.sub-expand-btn { width: 40rpx; height: 40rpx; margin-right: 10rpx; align-items: center; justify-content: center; }
@@ -190,7 +211,7 @@
 	.type-badge.barcode { color: #1e40af; background-color: #dbeafe; }
 	.type-badge.text { color: #7c3aed; background-color: #f3e8ff; }
 	.item-name { flex: 1; color: #1e293b; font-size: 28rpx; font-weight: 500; }
-	.item-comment { width: 100%; margin-top: 6rpx; padding: 4rpx 8rpx; border-radius: 8rpx; color: #64748b; font-size: 23rpx; background-color: #f1f5f9; }
+	.item-comment { width: 100%; margin-bottom: 8rpx; padding: 4rpx 8rpx; border-radius: 8rpx; color: #64748b; font-size: 23rpx; background-color: #f1f5f9; }
 	.item-right { margin-left: 16rpx; flex-direction: row; align-items: center; }
 	.item-sub-progress { width: 104rpx; margin-right: 16rpx; }
 	.photo-button { position: relative; width: 72rpx; height: 72rpx; align-items: center; justify-content: center; border-radius: 16rpx; background-color: #f1f5f9; }
@@ -198,16 +219,16 @@
 	.photo-button.requiredError { border-width: 2rpx; border-color: #ef4444; }
 	.photo-thumbnail { width: 68rpx; height: 68rpx; border-radius: 14rpx; }
 	.photo-count { position: absolute; right: 0; top: 0; z-index: 2; min-width: 32rpx; padding: 4rpx 10rpx; border-radius: 20rpx; color: #ffffff; font-size: 20rpx; text-align: center; background-color: #000000; }
-	.required-star { position: absolute; right: -6rpx; top: -6rpx; width: 32rpx; height: 32rpx; border-radius: 16rpx; align-items: center; justify-content: center; background-color: #f1f5f9; }
+	.required-star { position: absolute; right: -6rpx; top: -6rpx; z-index: 3; width: 32rpx; height: 32rpx; border-radius: 16rpx; align-items: center; justify-content: center; background-color: #f1f5f9; }
 	.item-defect-list { width: 100%; padding: 0 24rpx 10rpx; background-color: #ffffff; }
 	.item-defect-row { min-height: 66rpx; margin-top: 6rpx; padding: 8rpx; flex-direction: row; align-items: center; border-radius: 8rpx; background-color: #f8fafc; }
 	.item-defect-text { flex: 1; color: #334155; font-size: 24rpx; }
 	.defect-thumb-wrap { position: relative; width: 64rpx; height: 64rpx; margin-left: 18rpx; }
 	.defect-thumb { width: 64rpx; height: 64rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 16rpx; }
 	.defect-photo-count { position: absolute; right: 0; top: 0; z-index: 2; min-width: 28rpx; height: 28rpx; padding: 0 6rpx; border-radius: 14rpx; color: #ffffff; font-size: 20rpx; line-height: 28rpx; text-align: center; background-color: #000000; }
-	.inspection-plan-list { padding-left: 34rpx; border-top-width: 2rpx; border-top-color: #f1f5f9; background-color: #ffffff; }
+	.inspection-plan-list { border-top-width: 2rpx; border-top-color: #f1f5f9; background-color: #ffffff; }
 	.inspection-plan-card { border-top-width: 1rpx; border-top-color: #e5e7eb; }
-	.inspection-plan-row { padding: 14rpx 24rpx 14rpx 28rpx; }
+	.inspection-plan-row { padding: 0 24rpx 0 28rpx; }
 	.inspection-plan-meta { margin-bottom: 8rpx; }
 	.inspection-plan-order { color: #334155; font-size: 24rpx; }
 	.inspection-plan-goods { margin-top: 8rpx; color: #0f172a; font-size: 28rpx; }

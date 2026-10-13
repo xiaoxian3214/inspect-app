@@ -202,6 +202,23 @@ export function createReportFileApi(options) {
     })
   }
 
+  /** 按 H5 的 fileId 预览接口鉴权下载图片，返回原生 image 可读取的临时路径。 */
+  async function downloadInspectFile(fileId, mode: string = 'thumbnail') {
+    const normalizedFileId = String(fileId ?? '').trim()
+    if (normalizedFileId === '') throw new Error('文件ID不能为空')
+    const endpoint = `/api/inspect/file/${encodeURIComponent(normalizedFileId)}/${mode === 'preview' ? 'preview' : 'thumbnail'}`
+    const session = getSession()
+    const header = {}
+    if (String(session?.token ?? '').trim() !== '') header.Authorization = `Bearer ${session.token}`
+    const response = await downloadTransport({ url: `${baseUrl}${endpoint}`, header, timeout: 30000 })
+    const authFailure = resolveUploadAuthFailure(response)
+    if (authFailure != null && onAuthFailure != null) return onAuthFailure({ url: endpoint, fallbackMessage: authFailure.fallbackMessage })
+    const statusCode = Number(response?.statusCode ?? 0)
+    const tempFilePath = String(response?.tempFilePath ?? '').trim()
+    if (statusCode < 200 || statusCode >= 300 || tempFilePath === '') throw createUploadError(`加载图片失败: ${statusCode}`, statusCode)
+    return tempFilePath
+  }
+
   /**
    * 下载已生成验货报告的 PDF 到本地临时文件，成功返回 tempFilePath 供页面唤起文档预览。
    * 与 H5 downloadReportPdfByUni 保持一致：携带 Bearer 鉴权与 PDF Accept 头，
@@ -232,5 +249,5 @@ export function createReportFileApi(options) {
     return tempFilePath
   }
 
-  return { uploadInspectFile, deleteInspectFile, sortInspectFiles, moveInspectFile, downloadReportPdf }
+  return { uploadInspectFile, deleteInspectFile, sortInspectFiles, moveInspectFile, downloadInspectFile, downloadReportPdf }
 }

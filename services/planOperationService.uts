@@ -31,7 +31,7 @@ export function createPlanOperationService(options) {
   /**
    * 下载指定计划并保存本地，转交预期成员与原卡片供下载服务校验和补齐字段。
    */
-  async function downloadToLocal(planId, payload, expectedPlanIds = [], sourceItems = []) {
+  async function downloadToLocal(planId, payload, expectedPlanIds: string[] = [], sourceItems: any[] = []) {
     return planDownloadService.downloadToLocal(planId, payload ?? {}, expectedPlanIds, sourceItems)
   }
 
@@ -62,7 +62,8 @@ export function createPlanOperationService(options) {
     const planId = searchViewModel.getPlanOperationId(item)
     if (planId === '') throw new Error('计划ID缺失，无法执行操作')
     const mergeType = Number(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0)
-    const parentPlanId = mergeType === 2 ? (searchViewModel.getItemParentPlanId(item) || planId) : ''
+    const mergedParentPlanId = searchViewModel.getItemParentPlanId(item)
+    const parentPlanId = mergeType === 2 ? (mergedParentPlanId !== '' ? mergedParentPlanId : planId) : ''
     const removeIdSet = new Set([planId])
     if (parentPlanId !== '') {
       const remoteMemberIds = await getMergedMemberIds(parentPlanId)

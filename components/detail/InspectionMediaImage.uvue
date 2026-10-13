@@ -8,6 +8,7 @@
 	import AppIcon from '../icons/AppIcon.uvue'
 	import { API_BASE_URL } from '../../config/appConfig.uts'
 	import { getMediaDisplayUrl } from '../../domain/mediaDisplay.uts'
+	import { reportFileApi } from '../../runtime/appRuntime.uts'
 	import { isVideoMedia } from '../../domain/photoUploadPolicy.uts'
 
 	const props = defineProps({
@@ -15,20 +16,34 @@
 		viewMode: { type: String, default: 'thumbnail' },
 		imageMode: { type: String, default: 'aspectFill' }
 	})
+	/** 把媒体属性收窄为可使用动态字段索引的 UTS 对象。 */
+	const mediaData = computed((): UTSJSONObject => props.media as UTSJSONObject)
 
 	/** 判定当前媒体是否为视频；视频无静态缩略图，网格内改用深色占位底。 */
-	const isVideo = computed(() => isVideoMedia(props.media))
+	const isVideo = computed((): boolean => isVideoMedia(mediaData.value))
 	const fallbackSource = ref('')
+	const downloadAttempted = ref(false)
 	/** 优先展示本地图片，失效时展示同一文件 ID 对应的服务端图片。 */
-	const source = computed(() => fallbackSource.value || getMediaDisplayUrl(props.media, props.viewMode, API_BASE_URL))
-	/** 本地旧路径加载失败时仅重试一次远程地址，避免持续加载失败循环。 */
-	function handleImageError() {
-		if (fallbackSource.value !== '' || !props.media?.localPath) return
-		const remote = getMediaDisplayUrl({ ...props.media, localPath: '' }, props.viewMode, API_BASE_URL)
-		if (remote !== '' && remote !== source.value) fallbackSource.value = remote
+	const source = computed((): string => fallbackSource.value !== '' ? fallbackSource.value : getMediaDisplayUrl(mediaData.value, props.viewMode, API_BASE_URL))
+	/** 本地路径失效时先尝试 H5 地址；服务端地址需鉴权时再按 fileId 下载为临时图片。 */
+	async function handleImageError() {
+		if (fallbackSource.value === '' && (mediaData.value['localPath'] ?? '').toString().trim() !== '') {
+			const remote = getMediaDisplayUrl({ ...mediaData.value, localPath: '' }, props.viewMode, API_BASE_URL)
+			if (remote !== '' && remote !== source.value) { fallbackSource.value = remote; return }
+		}
+		const fileId = (mediaData.value['fileId'] ?? '').toString().trim()
+		if (fileId === '' || downloadAttempted.value) return
+		downloadAttempted.value = true
+		const mode = props.viewMode
+		try {
+			const path = await reportFileApi.downloadInspectFile(fileId, mode)
+			if ((mediaData.value['fileId'] ?? '').toString().trim() === fileId && props.viewMode === mode) fallbackSource.value = path
+		} catch (_) {}
 	}
-	watch(() => props.media, () => { fallbackSource.value = '' })
-	watch(() => props.viewMode, () => { fallbackSource.value = '' })
+	/** 媒体记录切换时清空上次图片失败使用的远程回退路径。 */
+	watch((): UTSJSONObject => mediaData.value, (_: UTSJSONObject) => { fallbackSource.value = ''; downloadAttempted.value = false })
+	/** 缩略图与预览模式切换时重新计算媒体地址。 */
+	watch((): string => props.viewMode, (_: string) => { fallbackSource.value = ''; downloadAttempted.value = false })
 </script>
 
 <style>

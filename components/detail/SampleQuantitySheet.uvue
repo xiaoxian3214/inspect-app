@@ -1,44 +1,51 @@
 <template>
 	<view v-if="visible" class="overlay" @click="closeSheet">
-		<view class="sheet" @click.stop="stopEvent">
+		<view class="sheet" :style="{ paddingBottom: sheetBottomPadding }" @click.stop="stopEvent">
 			<view class="sheet-handle"></view>
-			<text class="title">{{ t('设置抽样数量') }}</text>
-			<text class="hint">{{ t('请输入当前验货计划需要抽检的产品数量。') }}</text>
-			<input class="quantity-input" type="number" :value="draftValue" :disabled="submitting" :placeholder="t('请输入抽样数量')" @input="updateValue" />
+			<text class="title">{{ translateText('设置抽样数量') }}</text>
+			<text class="hint">{{ translateText('请输入当前验货计划需要抽检的产品数量。') }}</text>
+			<input class="quantity-input" type="number" :value="draftValue" :disabled="submitting" :placeholder="translateText('请输入抽样数量')" @input="updateValue" />
 			<view class="actions">
-				<button class="button cancel" :disabled="submitting" @click="closeSheet">{{ t('取消') }}</button>
-				<button class="button save" :disabled="submitting" @click="saveValue">{{ t(submitting ? '保存中...' : '确认保存') }}</button>
+				<button class="button cancel" :disabled="submitting" @click="closeSheet">{{ translateText('取消') }}</button>
+				<button class="button save" :disabled="submitting" @click="saveValue">{{ translateText(submitting ? '保存中...' : '确认保存') }}</button>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
+	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
-	import { ref, watch } from 'vue'
+	import { computed, ref, watch } from 'vue'
 
 	const props = defineProps({ visible: { type: Boolean, default: false }, value: { type: Number, default: 0 }, submitting: { type: Boolean, default: false } })
 	const emit = defineEmits(['close', 'save'])
 	const draftValue = ref('')
+	/** 为抽样数量弹层提供原生模板可调用的翻译方法。 */
+	function translateText(key: string): string { return t(key) }
+	/** 计算包含系统手势区域的底部留白。 */
+	const sheetBottomPadding = computed((): string => safeBottomPaddingPx(30))
 
 	/** 使用当前服务端抽样数量初始化底部弹层输入值。 */
-	function resetDraft() { draftValue.value = String(props.value ?? '') }
+	function resetDraft() { draftValue.value = props.value.toString() }
 	/** 更新用户输入的抽样数量文本。 */
-	function updateValue(event) { draftValue.value = String(event?.detail?.value ?? '') }
+	function updateValue(event: UniInputEvent) { draftValue.value = event.detail.value }
 	/** 校验非负整数后提交新的抽样数量。 */
-	function saveValue() { const value = Number(draftValue.value ?? 0); if (!Number.isFinite(value) || value < 0) { uni.showToast({ title: t('请输入正确的抽样数量'), icon: 'none' }); return }; emit('save', value) }
+	function saveValue() { const value = parseFloat(draftValue.value); if (!Number.isFinite(value) || value < 0) { uni.showToast({ title: t('请输入正确的抽样数量'), icon: 'none' }); return }; emit('save', value) }
 	/** 关闭抽样数量底部弹层。 */
 	function closeSheet() { if (!props.submitting) emit('close') }
 	/** 阻止点击底部内容区域关闭弹层。 */
 	function stopEvent() {}
 
-	watch(() => props.visible, (visible) => { if (visible) resetDraft() })
-	watch(() => props.value, () => { if (props.visible) resetDraft() })
+	/** 每次打开弹层时恢复当前抽样数量。 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (visible) resetDraft() })
+	/** 外部抽样数量变化时同步可编辑值。 */
+	watch((): number => props.value, (_: number) => { if (props.visible) resetDraft() })
 </script>
 
 <style>
 	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2340; justify-content: flex-end; background-color: rgba(15,23,42,.55); }
-	.sheet { width: 100%; padding: 14rpx 30rpx calc(30rpx + env(safe-area-inset-bottom)); border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
+	.sheet { width: 100%; padding: 14rpx 30rpx 30rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
 	.sheet-handle { width: 74rpx; height: 8rpx; margin: 0 auto 22rpx; border-radius: 4rpx; background-color: #d7dde7; }
 	.title { color: #172033; font-size: 34rpx; font-weight: 700; }
 	.hint { margin-top: 12rpx; color: #64748b; font-size: 23rpx; }

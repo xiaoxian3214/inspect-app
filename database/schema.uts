@@ -1,11 +1,22 @@
 export const DATABASE_NAME = 'qarma_offline.db'
-export const DATABASE_VERSION = 1
+export const DATABASE_VERSION = 5
+
+const PLAN_COLUMNS = 'id dome_no sub_goods_no batch_no goods_name client_order_no goods_cname required_quantity delivery_date company_no factory_no factory_name client_no client_name purchase_user_id purchase_user purchase_user_email sales_user_id sales_user sales_user_email qcm_leader_id qcm_leader qcm_leader_email goods_class goods_flag source_type parent_plan_id merge_type inspector_id inspector_name locked_at template_id inspection_level sample_code sample_size critical_aql critical_ac critical_re major_aql major_ac major_re minor_aql minor_ac minor_re create_date create_by update_date update_by template_name inspect_type lock_flag webhook_time webhook_detail_time model_no produce_no finish_quantity sample_quantity original_required_quantity webhook_times stockin_no memo'.split(' ')
+const REPORT_COLUMNS = 'id plan_id overall_result overall_remarks critical_found major_found minor_found review_status reviewer_id reviewer_name review_date review_comments inspector_id inspector_name inspection_date report_content pdf_url create_date create_by update_date update_by latitude longitude location_city'.split(' ')
+const DEFECT_COLUMNS = 'id plan_id item_result_id defect_level defect_code defect_desc defect_position quantity common_flag create_date create_by update_date update_by son_plan_id file_list comments'.split(' ')
+const NUMBER_COLUMNS = new Set('required_quantity goods_flag source_type merge_type sample_size critical_aql critical_ac critical_re major_aql major_ac major_re minor_aql minor_ac minor_re lock_flag finish_quantity sample_quantity original_required_quantity webhook_times critical_found major_found minor_found review_status latitude longitude quantity common_flag'.split(' '))
+
+/** 按后端字段生成结构化列；文件列表与评论保留为单列 JSON 文本。 */
+function businessColumns(fields) {
+  return fields.map((field) => `${field} ${NUMBER_COLUMNS.has(field) ? 'REAL' : 'TEXT'}`).join(',\n    ')
+}
 
 export const TABLE_NAMES = [
   'user',
-  'report',
-  'checklist',
-  'defect',
+  'qcm_inspection_plan',
+  'qcm_inspection_report',
+  'qcm_inspection_item_result',
+  'qcm_inspection_defect_record',
   'photo',
   'sync_log',
   'request_queue',
@@ -27,8 +38,10 @@ export const schemaSqlList = [
     updatedAt TEXT,
     jsonData TEXT
   );`,
-  `CREATE TABLE IF NOT EXISTS report (
+  `CREATE TABLE IF NOT EXISTS qcm_inspection_report (
     reportId TEXT PRIMARY KEY,
+    planId TEXT,
+    ${businessColumns(REPORT_COLUMNS)},
     orderNo TEXT,
     productName TEXT,
     jsonData TEXT,
@@ -39,23 +52,26 @@ export const schemaSqlList = [
     lockerId TEXT,
     syncRetry INTEGER DEFAULT 0
   );`,
-	  `CREATE TABLE IF NOT EXISTS checklist (
-	    itemId TEXT PRIMARY KEY,
-	    sourceItemId TEXT,
-	    reportId TEXT,
-    skuNo TEXT,
-    qty INTEGER DEFAULT 0,
-    checkedQty INTEGER DEFAULT 0,
-    passQty INTEGER DEFAULT 0,
-    defectQty INTEGER DEFAULT 0,
-    sortNo INTEGER DEFAULT 0,
-    jsonData TEXT,
-    updatedAt TEXT
+  `CREATE TABLE IF NOT EXISTS qcm_inspection_plan (
+    planId TEXT PRIMARY KEY,
+    parentPlanId TEXT,
+    groupPlanId TEXT NOT NULL,
+    status INTEGER DEFAULT 0,
+    ${businessColumns(PLAN_COLUMNS)},
+    jsonData TEXT
   );`,
-	  `CREATE TABLE IF NOT EXISTS defect (
+  `CREATE TABLE IF NOT EXISTS qcm_inspection_item_result (
+    itemResultId TEXT PRIMARY KEY,
+    planId TEXT NOT NULL,
+    reportId TEXT,
+    sonPlanId TEXT,
+    jsonData TEXT
+  );`,
+  `CREATE TABLE IF NOT EXISTS qcm_inspection_defect_record (
 	    defectId TEXT PRIMARY KEY,
 	    sourceDefectId TEXT,
 	    reportId TEXT,
+    ${businessColumns(DEFECT_COLUMNS)},
     itemId TEXT,
     defectType TEXT,
     desc TEXT,
@@ -115,6 +131,8 @@ export const schemaSqlList = [
     jsonData TEXT,
     updatedAt TEXT
   );`,
-  `CREATE INDEX IF NOT EXISTS idx_report_status ON report(status);`,
+  `CREATE INDEX IF NOT EXISTS idx_qcm_report_status ON qcm_inspection_report(status);`,
+  `CREATE INDEX IF NOT EXISTS idx_qcm_plan_group ON qcm_inspection_plan(groupPlanId);`,
+  `CREATE INDEX IF NOT EXISTS idx_qcm_item_plan ON qcm_inspection_item_result(planId);`,
   `CREATE INDEX IF NOT EXISTS idx_request_queue_status ON request_queue(status, priority, createdAt);`
 ]

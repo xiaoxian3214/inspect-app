@@ -61,6 +61,24 @@ test('uploads pending photos before final submission and forces finishFlag to on
   assert.deepEqual(generated, [{ planId: 'plan-1', finishFlag: 1 }])
 })
 
+/** 合并报告以父计划提交，但检查图片必须使用本地成员入口读取共享照片。 */
+test('merged final submission checks group photos through a member while submitting the parent once', async () => {
+  const lookedUp = []
+  const generated = []
+  const service = serviceModule.createInspectionSubmissionService({
+    isOnline: async () => true,
+    listPhotos: async (planId) => { lookedUp.push(planId); return [{ photoId: 'p1', uploadStatus: 'pending' }] },
+    uploadPendingPhotos: async () => {},
+    evaluatePhotos,
+    planApi: { generateReport: async (payload) => { generated.push(payload) } }
+  })
+  await assert.rejects(service.submitFinalReport({
+    planId: 'parent-1', photoPlanId: 'child-1', payload: { planId: 'parent-1' }
+  }), /仍有 1 张图片未上传/)
+  assert.deepEqual(lookedUp, ['child-1', 'child-1'])
+  assert.equal(generated.length, 0)
+})
+
 test('blocks final submission when photos remain unfinished after upload retry', async () => {
   let generateCount = 0
   const service = serviceModule.createInspectionSubmissionService({

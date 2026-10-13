@@ -1,15 +1,15 @@
 <template>
 	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
-		<view class="sheet-panel" @click.stop>
+		<view class="sheet-panel" :style="{ maxHeight: sheetMaxHeight }" @click.stop>
 			<view class="sheet-header">
-				<text class="sheet-title">{{ t('筛选') }}</text>
-				<text class="clear-action" @click="clearFilters">{{ t('清空') }}</text>
+				<text class="sheet-title">{{ translateText('筛选') }}</text>
+				<text class="clear-action" @click="clearFilters">{{ translateText('清空') }}</text>
 			</view>
 
 			<view class="section">
-				<text class="section-title">{{ t('状态') }}</text>
+				<text class="section-title">{{ translateText('状态') }}</text>
 				<view class="chip-list">
-					<view v-for="option in statusOptions" :key="option.value" class="chip" :class="{ active: draft.status === option.value }" @click="selectStatus(option.value)">
+					<view v-for="option in displayStatusOptions" :key="option.value" class="chip" :class="{ active: filterDraft.status === option.value }" @click="selectStatus(option.value)">
 						<text class="chip-text">{{ option.label }}</text>
 					</view>
 				</view>
@@ -17,12 +17,12 @@
 
 			<view class="section">
 				<view class="section-heading">
-					<text class="section-title">{{ t('验货类型') }}</text>
-					<text v-if="loadingTypes" class="loading-text">{{ t('加载中...') }}</text>
+					<text class="section-title">{{ translateText('验货类型') }}</text>
+					<text v-if="loadingTypes" class="loading-text">{{ translateText('加载中...') }}</text>
 				</view>
-				<scroll-view class="type-scroll" scroll-x="true">
+				<scroll-view class="type-scroll" :scroll-x="true">
 					<view class="chip-list nowrap">
-						<view v-for="option in inspectTypeOptions" :key="option.value" class="chip" :class="{ active: draft.inspectType === option.value }" @click="selectInspectType(option.value)">
+						<view v-for="option in displayInspectTypes" :key="option.value" class="chip" :class="{ active: filterDraft.inspectType === option.value }" @click="selectInspectType(option.value)">
 							<text class="chip-text">{{ option.label }}</text>
 						</view>
 					</view>
@@ -30,28 +30,32 @@
 			</view>
 
 			<view class="section">
-				<text class="section-title">{{ t('计划日期') }}</text>
+				<text class="section-title">{{ translateText('计划日期') }}</text>
 				<view class="date-row">
-					<picker class="date-picker" mode="date" :value="draft.startDate" @change="changeStartDate">
-						<view class="date-value">{{ t(draft.startDate ?? '开始日期') }}</view>
+					<picker class="date-picker" mode="date" :value="filterDraft.startDate" @change="changeStartDate">
+						<view class="date-value">{{ translateText(filterDraft.startDate ?? '开始日期') }}</view>
 					</picker>
-					<text class="date-separator">{{ t('至') }}</text>
-					<picker class="date-picker" mode="date" :value="draft.endDate" @change="changeEndDate">
-						<view class="date-value">{{ t(draft.endDate ?? '结束日期') }}</view>
+					<text class="date-separator">{{ translateText('至') }}</text>
+					<picker class="date-picker" mode="date" :value="filterDraft.endDate" @change="changeEndDate">
+						<view class="date-value">{{ translateText(filterDraft.endDate ?? '结束日期') }}</view>
 					</picker>
 				</view>
 			</view>
 
 			<view class="sheet-actions">
-				<button class="action-button secondary" @click="closeSheet">{{ t('取消') }}</button>
-				<button class="action-button primary" @click="confirmFilters">{{ t('查看结果') }}</button>
+				<button class="action-button secondary" @click="closeSheet">{{ translateText('取消') }}</button>
+				<button class="action-button primary" @click="confirmFilters">{{ translateText('查看结果') }}</button>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
+	import { windowHeightPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+	type FilterDraft = { status: string, inspectType: string, startDate: string, endDate: string }
+	type FilterOption = { value: string, label: string }
 	const props = defineProps({
 		visible: { type: Boolean, default: false },
 		draft: { type: Object, default: () => ({ status: '', inspectType: '', startDate: '', endDate: '' }) },
@@ -60,12 +64,22 @@
 		loadingTypes: { type: Boolean, default: false }
 	})
 	const emit = defineEmits(['close', 'clear', 'update-status', 'update-inspect-type', 'update-start-date', 'update-end-date', 'confirm'])
+	/** 为原生筛选模板提供可调用的多语言方法。 */
+	function translateText(key: string): string { return t(key) }
+	/** 计算筛选弹层可用的最大窗口高度。 */
+	const sheetMaxHeight = computed((): string => windowHeightPx(0.88))
+	/** 把父页动态筛选草稿转换为固定字段。 */
+	const filterDraft = computed((): FilterDraft => { const raw = props.draft as UTSJSONObject; return { status: (raw['status'] ?? '').toString(), inspectType: (raw['inspectType'] ?? '').toString(), startDate: (raw['startDate'] ?? '').toString(), endDate: (raw['endDate'] ?? '').toString() } })
+	/** 将状态筛选项转换为原生模板可读取的选项。 */
+	const displayStatusOptions = computed((): FilterOption[] => (props.statusOptions as UTSJSONObject[]).map((raw: UTSJSONObject): FilterOption => ({ value: (raw['value'] ?? '').toString(), label: (raw['label'] ?? '').toString() })))
+	/** 将验货类型筛选项转换为原生模板可读取的选项。 */
+	const displayInspectTypes = computed((): FilterOption[] => (props.inspectTypeOptions as UTSJSONObject[]).map((raw: UTSJSONObject): FilterOption => ({ value: (raw['value'] ?? '').toString(), label: (raw['label'] ?? '').toString() })))
 
 	/**
 	 * 从 picker 事件中读取日期或选项值。
 	 */
-	function resolvePickerValue(event) {
-		return String(event?.detail?.value ?? '')
+	function resolvePickerValue(event: UniPickerChangeEvent): string {
+		return (event.detail.value ?? '').toString()
 	}
 
 	/**
@@ -85,28 +99,28 @@
 	/**
 	 * 更新草稿状态筛选值。
 	 */
-	function selectStatus(value) {
+	function selectStatus(value: string) {
 		emit('update-status', value)
 	}
 
 	/**
 	 * 更新草稿验货类型筛选值。
 	 */
-	function selectInspectType(value) {
+	function selectInspectType(value: string) {
 		emit('update-inspect-type', value)
 	}
 
 	/**
 	 * 更新计划开始日期筛选值。
 	 */
-	function changeStartDate(event) {
+	function changeStartDate(event: UniPickerChangeEvent) {
 		emit('update-start-date', resolvePickerValue(event))
 	}
 
 	/**
 	 * 更新计划结束日期筛选值。
 	 */
-	function changeEndDate(event) {
+	function changeEndDate(event: UniPickerChangeEvent) {
 		emit('update-end-date', resolvePickerValue(event))
 	}
 
@@ -120,7 +134,7 @@
 
 <style>
 	.sheet-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.42); }
-	.sheet-panel { width: 100%; max-height: 88vh; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
+	.sheet-panel { width: 100%; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
 	.sheet-header, .section-heading, .date-row, .sheet-actions { flex-direction: row; align-items: center; }
 	.sheet-header, .section-heading { justify-content: space-between; }
 	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }

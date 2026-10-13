@@ -35,4 +35,5 @@ test('uploaded images fall back to remote previews when a legacy local path is m
   const mediaImage = await readFile('components/detail/InspectionMediaImage.uvue', 'utf8')
   assert.match(mediaImage, /@error="handleImageError"/)
   assert.match(mediaImage, /localPath:\s*''/)
+  assert.match(mediaImage, /reportFileApi\.downloadInspectFile/)
 })

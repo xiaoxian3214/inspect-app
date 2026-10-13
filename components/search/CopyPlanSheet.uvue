@@ -1,39 +1,39 @@
 <template>
 	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
 		<view class="sheet-panel" @click.stop>
-			<text class="sheet-title">{{ t(mode === 2 ? '复制合并验货' : '复制当前验货') }}</text>
-			<scroll-view class="copy-content" scroll-y="true">
+			<text class="sheet-title">{{ translateText(mode === 2 ? '复制合并验货' : '复制当前验货') }}</text>
+			<scroll-view class="copy-content" :scroll-y="true">
 				<view v-if="mode === 2" class="merged-section">
-					<text class="merged-title">{{ t('此合并验货包含以下验货：') }}</text>
+					<text class="merged-title">{{ translateText('此合并验货包含以下验货：') }}</text>
 					<PlanMemberTable :items="mergedItems" :loading="mergedLoading" />
 				</view>
 				<view v-else class="info-card">
 					<view v-for="field in infoFields" :key="field.label" class="info-row">
-						<text class="info-label">{{ t(field.label) }}</text><text class="info-value">{{ field.value }}</text>
+						<text class="info-label">{{ translateText(field.label) }}</text><text class="info-value">{{ field.value }}</text>
 					</view>
 				</view>
 
 				<view class="section" @click="openOption('template')">
-					<text class="section-label">{{ t('清单') }}</text>
-					<view class="select-value"><text class="select-text">{{ selectedTemplateName !== '' ? selectedTemplateName : t('请选择清单') }}</text><text class="select-chevron">›</text></view>
+					<text class="section-label">{{ translateText('清单') }}</text>
+					<view class="select-value"><text class="select-text">{{ selectedTemplateName !== '' ? selectedTemplateName : translateText('请选择清单') }}</text><text class="select-chevron">›</text></view>
 				</view>
 				<view class="section" @click="openOption('type')">
-					<text class="section-label">{{ t('检查类型') }}</text>
-					<view class="select-value"><text class="select-text">{{ selectedInspectTypeName !== '' ? selectedInspectTypeName : t('请选择验货类型') }}</text><text class="select-chevron">›</text></view>
+					<text class="section-label">{{ translateText('检查类型') }}</text>
+					<view class="select-value"><text class="select-text">{{ selectedInspectTypeName !== '' ? selectedInspectTypeName : translateText('请选择验货类型') }}</text><text class="select-chevron">›</text></view>
 				</view>
 				<view v-if="created" class="success-box">
-					<text class="success-title">{{ t('复制成功') }}</text>
-					<text class="success-text">{{ t('新验货计划可立即下载到本地。') }}</text>
+					<text class="success-title">{{ translateText('复制成功') }}</text>
+					<text class="success-text">{{ translateText('新验货计划可立即下载到本地。') }}</text>
 				</view>
 			</scroll-view>
 
 			<view class="sheet-actions">
-				<button class="action-button secondary" :disabled="submitting" @click="closeSheet">{{ t('关闭') }}</button>
+				<button class="action-button secondary" :disabled="submitting" @click="closeSheet">{{ translateText('关闭') }}</button>
 				<button v-if="!created" class="action-button primary" :disabled="submitting || selectedInspectType === '' || selectedTemplateId === ''" @click="confirmCopy">
-					{{ t(submitting ? '复制中...' : '创建副本') }}
+					{{ translateText(submitting ? '复制中...' : '创建副本') }}
 				</button>
 				<button v-else class="action-button primary" :disabled="submitting" @click="downloadCopy">
-					{{ t(submitting ? '下载中...' : '下载到本地') }}
+					{{ translateText(submitting ? '下载中...' : '下载到本地') }}
 				</button>
 			</view>
 		</view>
@@ -47,6 +47,8 @@
 	import { buildCopyPlanFields } from '../../domain/planDownloadPreview.uts'
 	import PlanMemberTable from '../inspection/PlanMemberTable.uvue'
 	import OptionSelectSheet from './OptionSelectSheet.uvue'
+	type CopyInfoField = { label: string, value: string }
+	type CopyOption = { value: string, label: string, raw: UTSJSONObject }
 
 	const props = defineProps({
 		visible: { type: Boolean, default: false },
@@ -64,24 +66,26 @@
 	})
 	const emit = defineEmits(['close', 'update-inspect-type', 'update-template', 'confirm', 'download'])
 	const activePicker = ref('')
+	/** 为原生复制计划弹层提供可调用的多语言方法。 */
+	function translateText(key: string): string { return t(key) }
 
 	/** 按 H5 字段顺序返回复制当前验货的七行计划摘要。 */
-	const infoFields = computed(() => buildCopyPlanFields(props.item))
+	const infoFields = computed((): CopyInfoField[] => (buildCopyPlanFields(props.item) as UTSJSONObject[]).map((raw: UTSJSONObject): CopyInfoField => ({ label: (raw['label'] ?? '').toString(), value: (raw['value'] ?? '-').toString() })))
 
 	/**
 	 * 返回当前已选验货类型名称。
 	 */
-	const selectedInspectTypeName = computed(() => props.inspectTypeOptions.find((item) => String(item?.value ?? '') === props.selectedInspectType)?.label ?? '')
+	const selectedInspectTypeName = computed((): string => { const match = (props.inspectTypeOptions as UTSJSONObject[]).find((item: UTSJSONObject) => (item['value'] ?? '').toString() === props.selectedInspectType); return (match?.['label'] ?? '').toString() })
 
 	/**
 	 * 返回当前已选清单模板名称。
 	 */
-	const selectedTemplateName = computed(() => props.templates.find((item) => String(item?.id ?? '') === props.selectedTemplateId)?.name ?? props.selectedTemplateName)
+	const selectedTemplateName = computed((): string => { const match = (props.templates as UTSJSONObject[]).find((item: UTSJSONObject) => (item['id'] ?? '').toString() === props.selectedTemplateId); return (match?.['name'] ?? props.selectedTemplateName).toString() })
 
 	/** 将清单与检查类型转成同一种可复用选择项结构。 */
-	const pickerOptions = computed(() => activePicker.value === 'template'
-		? props.templates.map((item) => ({ value: String(item?.id ?? ''), label: String(item?.name ?? ''), raw: item }))
-		: props.inspectTypeOptions.map((item) => ({ value: String(item?.value ?? ''), label: String(item?.label ?? ''), raw: item })))
+	const pickerOptions = computed((): CopyOption[] => activePicker.value === 'template'
+		? (props.templates as UTSJSONObject[]).map((item: UTSJSONObject): CopyOption => ({ value: (item['id'] ?? '').toString(), label: (item['name'] ?? '').toString(), raw: item }))
+		: (props.inspectTypeOptions as UTSJSONObject[]).map((item: UTSJSONObject): CopyOption => ({ value: (item['value'] ?? '').toString(), label: (item['label'] ?? '').toString(), raw: item })))
 
 	/** 返回当前选项弹层的标题。 */
 	const pickerTitle = computed(() => activePicker.value === 'template' ? '选择清单' : '检查类型')
@@ -101,15 +105,15 @@
 	}
 
 	/** 点击清单或检查类型时打开原生底部选项弹层。 */
-	function openOption(kind) { if (!props.submitting) activePicker.value = kind }
+	function openOption(kind: string) { if (!props.submitting) activePicker.value = kind }
 
 	/** 关闭选项弹层但保留复制业务已选值。 */
 	function closeOption() { activePicker.value = '' }
 
 	/** 确认选项后向页面发送对应业务事件。 */
-	function confirmOption(option) {
-		if (activePicker.value === 'template') emit('update-template', option.raw)
-		else emit('update-inspect-type', option.raw)
+	function confirmOption(option: UTSJSONObject) {
+		if (activePicker.value === 'template') emit('update-template', option['raw'])
+		else emit('update-inspect-type', option['raw'])
 		closeOption()
 	}
 

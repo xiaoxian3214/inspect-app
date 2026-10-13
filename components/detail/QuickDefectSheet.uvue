@@ -1,21 +1,21 @@
 <template>
 	<view v-if="visible" class="sheet-root">
 		<view class="overlay" @click="closeSheet">
-			<view class="dialog" @click.stop="stopEvent">
+			<view class="dialog" :style="{ top: dialogTop, maxHeight: dialogMaxHeight }" @click.stop="stopEvent">
 				<view class="dialog-head">
 					<AppButton class="head-action" variant="icon" icon-type="close" :icon-size="24" icon-color="#334155" @press="closeSheet" />
-					<text class="dialog-title">{{ t(isEditing ? '编辑疵点' : '新增疵点') }}</text>
+					<text class="dialog-title">{{ translateText(isEditing ? '编辑疵点' : '新增疵点') }}</text>
 					<AppButton class="header-camera" variant="icon" icon-type="camera" :icon-size="28" icon-color="#1a5f3f" :disabled="atPhotoLimit" @press="addPhoto" />
 				</view>
-				<scroll-view class="dialog-body" scroll-y="true">
-					<view class="section media-section"><text class="label">{{ t('媒体库') }}</text><InspectionMediaGrid :photos="draft.photos" add-label="拍照" @capture-media="addPhoto" @remove-media="removePhoto" @preview-media="previewPhoto" @retry-media="retryPhoto" /></view>
-						<view class="section"><text class="label">{{ t('严重性') }}</text><view class="severity-row"><AppButton v-for="option in levels" :key="option.value" class="severity-option" :selected="draft.type === option.value" :label-color="draft.type === option.value ? '#16a34a' : '#334155'" @press="selectSeverity(option.value)">{{ t(option.label) }}</AppButton></view></view>
-						<view class="section"><text class="label">{{ t('受影响的产品数量') }}</text><scroll-view class="quantity-scroll" scroll-x="true"><view class="quantity-row" :class="{ disabled: draft.commonFlag === 1 }"><AppButton v-for="quantity in 19" :key="quantity" class="qty-item" :selected="draft.quantity === quantity" :label-color="draft.quantity === quantity ? '#1d4ed8' : '#334155'" @press="selectQuantity(quantity)">{{ quantity }}</AppButton><AppButton class="qty-other" :selected="draft.quantity === 'other'" :label-color="draft.quantity === 'other' ? '#1d4ed8' : '#334155'" @press="selectQuantity('other')">{{ t('其他') }}</AppButton></view></scroll-view><input v-if="draft.quantity === 'other' && draft.commonFlag !== 1" class="other-input" type="number" :value="draft.customQuantity" :placeholder="t('请输入数量')" @input="updateField('customQuantity', $event)" /></view>
-					<view class="section"><view class="common-row" @click="toggleCommon"><text class="common-title">{{ t('普遍性疵点') }}</text><view class="common-switch" :class="{ active: draft.commonFlag === 1 }"><view class="common-dot"></view></view></view></view>
-						<view class="section"><view class="label-row"><text class="label">{{ t('疵点类别') }}</text><text class="required">{{ t('必选') }}</text></view><view class="category-trigger" @click="openCategorySheet"><text :class="draft.defectCode ? 'category-value' : 'placeholder'">{{ selectedCategoryLabel }}</text><text>›</text></view></view>
-					<view class="section"><text class="label">{{ t('写评论') }}</text><textarea class="comment-input" :value="draft.description" :placeholder="t('写评论')" @input="updateField('description', $event)" /></view>
-						<view v-if="selectedItemLabel" class="section"><text class="label">{{ t('检查点') }}</text><view class="checkpoint"><text class="checkpoint-text">{{ selectedItemLabel }}</text></view></view>
-				</scroll-view><view class="actions"><AppButton class="footer-button cancel" label-color="#334155" @press="requestDelete">{{ t(isEditing ? '删除疵点' : '取消') }}</AppButton><AppButton class="footer-button save" label-color="#ffffff" @press="saveDefect">{{ t(isEditing ? '保存修改' : '报告疵点') }}</AppButton></view>
+				<scroll-view class="dialog-body" :scroll-y="true">
+					<view class="section media-section"><text class="label">{{ translateText('媒体库') }}</text><InspectionMediaGrid :photos="draft.photos" add-label="拍照" @capture-media="addPhoto" @remove-media="removePhoto" @preview-media="previewPhoto" @retry-media="retryPhoto" /></view>
+						<view class="section"><text class="label">{{ translateText('严重性') }}</text><view class="severity-row"><AppButton v-for="option in levels" :key="option.value" class="severity-option" :selected="draft.type === option.value" :label-color="draft.type === option.value ? '#16a34a' : '#334155'" @press="selectSeverity(option.value)">{{ translateText(option.label) }}</AppButton></view></view>
+						<view class="section"><text class="label">{{ translateText('受影响的产品数量') }}</text><scroll-view class="quantity-scroll" :scroll-x="true"><view class="quantity-row" :class="{ disabled: draft.commonFlag === 1 }"><AppButton v-for="quantity in 19" :key="quantity" class="qty-item" :selected="draft.quantity === quantity" :label-color="draft.quantity === quantity ? '#1d4ed8' : '#334155'" @press="selectQuantity(quantity)">{{ quantity }}</AppButton><AppButton class="qty-other" :selected="draft.quantity === 'other'" :label-color="draft.quantity === 'other' ? '#1d4ed8' : '#334155'" @press="selectQuantity('other')">{{ translateText('其他') }}</AppButton></view></scroll-view><input v-if="draft.quantity === 'other' && draft.commonFlag !== 1" class="other-input" type="number" :value="draft.customQuantity" :placeholder="translateText('请输入数量')" @input="updateField('customQuantity', $event)" /></view>
+					<view class="section"><view class="common-row" @click="toggleCommon"><text class="common-title">{{ translateText('普遍性疵点') }}</text><view class="common-switch" :class="{ active: draft.commonFlag === 1 }"><view class="common-dot"></view></view></view></view>
+						<view class="section"><view class="label-row"><text class="label category-label">{{ translateText('疵点类别') }}</text><text class="required">{{ translateText('必选') }}</text></view><view class="category-trigger" @click="openCategorySheet"><text :class="draft.defectCode ? 'category-value' : 'placeholder'">{{ selectedCategoryLabel }}</text><text>›</text></view></view>
+					<view class="section"><text class="label">{{ translateText('写评论') }}</text><textarea class="comment-input" :value="draft.description" :placeholder="translateText('写评论')" @input="updateField('description', $event)" /></view>
+						<view v-if="selectedItemLabel" class="section"><text class="label">{{ translateText('检查点') }}</text><view class="checkpoint"><text class="checkpoint-text">{{ selectedItemLabel }}</text></view></view>
+				</scroll-view><view class="actions"><AppButton class="footer-button cancel" label-color="#334155" @press="requestDelete">{{ translateText(isEditing ? '删除疵点' : '取消') }}</AppButton><AppButton class="footer-button save" label-color="#ffffff" @press="saveDefect">{{ translateText(isEditing ? '保存修改' : '报告疵点') }}</AppButton></view>
 			</view>
 		</view>
 		<DefectCategorySheet :visible="showCategorySheet" :category-tree="categoryTree" :selected="draft" @close="closeCategorySheet" @select="applyCategory" />
@@ -23,18 +23,29 @@
 </template>
 
 <script setup lang="uts">
+	import { windowHeightPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
+	import { firstNonEmptyText } from '../../domain/searchViewModel.uts'
 	import { computed, ref, watch } from 'vue'
 	import AppButton from '../common/AppButton.uvue'
 	import DefectCategorySheet from './DefectCategorySheet.uvue'
 	import InspectionMediaGrid from './InspectionMediaGrid.uvue'
 	import { createDefectDraft, getDefectQuantity, selectDefectQuantity, setDefectCommon, validateDefectDraft } from '../../domain/quickDefectForm.uts'
+	type DefectDraft = { type: string, photos: UTSJSONObject[], quantity: any, customQuantity: string, commonFlag: number, defectCode: string, defectDesc: string, checkItemName: string, checkItemId: string, description: string, tier1Code: string, tier2Code: string, tier3Code: string }
 	const props = defineProps({ visible: { type: Boolean, default: false }, editing: { type: Boolean, default: false }, defect: { type: Object, default: () => ({}) }, items: { type: Array, default: () => [] }, levelOptions: { type: Array, default: () => [] }, categoryTree: { type: Array, default: () => [] } })
 	const emit = defineEmits(['close', 'save', 'delete', 'add-photo', 'remove-photo', 'preview-photo', 'retry-photo'])
-	const draft = ref(createDefectDraft({}))
+	const draft = ref<DefectDraft>(createDefectDraft({}) as DefectDraft)
 	const showCategorySheet = ref(false)
+	/** 将动态严重等级字典转换为原生按钮可读取的选项。 */
+	type SeverityOption = { value: string, label: string }
 	/** 返回后端字典或默认严重等级选项。 */
-	const levels = computed(() => props.levelOptions.length > 0 ? props.levelOptions : [{ value: 'CRITICAL', label: '致命' }, { value: 'MAJOR', label: '严重' }, { value: 'MINOR', label: '轻微' }])
+	const levels = computed((): SeverityOption[] => props.levelOptions.length > 0 ? (props.levelOptions as UTSJSONObject[]).map((raw: UTSJSONObject): SeverityOption => ({ value: (raw['value'] ?? '').toString(), label: (raw['label'] ?? '').toString() })) : [{ value: 'CRITICAL', label: '致命' }, { value: 'MAJOR', label: '严重' }, { value: 'MINOR', label: '轻微' }])
+	/** 为原生疵点编辑模板提供可调用的翻译方法。 */
+	function translateText(key: string): string { return t(key) }
+	/** 以窗口实际高度为底部弹层计算顶部位置。 */
+	const dialogTop = computed((): string => windowHeightPx(0.1))
+	/** 以窗口实际高度为底部弹层计算最大高度。 */
+	const dialogMaxHeight = computed((): string => windowHeightPx(0.9))
 	/** 使用打开弹层时的业务状态，不因新疵点拍照生成本地 ID 而误判编辑。 */
 	const isEditing = computed(() => props.editing)
 	/** 达到媒体数量上限时停用顶部拍照入口。 */
@@ -42,50 +53,51 @@
 	/** 优先显示带入的检查点名称，老数据仅有 ID 时从清单中回填。 */
 	const selectedItemLabel = computed(() => {
 		if (draft.value.checkItemName) return draft.value.checkItemName
-		const item = props.items.find((candidate) => String(candidate?.baseItemId ?? candidate?.itemId ?? candidate?.id ?? '') === String(draft.value.checkItemId ?? ''))
-		return item ? (item.itemName ?? item.name ?? '') : ''
+		const item = (props.items as UTSJSONObject[]).find((candidate: UTSJSONObject) => firstNonEmptyText([candidate['baseItemId'], candidate['itemId'], candidate['id']], '') === draft.value.checkItemId)
+		return item != null ? firstNonEmptyText([item['itemName'], item['name']], '') : ''
 	})
 	/** 返回已选疵点类别的编码和名称。 */
 	const selectedCategoryLabel = computed(() => draft.value.defectCode ? `${draft.value.defectCode}: ${draft.value.defectDesc}` : '点击以选择疵点类别')
 	/** 用传入疵点重置编辑草稿，保留只读的检查项关联。 */
-	function resetDraft(defect) { draft.value = createDefectDraft(defect) }
+	function resetDraft(defect: UTSJSONObject) { draft.value = createDefectDraft(defect) as DefectDraft }
 	/** 选择疵点严重等级。 */
-	function selectSeverity(value) { draft.value = { ...draft.value, type: value } }
+	function selectSeverity(value: string) { draft.value = { ...draft.value, type: value } }
 	/** 更新评论或其他数量的输入值。 */
-	function updateField(field, event) { draft.value = { ...draft.value, [field]: String(event?.detail?.value ?? '') } }
+	function updateField(field: string, event: any) { const value = (event as UniInputEvent).detail.value; if (field === 'description') draft.value = { ...draft.value, description: value }; else if (field === 'customQuantity') draft.value = { ...draft.value, customQuantity: value } }
 	/** 选择预置或自定义数量；普遍性状态在选择数量时自动关闭。 */
-	function selectQuantity(quantity) { draft.value = selectDefectQuantity(draft.value, quantity) }
+	function selectQuantity(quantity: any) { draft.value = selectDefectQuantity(draft.value, quantity) as DefectDraft }
 	/** 切换普遍性疵点和互斥的数量状态。 */
-	function toggleCommon() { draft.value = setDefectCommon(draft.value, draft.value.commonFlag !== 1) }
+	function toggleCommon() { draft.value = setDefectCommon(draft.value, draft.value.commonFlag !== 1) as DefectDraft }
 	/** 打开三级疵点分类选择弹层。 */
 	function openCategorySheet() { showCategorySheet.value = true }
 	/** 关闭三级疵点分类选择弹层。 */
 	function closeCategorySheet() { showCategorySheet.value = false }
 	/** 将分类组件返回的三级编码和名称写入疵点草稿。 */
-	function applyCategory(category) { draft.value = { ...draft.value, tier1Code: category?.tier1Code ?? '', tier2Code: category?.tier2Code ?? '', tier3Code: category?.tier3Code ?? '', defectCode: category?.defectCode ?? '', defectDesc: category?.defectDesc ?? '' }; closeCategorySheet() }
+	function applyCategory(category: UTSJSONObject) { draft.value = { ...draft.value, tier1Code: (category['tier1Code'] ?? '').toString(), tier2Code: (category['tier2Code'] ?? '').toString(), tier3Code: (category['tier3Code'] ?? '').toString(), defectCode: (category['defectCode'] ?? '').toString(), defectDesc: (category['defectDesc'] ?? '').toString() }; closeCategorySheet() }
 	/** 请求页面使用原生相机给当前疵点添加本地图片。 */
 	function addPhoto() { if (draft.value.photos.length < 30) emit('add-photo', draft.value) }
 	/** 请求页面删除当前疵点图片。 */
-	function removePhoto(photo) { emit('remove-photo', { defect: draft.value, photo }) }
+	function removePhoto(photo: UTSJSONObject) { emit('remove-photo', { defect: draft.value, photo }) }
 	/** 请求页面预览当前疵点图片。 */
-	function previewPhoto(photo) { emit('preview-photo', { defect: draft.value, photo }) }
+	function previewPhoto(photo: UTSJSONObject) { emit('preview-photo', { defect: draft.value, photo }) }
 	/** 请求页面重新上传失败的疵点图片。 */
-	function retryPhoto(photo) { emit('retry-photo', { defect: draft.value, photo }) }
+	function retryPhoto(photo: UTSJSONObject) { emit('retry-photo', { defect: draft.value, photo }) }
 	/** 校验类别和有效数量，保存数值型数量或普遍性 null。 */
 	function saveDefect() { const error = validateDefectDraft(draft.value); if (error) { uni.showToast({ title: t(error), icon: 'none' }); return }; emit('save', { ...draft.value, quantity: getDefectQuantity(draft.value) }) }
-	/** 编辑时请求二次确认删除，新增时关闭弹层。 */
-	function requestDelete() { if (isEditing.value) emit('delete', draft.value); else closeSheet() }
 	/** 关闭疵点编辑弹层。 */
 	function closeSheet() { showCategorySheet.value = false; emit('close') }
+	/** 编辑时请求二次确认删除，新增时关闭弹层。 */
+	function requestDelete() { if (isEditing.value) emit('delete', draft.value); else closeSheet() }
 	/** 阻止点击内容区域关闭弹层。 */
 	function stopEvent() {}
-	watch(() => props.defect, resetDraft, { immediate: true, deep: true })
+	/** 传入的疵点切换时更新可编辑草稿。 */
+	watch((): UTSJSONObject => props.defect as UTSJSONObject, (defect: UTSJSONObject) => resetDraft(defect), { immediate: true, deep: true })
 </script>
 
 <style>
 	.sheet-root { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2250; }
 	.overlay { position: absolute; left: 0; top: 0; right: 0; bottom: 0; justify-content: flex-end; background-color: rgba(15,23,42,0.52); }
-	.dialog { position: absolute; left: 0; top: 10%; right: 0; bottom: 0; max-height: 90%; flex-direction: column; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
+	.dialog { position: absolute; left: 0; right: 0; bottom: 0; flex-direction: column; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
 	.dialog-head { height: 96rpx; padding: 16rpx 24rpx; flex-direction: row; align-items: center; border-bottom-width: 2rpx; border-bottom-color: #e5e7eb; }
 	.dialog-title { flex: 1; color: #111827; font-size: 36rpx; font-weight: 600; text-align: center; }
 	.app-button.head-action, .app-button.header-camera { width: 88rpx; height: 64rpx; min-height: 64rpx; padding: 0; border-width: 0; background-color: #ffffff; }
@@ -93,27 +105,28 @@
 	.section { margin-bottom: 32rpx; }
 	.media-section { margin-bottom: 40rpx; }
 	.label { margin-bottom: 20rpx; color: #1f2937; font-size: 28rpx; font-weight: 600; }
-	.label-row { flex-direction: row; align-items: center; }
+	.label-row { flex-direction: row; align-items: center; margin-bottom: 20rpx; }
+	.category-label { margin-bottom: 0; }
 	.severity-row { flex-direction: row; }
 	.severity-option { flex: 1; height: 80rpx; margin-right: 16rpx; border-radius: 20rpx; color: #334155; font-size: 28rpx; }
 	.severity-option.selected { color: #16a34a; border-color: #16a34a; background-color: #f0fdf4; }
 	.quantity-scroll { width: 100%; height: 80rpx; }
 	.quantity-row { flex-direction: row; align-items: center; }
 	.quantity-row.disabled { opacity: 0.5; }
-	.qty-item, .qty-other { min-width: 88rpx; height: 76rpx; min-height: 76rpx; margin-right: 16rpx; padding: 0 16rpx; border-radius: 16rpx; }
-	.qty-other { min-width: 124rpx; }
+	.qty-item, .qty-other { flex-shrink: 0; min-width: 88rpx; height: 76rpx; min-height: 76rpx; margin-right: 16rpx; padding: 0 16rpx; border-radius: 16rpx; }
+	.qty-other { min-width: 124rpx; margin-right: 0; }
 	.qty-item.selected, .qty-other.selected { border-color: #bfdbfe; background-color: #e8f2ff; color: #1d4ed8; }
-	.other-input { height: 84rpx; margin-top: 20rpx; padding: 0 24rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 16rpx; font-size: 28rpx; }
+	.other-input { width: 100%; height: 84rpx; margin-top: 20rpx; padding: 0 24rpx; border-width: 2rpx; border-style: solid; border-color: #e5e7eb; border-radius: 16rpx; font-size: 28rpx; background-color: #ffffff; }
 	.common-row { height: 80rpx; flex-direction: row; align-items: center; justify-content: space-between; }
 	.common-title { color: #1f2937; font-size: 28rpx; }
 	.common-switch { width: 88rpx; height: 48rpx; padding: 4rpx; flex-direction: row; align-items: center; border-radius: 24rpx; background-color: #cbd5e1; }
 	.common-switch.active { justify-content: flex-end; background-color: #16a34a; }
 	.common-dot { width: 40rpx; height: 40rpx; border-radius: 20rpx; background-color: #ffffff; }
-	.required { color: #ef4444; font-size: 24rpx; }
-	.category-trigger { width: 100%; height: 84rpx; padding: 0 24rpx; flex-direction: row; justify-content: space-between; border-radius: 16rpx; color: #111827; }
+	.required { color: #ef4444; font-size: 24rpx; line-height: 40rpx; }
+	.category-trigger { width: 100%; height: 84rpx; padding: 0 24rpx; flex-direction: row; align-items: center; justify-content: space-between; border-width: 2rpx; border-style: solid; border-color: #e5e7eb; border-radius: 16rpx; color: #111827; background-color: #ffffff; }
 	.category-value { flex: 1; text-align: left; }
 	.placeholder { flex: 1; color: #94a3b8; text-align: left; }
-	.comment-input { width: 100%; min-height: 150rpx; padding: 20rpx 24rpx; box-sizing: border-box; border-width: 2rpx; border-color: #e5e7eb; border-radius: 16rpx; font-size: 28rpx; }
+	.comment-input { width: 100%; min-height: 150rpx; padding: 20rpx 24rpx; box-sizing: border-box; border-width: 2rpx; border-style: solid; border-color: #e5e7eb; border-radius: 16rpx; font-size: 28rpx; background-color: #ffffff; }
 	.checkpoint { min-height: 84rpx; padding: 20rpx 24rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; background-color: #f8fafc; }
 	.checkpoint-text { color: #334155; font-size: 28rpx; }
 	.actions { flex-direction: row; padding: 28rpx 32rpx 48rpx; border-top-width: 2rpx; border-top-color: #e5e7eb; background-color: #ffffff; }

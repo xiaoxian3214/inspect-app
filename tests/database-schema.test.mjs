@@ -6,12 +6,13 @@ const schemaModule = await loadUtsModule('database/schema.uts')
 const memoryModule = await loadUtsModule('database/memoryDatabase.uts')
 
 test('defines every offline table required by the app', () => {
-  assert.equal(schemaModule.DATABASE_VERSION, 1)
+  assert.equal(schemaModule.DATABASE_VERSION, 5)
   assert.deepEqual(schemaModule.TABLE_NAMES, [
     'user',
-    'report',
-    'checklist',
-    'defect',
+    'qcm_inspection_plan',
+    'qcm_inspection_report',
+    'qcm_inspection_item_result',
+    'qcm_inspection_defect_record',
     'photo',
     'sync_log',
     'request_queue',
@@ -25,6 +26,7 @@ test('defines every offline table required by the app', () => {
       `missing schema for ${tableName}`
     )
   }
+  assert.ok(!schemaModule.schemaSqlList.some((sql) => /CREATE TABLE IF NOT EXISTS report_(group|member)/.test(sql)))
 })
 
 test('rolls back all writes when a transaction fails', async () => {

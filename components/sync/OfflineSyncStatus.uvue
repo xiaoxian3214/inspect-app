@@ -1,9 +1,10 @@
 <template>
 	<view class="sync-cloud-wrap">
 		<view class="sync-cloud-icon" :class="{ disabled: disabled }" @click="handleClick">
-			<AppIcon type="cloudUpload" :size="26" :color="iconColor" />
+			<SyncCloudShape :color="iconColor" />
 			<view v-if="isUploading" class="sync-upload-arrow" :style="{ opacity: arrowLit ? 1 : 0.15 }">
-				<AppIcon type="arrowDown" :size="14" color="#ffffff" />
+				<view class="sync-arrow-shaft"></view>
+				<view class="sync-arrow-head"></view>
 			</view>
 			<view v-if="pendingCount > 0" class="sync-badge">
 				<text class="sync-badge-text">{{ badgeText }}</text>
@@ -14,11 +15,11 @@
 			<view class="sync-card-inner">
 				<view class="sync-card-header">
 					<view class="sync-card-icon-wrap">
-						<AppIcon type="cloudUpload" :size="22" color="#60a5fa" />
+						<SyncCloudShape color="#60a5fa" background="#223657" />
 					</view>
 					<view class="sync-card-title-area">
-						<text class="sync-card-title">{{ t(cardTitle) }}</text>
-						<text class="sync-card-count">{{ t(cardSubtitle) }}</text>
+						<text class="sync-card-title">{{ translateText(cardTitle) }}</text>
+						<text class="sync-card-count">{{ translateText(cardSubtitle) }}</text>
 					</view>
 					<view class="sync-card-close" @click.stop="hideCard">
 						<AppIcon type="close" :size="16" color="#64748b" />
@@ -29,11 +30,11 @@
 						<view class="sync-card-progress-fill"></view>
 					</view>
 				</view>
-				<text class="sync-card-tip">{{ t(cardTip) }}</text>
+				<text class="sync-card-tip">{{ translateText(cardTip) }}</text>
 				<view class="sync-detail">
-					<text class="sync-detail-title">{{ t('待同步队列（{count}）', { count: queueItems.length }) }}</text>
-					<scroll-view v-if="queueItems.length > 0" class="sync-detail-list" scroll-y="true">
-						<view v-for="(item, index) in queueItems" :key="item.id || index" class="sync-detail-item" :class="{ failed: isFailedItem(item) }">
+					<text class="sync-detail-title">{{ queueTitle }}</text>
+					<scroll-view v-if="queueItems.length > 0" class="sync-detail-list" :scroll-y="true">
+						<view v-for="(item, index) in displayQueueItems" :key="item.id !== '' ? item.id : index.toString()" class="sync-detail-item" :class="{ failed: isFailedItem(item) }">
 							<text class="sync-detail-tag">[{{ item.syncType }}]</text>
 							<view class="sync-detail-info">
 							<text class="sync-detail-content">{{ item.content }}</text>
@@ -41,7 +42,7 @@
 							</view>
 						</view>
 					</scroll-view>
-					<text v-else class="sync-detail-empty">{{ t('✓ 所有数据已同步') }}</text>
+					<text v-else class="sync-detail-empty">{{ translateText('✓ 所有数据已同步') }}</text>
 				</view>
 			</view>
 		</view>
@@ -52,6 +53,7 @@
 	import { t } from '../../i18n/index.uts'
 	import { computed, onBeforeUnmount, ref, watch } from 'vue'
 	import AppIcon from '../icons/AppIcon.uvue'
+	import SyncCloudShape from './SyncCloudShape.uvue'
 
 	const props = defineProps({
 		isOnline: { type: Boolean, default: true },
@@ -61,15 +63,17 @@
 		failedCount: { type: Number, default: 0 },
 		queueItems: { type: Array, default: () => [] }
 	})
+	type SyncQueueRow = { id: string, syncType: string, content: string, meta: string, status: string }
 
 	const showCard = ref(false)
 	const arrowLit = ref(true)
-	let autoHideTimer = null
-	let uploadAnimationTimer = null
+	let autoHideTimer: number | null = null
+	let uploadAnimationTimer: number | null = null
 
 	/** 上传接口运行期间定时交替箭头亮度，停止时立即释放计时器。 */
-	function handleUploadingChange(uploading) {
-		if (uploadAnimationTimer != null) { clearInterval(uploadAnimationTimer); uploadAnimationTimer = null }
+	function handleUploadingChange(uploading: boolean) {
+		const timer = uploadAnimationTimer
+		if (timer != null) { clearInterval(timer); uploadAnimationTimer = null }
 		arrowLit.value = true
 		if (uploading) uploadAnimationTimer = setInterval(() => { arrowLit.value = !arrowLit.value }, 450)
 	}
@@ -82,7 +86,16 @@
 	/**
 	 * 生成不超过两位数的待同步徽标文本。
 	 */
-	const badgeText = computed(() => props.pendingCount > 99 ? '99+' : String(props.pendingCount))
+	const badgeText = computed(() => props.pendingCount > 99 ? '99+' : props.pendingCount.toString())
+
+	/** 将持久队列记录转换为模板可读取的明确字段。 */
+	const displayQueueItems = computed((): SyncQueueRow[] => (props.queueItems as UTSJSONObject[]).map((item: UTSJSONObject): SyncQueueRow => ({ id: (item['id'] ?? '').toString(), syncType: (item['syncType'] ?? '').toString(), content: (item['content'] ?? '').toString(), meta: (item['meta'] ?? '').toString(), status: (item['status'] ?? '').toString() })))
+
+	/** 提供模板可调用的本地化文本转换。 */
+	function translateText(key: string): string { return t(key) }
+
+	/** 将待同步数量嵌入本地化队列标题。 */
+	const queueTitle = computed((): string => t('待同步队列（{count}）', { count: props.queueItems.length }))
 
 	/**
 	 * 根据联网与失败状态计算顶部云图标颜色。
@@ -127,8 +140,8 @@
 	/**
 	 * 判断同步明细是否处于失败或需要人工处理状态。
 	 */
-	function isFailedItem(item) {
-		const status = String(item?.status ?? '').toLowerCase()
+	function isFailedItem(item: SyncQueueRow): boolean {
+		const status = item.status.toLowerCase()
 		return status === 'failed' || status === 'error' || status === 'needs_attention'
 	}
 
@@ -136,15 +149,16 @@
 	 * 清理同步状态卡自动隐藏定时器。
 	 */
 	function clearAutoHideTimer() {
-		if (autoHideTimer == null) return
-		clearTimeout(autoHideTimer)
+		const timer = autoHideTimer
+		if (timer == null) return
+		clearTimeout(timer)
 		autoHideTimer = null
 	}
 
 	/**
 	 * 在状态展示完成后自动收起同步卡片。
 	 */
-	function scheduleAutoHide(delay = 4000) {
+	function scheduleAutoHide(delay: number = 4000) {
 		clearAutoHideTimer()
 		autoHideTimer = setTimeout(() => {
 			showCard.value = false
@@ -176,7 +190,7 @@
 	/**
 	 * 待同步数量归零后短暂展示成功状态再自动收起。
 	 */
-	function handlePendingCountChange(value) {
+	function handlePendingCountChange(value: number) {
 		if (value === 0 && showCard.value) scheduleAutoHide(1500)
 	}
 
@@ -185,11 +199,12 @@
 	 */
 	function handleBeforeUnmount() {
 		clearAutoHideTimer()
-		if (uploadAnimationTimer != null) { clearInterval(uploadAnimationTimer); uploadAnimationTimer = null }
+		const timer = uploadAnimationTimer
+		if (timer != null) { clearInterval(timer); uploadAnimationTimer = null }
 	}
 
-	watch(() => props.pendingCount, handlePendingCountChange)
-	watch(() => props.isUploading, handleUploadingChange, { immediate: true })
+	watch((): number => props.pendingCount, (value: number) => handlePendingCountChange(value))
+	watch((): boolean => props.isUploading, (uploading: boolean) => handleUploadingChange(uploading), { immediate: true })
 	onBeforeUnmount(handleBeforeUnmount)
 </script>
 
@@ -197,13 +212,15 @@
 	.sync-cloud-wrap { position: relative; }
 	.sync-cloud-icon { width: 40px; height: 40px; position: relative; align-items: center; justify-content: center; }
 	.sync-cloud-icon.disabled { opacity: 0.7; }
-	.sync-upload-arrow { position: absolute; top: 7px; left: 13px; transform: rotate(180deg); transition-property: opacity; transition-duration: 220ms; }
+	.sync-upload-arrow { position: absolute; top: 18px; left: 16px; width: 8px; height: 8px; transition-property: opacity; transition-duration: 220ms; }
+	.sync-arrow-shaft { position: absolute; left: 3px; top: 1px; width: 2px; height: 6px; border-radius: 1px; background-color: #ffffff; }
+	.sync-arrow-head { position: absolute; left: 2px; top: 0; width: 5px; height: 5px; border-top-width: 2px; border-left-width: 2px; border-right-width: 0; border-bottom-width: 0; border-color: #ffffff; border-style: solid; transform: rotate(45deg); }
 	.sync-badge { position: absolute; top: 3px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background-color: #ef4444; align-items: center; justify-content: center; }
 	.sync-badge-text { color: #ffffff; font-size: 10px; font-weight: 700; line-height: 16px; }
 	.sync-card { position: fixed; left: 0; right: 0; top: 48px; z-index: 2200; padding: 0 12px; }
 	.sync-card-inner { padding: 14px 14px 12px; border-radius: 14px; background-color: #1e293b; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24); }
 	.sync-card-header { flex-direction: row; align-items: center; }
-	.sync-card-icon-wrap { width: 36px; height: 36px; border-radius: 10px; background-color: rgba(59, 130, 246, 0.15); align-items: center; justify-content: center; }
+	.sync-card-icon-wrap { width: 36px; height: 36px; border-radius: 10px; background-color: #223657; align-items: center; justify-content: center; }
 	.sync-card-title-area { flex: 1; margin-left: 10px; }
 	.sync-card-title { color: #ffffff; font-size: 15px; font-weight: 700; }
 	.sync-card-count { margin-top: 2px; color: #94a3b8; font-size: 12px; }

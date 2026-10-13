@@ -18,13 +18,13 @@ export function getMediaDisplayUrl(media, mode = 'thumbnail', apiBaseUrl = '') {
   if (typeof media === 'string') return normalizeRemoteMediaUrl(media, apiBaseUrl)
   const localPath = String(media?.localPath ?? '').trim()
   if (localPath !== '') return localPath
-  const previewUrl = String(media?.previewUrl ?? '').trim()
-  if (previewUrl !== '') return normalizeRemoteMediaUrl(previewUrl, apiBaseUrl)
   const fileId = String(media?.fileId ?? '').trim()
   if (fileId !== '') {
     const endpoint = mode === 'preview' ? 'preview' : 'thumbnail'
     return `${String(apiBaseUrl ?? '').replace(/\/+$/, '')}/api/inspect/file/${encodeURIComponent(fileId)}/${endpoint}`
   }
+  const previewUrl = String(media?.previewUrl ?? '').trim()
+  if (previewUrl !== '') return normalizeRemoteMediaUrl(previewUrl, apiBaseUrl)
   const candidate = mode === 'preview'
     ? media?.filePath || media?.thumbnailPath || media?.coverUrl || media?.url || media?.dataUrl
     : media?.thumbnailPath || media?.coverUrl || media?.filePath || media?.url || media?.dataUrl

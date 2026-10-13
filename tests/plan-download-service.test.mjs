@@ -124,7 +124,7 @@ test('persists the whole source card for offline listing without overwriting dow
   }
 
   await service.downloadToLocal('p-1', {}, [], [sourceCard])
-  assert.deepEqual(JSON.parse(database.readTable('report')[0].jsonData).listCard, sourceCard)
+  assert.deepEqual(JSON.parse(database.readTable('inspection_plan')[0].jsonData).listCard, sourceCard)
   const reopened = repositoryModule.createReportRepository(database)
   const [card] = await reopened.listPlanSummaries()
   assert.equal(card.supplierName, '列表工厂')
@@ -168,7 +168,7 @@ test('merged download persists renderable details for every member before going 
   const planApi = {
     downloadPlan: async () => ({
       report: { id: 'report-1' },
-      inspectionPlans: [{ id: 'p-1', goodsName: '产品一' }, { id: 'p-2', goodsName: '产品二' }],
+      inspectionPlans: [{ id: 'p-1', parentPlanId: 'p-1', mergeType: 2, goodsName: '产品一' }, { id: 'p-2', parentPlanId: 'p-1', mergeType: 2, goodsName: '产品二' }],
       standardItems: null,
       itemResults: [{ id: 'section-1', itemName: '章节' }, { id: 'item-1', parentItemId: 'section-1', itemName: '外观' }]
     }),

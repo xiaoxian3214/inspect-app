@@ -14,6 +14,19 @@ function parseRows(value) {
   }
 }
 
+/** 按 H5 的条码结果格式还原名称、码值与扫码格式，供本地和在线详情统一回显。 */
+function parseBarcodeItems(value) {
+  let rows = value
+  if (typeof value === 'string' && value.trim() !== '') {
+    try { rows = JSON.parse(value) }
+    catch (_) { rows = [{ code: value }] }
+  }
+  return (Array.isArray(rows) ? rows : []).map((row) => typeof row === 'string'
+    ? { name: '', code: row.trim(), format: '' }
+    : { name: String(row?.name ?? row?.label ?? ''), code: String(row?.code ?? row?.value ?? row?.barcode ?? '').trim(), format: String(row?.format ?? row?.scanType ?? '') })
+    .filter((row) => row.name !== '' || row.code !== '' || row.format !== '')
+}
+
 /**
  * 从服务端多语言字段中选择当前详情页可展示的文本。
  */
@@ -88,6 +101,28 @@ export function buildStandardItemsFromItemResults(itemResults: any[] = []) {
   }
   sortNodes(roots)
   return roots
+}
+
+/** 将模板树中的检查点 ID 对齐到结果行主键，保留章节和模板展示字段。 */
+function alignStandardItemsWithResults(standardItems, itemResults) {
+  const rows = (Array.isArray(itemResults) ? itemResults : []).filter((row) => !row?.sonPlanId)
+  const byId = new Map(rows.map((row) => [String(row?.id ?? row?.itemResultId ?? ''), row]))
+  const byTemplate = new Map(rows.filter((row) => String(row?.standardItemId ?? '') !== '')
+    .map((row) => [String(row.standardItemId), row]))
+  /** 章节保留原 ID；模板检查点才需要映射到结果 ID。 */
+  function alignNode(node) {
+    if (Array.isArray(node?.children) && node.children.length > 0) return { ...node, children: node.children.map(alignNode) }
+    const nodeId = String(node?.id ?? node?.itemId ?? '')
+    if (byId.has(nodeId)) return node
+    const result = byTemplate.get(String(node?.standardItemId ?? nodeId))
+    if (result == null) return node
+    return {
+      ...node, id: String(result?.id ?? result?.itemResultId), standardItemId: String(result.standardItemId),
+      itemType: node?.itemType ?? result?.itemType,
+      specAttributes: node?.specAttributes ?? normalizeSpecAttributes(result?.specAttributes)
+    }
+  }
+  return (Array.isArray(standardItems) ? standardItems : []).map(alignNode)
 }
 
 /**
@@ -230,6 +265,23 @@ export function buildMergedPlanSummary(inspectionPlans) {
   }), { requiredQuantity: 0, sampleSize: 0 })
 }
 
+/** 按 H5 口径汇总报告的订单、已备好与预计抽样数量，合并验货按成员计划去重。 */
+export function buildFinishQuantityTotals(detail) {
+  const members = Array.isArray(detail?.inspectionPlans) && detail.inspectionPlans.length > 1
+    ? detail.inspectionPlans : [detail?.plan ?? detail]
+  const seen = new Set()
+  return members.reduce((totals, plan) => {
+    const planId = String(plan?.id ?? plan?.planId ?? '')
+    if (planId !== '' && seen.has(planId)) return totals
+    if (planId !== '') seen.add(planId)
+    return {
+      orderQuantity: totals.orderQuantity + Number(plan?.requiredQuantity ?? 0),
+      readyQuantity: totals.readyQuantity + Number(plan?.finishQuantity ?? plan?.readyQuantity ?? 0),
+      sampleQuantity: totals.sampleQuantity + Number(plan?.sampleQuantity ?? plan?.sampleSize ?? 0)
+    }
+  }, { orderQuantity: 0, readyQuantity: 0, sampleQuantity: 0 })
+}
+
 /**
  * 将 H5 的章节树或已有扁平检查项转换为页面使用的一维列表。
  */
@@ -323,6 +375,8 @@ function buildChecklistData(itemResults) {
     const photos = normalizeFileList(row?.fileList, baseItemId, 'checklist')
     const measurements = parseRows(row?.specResult)
     const textGroups = parseRows(row?.textContent)
+    const barcodeItems = parseBarcodeItems(row?.barcodeValue)
+    const barcodeList = barcodeItems.map((item) => item.code).filter((code) => code !== '')
     const comment = String(row?.remarks ?? '')
     data[key] = {
       result,
@@ -330,9 +384,10 @@ function buildChecklistData(itemResults) {
       photos,
       measurements,
       textGroups,
-      barcode: '',
-      barcodeList: [],
-      completed: result !== '' || comment.trim() !== '' || photos.length > 0 || measurements.length > 0 || textGroups.length > 0
+      barcode: barcodeList[0] ?? '',
+      barcodeList,
+      barcodeItems,
+      completed: result !== '' || comment.trim() !== '' || photos.length > 0 || measurements.length > 0 || textGroups.length > 0 || barcodeList.length > 0
     }
   })
   return data
@@ -431,7 +486,7 @@ export function normalizeInspectionDetail(source, requestedPlanId: string = '') 
   const planId = String(requestedPlanId ?? plan?.id ?? detail?.planId ?? detail?.id ?? '').trim()
   const itemResults = Array.isArray(detail?.itemResults) ? detail.itemResults : []
   const standardItems = Array.isArray(detail?.standardItems) && detail.standardItems.length > 0
-    ? detail.standardItems
+    ? alignStandardItemsWithResults(detail.standardItems, itemResults)
     : buildStandardItemsFromItemResults(itemResults)
   const baseChecklistItems = flattenStandardItems(standardItems, detail?.checklistItems)
   const rawChecklistData = detail?.checklistData != null && typeof detail.checklistData === 'object' && Object.keys(detail.checklistData).length > 0
@@ -496,13 +551,28 @@ function isSameDetailPhoto(left, right) {
     || (leftFilePath !== '' && leftFilePath === rightFilePath)
 }
 
-/** 保留详情快照中的原有媒体，并用照片表记录回填同一张图片的最新上传状态。 */
+/** 为同一照片的本地 ID、服务端 ID 与路径建立可复用的合并键。 */
+function detailPhotoKeys(photo) {
+  return [
+    ['photo', photo?.photoId ?? photo?.id],
+    ['file', photo?.fileId],
+    ['local', photo?.localPath],
+    ['remote', photo?.filePath]
+  ].filter((entry) => String(entry[1] ?? '').trim() !== '')
+    .map((entry) => `${entry[0]}:${String(entry[1]).trim()}`)
+}
+
+/** 保留详情快照中的原有媒体，并按稳定键线性回填照片表的上传状态。 */
 function mergeDetailPhotoLists(existingPhotos, storedPhotos) {
   const merged = Array.isArray(existingPhotos) ? [...existingPhotos] : []
+  const indexes = new Map()
+  merged.forEach((photo, index) => detailPhotoKeys(photo).forEach((key) => indexes.set(key, index)))
   ;(Array.isArray(storedPhotos) ? storedPhotos : []).forEach((photo) => {
-    const index = merged.findIndex((existing) => isSameDetailPhoto(existing, photo))
-    if (index >= 0) merged[index] = { ...merged[index], ...photo }
-    else merged.push(photo)
+    const keys = detailPhotoKeys(photo)
+    const matchedKey = keys.find((key) => indexes.has(key))
+    const index = matchedKey != null ? indexes.get(matchedKey) : merged.length
+    merged[index] = index < merged.length ? { ...merged[index], ...photo } : photo
+    detailPhotoKeys(merged[index]).forEach((key) => indexes.set(key, index))
   })
   return merged
 }
@@ -511,29 +581,51 @@ function mergeDetailPhotoLists(existingPhotos, storedPhotos) {
  * 将照片仓库中的最新上传状态合并回检查项、疵点和详情媒体集合，同时保留旧详情中未拆表的图片。
  */
 export function mergeDetailPhotos(detail, photos) {
-  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const normalized = Array.isArray(detail?.checklistItems) && detail?.checklistData != null
+    ? detail : normalizeInspectionDetail(detail, detail?.planId)
   const sourcePhotos = Array.isArray(photos) ? photos : []
+  const checklistPhotos = new Map()
+  const defectPhotos = new Map()
+  sourcePhotos.forEach((photo) => {
+    const ownerType = String(photo?.ownerType ?? '')
+    const ownerId = ownerType === 'checklist'
+      ? String(photo?.dataKey ?? photo?.ownerId ?? '') : String(photo?.ownerId ?? '')
+    const owners = ownerType === 'checklist' ? checklistPhotos : defectPhotos
+    if (ownerType !== 'checklist' && ownerType !== 'defect') return
+    if (!owners.has(ownerId)) owners.set(ownerId, [])
+    owners.get(ownerId).push(photo)
+  })
   const checklistData = { ...(normalized?.checklistData ?? {}) }
-  Object.keys(checklistData).forEach((itemId) => {
-    const owned = sourcePhotos.filter((photo) => photo?.ownerType === 'checklist' && String(photo?.dataKey ?? photo?.ownerId ?? '') === itemId)
+  checklistPhotos.forEach((owned, itemId) => {
+    if (checklistData[itemId] == null) return
     checklistData[itemId] = { ...checklistData[itemId], photos: mergeDetailPhotoLists(checklistData[itemId]?.photos, owned) }
   })
   const defects = (normalized?.defects ?? []).map((defect) => {
     const defectId = String(defect?.defectId ?? defect?.id ?? '')
-    const owned = sourcePhotos.filter((photo) => photo?.ownerType === 'defect' && String(photo?.ownerId ?? '') === defectId)
-    return { ...defect, photos: mergeDetailPhotoLists(defect?.photos, owned) }
+    const owned = defectPhotos.get(defectId)
+    return owned == null ? defect : { ...defect, photos: mergeDetailPhotoLists(defect?.photos, owned) }
   })
-  return normalizeInspectionDetail({ ...normalized, checklistData, defects, photos: mergeDetailPhotoLists(normalized.photos, sourcePhotos) }, normalized.planId)
+  const checklistItems = (normalized?.checklistItems ?? []).map((item) => {
+    const itemId = String(item?.itemId ?? '')
+    return checklistPhotos.has(itemId) ? { ...item, data: checklistData[itemId] } : item
+  })
+  return { ...normalized, checklistData, checklistItems, defects, photos: mergeDetailPhotoLists(normalized.photos, sourcePhotos) }
 }
 
 /**
  * 更新单个检查项编辑数据并重新计算详情进度和媒体集合。
  */
 export function updateChecklistItem(detail, itemId, patch) {
-  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const normalized = Array.isArray(detail?.checklistItems) && detail?.checklistData != null
+    ? detail : normalizeInspectionDetail(detail, detail?.planId)
   const normalizedItemId = String(itemId ?? '').trim()
   const current = normalized?.checklistData?.[normalizedItemId] ?? {}
   const nextData = { ...current, ...(patch ?? {}) }
+  const currentPhotos = Array.isArray(current?.photos) ? current.photos : []
+  const patchedPhotos = Array.isArray(patch?.photos) ? patch.photos : currentPhotos
+  const photosChanged = currentPhotos.length !== patchedPhotos.length
+    || patchedPhotos.some((photo, index) => !isSameDetailPhoto(currentPhotos[index], photo))
+  if (!photosChanged) nextData.photos = currentPhotos
   const hasExplicitCompleted = patch != null && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'completed')
   nextData.completed = hasExplicitCompleted
     ? patch.completed === true
@@ -545,16 +637,31 @@ export function updateChecklistItem(detail, itemId, patch) {
   const checklistItems = normalized.checklistItems.map((item) => {
     return item.itemId === normalizedItemId ? { ...item, data: nextData } : item
   })
-  const retainedDirectPhotos = (normalized.photos ?? []).filter((photo) => {
+  const retainedDirectPhotos = photosChanged ? (normalized.photos ?? []).filter((photo) => {
     return !(photo?.ownerType === 'checklist' && String(photo?.ownerId ?? '') === normalizedItemId)
-  })
+  }) : normalized.photos
   return {
     ...normalized,
     checklistData,
     checklistItems,
-    photos: collectDetailPhotos(checklistData, normalized.defects, retainedDirectPhotos),
+    photos: photosChanged ? collectDetailPhotos(checklistData, normalized.defects, retainedDirectPhotos) : retainedDirectPhotos,
     progress: calculateDetailProgress(checklistItems, checklistData)
   }
+}
+
+/**
+ * 快速更新已加载检查项的四态结果和进度；不重建未改变的照片、疵点或章节树。
+ */
+export function updateChecklistResult(detail, itemId, result) {
+  const key = String(itemId ?? '').trim()
+  const checklistData = {
+    ...(detail?.checklistData ?? {}),
+    [key]: { ...(detail?.checklistData?.[key] ?? {}), result, completed: result !== 'pending' }
+  }
+  const checklistItems = (detail?.checklistItems ?? []).map((item) => {
+    return item.itemId === key ? { ...item, data: checklistData[key] } : item
+  })
+  return { ...detail, checklistData, checklistItems, progress: calculateDetailProgress(checklistItems, checklistData) }
 }
 
 /**
@@ -774,36 +881,45 @@ function buildBarcodeValue(data) {
   return barcode === '' ? null : JSON.stringify([{ name: '', code: barcode, format: '' }])
 }
 
-/**
- * 根据当前本地详情生成与 H5 一致的普通草稿同步 payload。
- */
+/** 判断合并子检查点是否有实际输入，避免仅有空白占位行时生成服务端结果。 */
+function hasFilledChildItemData(data) {
+  const hasFilledRows = (rows) => Array.isArray(rows) && rows.some((row) => Object.keys(row ?? {}).some((key) => String(row[key] ?? '').trim() !== ''))
+  return String(data?.result ?? '').trim() !== ''
+    || String(data?.comment ?? '').trim() !== ''
+    || (Array.isArray(data?.photos) && data.photos.length > 0)
+    || hasFilledRows(data?.measurements)
+    || hasFilledRows(data?.textGroups)
+    || (Array.isArray(data?.barcodeItems) && data.barcodeItems.some((row) => String(row?.code ?? '').trim() !== ''))
+    || (Array.isArray(data?.barcodeList) && data.barcodeList.some((code) => String(code ?? '').trim() !== ''))
+    || String(data?.barcode ?? '').trim() !== ''
+}
+
+/** 从本地 JSON 结果和当前编辑值生成 H5 字段形状的报告 payload，已上传图片保留供原生端同步。 */
 export function buildGeneratePayload(detail) {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const planId = normalized.planId
   const sourceRows = Array.isArray(normalized?.itemResults) ? normalized.itemResults : []
   const sourceById = new Map()
+  const baseIdByTemplate = new Map()
   sourceRows.forEach((row) => {
     const rowId = String(row?.id ?? row?.itemResultId ?? '')
     if (rowId === '') return
+    const templateId = String(row?.standardItemId ?? '')
     const sonPlanId = String(row?.sonPlanId ?? '').trim()
+    if (templateId !== '' && sonPlanId === '' && !baseIdByTemplate.has(templateId)) baseIdByTemplate.set(templateId, rowId)
     const baseItemId = row?.baseItemResultId
       ? String(row.baseItemResultId)
       : (sonPlanId && rowId.endsWith(`_${sonPlanId}`) ? rowId.slice(0, -(`_${sonPlanId}`.length)) : rowId)
     const localKey = makeChecklistDataKey(baseItemId, sonPlanId)
     sourceById.set(localKey, row)
+    if (templateId !== '') sourceById.set(makeChecklistDataKey(templateId, sonPlanId), row)
   })
   const itemResults = normalized.checklistItems.filter((item) => {
     const itemId = String(item?.itemId ?? item?.id ?? '')
     const sonPlanId = String(item?.sonPlanId ?? '')
     if (sonPlanId === '') return true
     const data = normalized.checklistData?.[itemId] ?? {}
-    return String(data?.result ?? '').trim() !== ''
-      || String(data?.comment ?? '').trim() !== ''
-      || (Array.isArray(data?.photos) && data.photos.length > 0)
-      || (Array.isArray(data?.measurements) && data.measurements.length > 0)
-      || (Array.isArray(data?.textGroups) && data.textGroups.length > 0)
-      || (Array.isArray(data?.barcodeItems) && data.barcodeItems.some((row) => String(row?.code ?? '').trim() !== ''))
-      || (Array.isArray(data?.barcodeList) && data.barcodeList.length > 0)
-      || String(data?.barcode ?? '').trim() !== ''
+    return hasFilledChildItemData(data)
   }).map((item) => {
     const itemId = String(item?.itemId ?? item?.id ?? '')
     const baseItemId = String(item?.baseItemId ?? item?.id ?? itemId)
@@ -811,17 +927,21 @@ export function buildGeneratePayload(detail) {
     const data = normalized.checklistData?.[itemId] ?? {}
     const sourceRow = sourceById.get(itemId) ?? {}
     const itemType = (item?.itemType || sourceRow?.itemType) ?? 'Standard'
+    const standardItemId = String(item?.standardItemId || sourceRow?.standardItemId || '')
+    const originalId = baseIdByTemplate.get(standardItemId) ?? baseItemId
     const result = {
-      ...sourceRow,
-      id: sourceRow?.id || makeItemResultId(baseItemId, sonPlanId),
-      planId: normalized.planId,
-      standardItemId: (item?.standardItemId || sourceRow?.standardItemId) ?? '',
+      id: sourceRow?.id || makeItemResultId(originalId, sonPlanId),
+      planId,
+      standardItemId,
       itemType,
+      textContent: null,
+      barcodeValue: null,
       resultStatus: mapResultStatus(data?.result),
       remarks: data?.comment || null,
-      fileList: buildUploadedFileList(data?.photos),
       sonPlanId: sonPlanId || null
     }
+    const uploadedFiles = buildUploadedFileList(data?.photos)
+    if (uploadedFiles.length > 0) result.fileList = uploadedFiles
     if (itemType === 'Measurements') result.specResult = Array.isArray(data?.measurements) && data.measurements.length > 0 ? JSON.stringify(data.measurements) : null
     if (itemType === 'Text') result.textContent = Array.isArray(data?.textGroups) && data.textGroups.length > 0 ? JSON.stringify(data.textGroups) : null
     if (itemType === 'Barcodes') result.barcodeValue = buildBarcodeValue(data)
@@ -829,9 +949,9 @@ export function buildGeneratePayload(detail) {
   })
   const inspectorName = String(normalized?.plan?.inspectorName ?? '')
   const defectRecords = normalized.defects.map((defect, index) => ({
-    id: defect?.id || defect?.defectId || `${normalized.planId}_defect_${index}`,
-    defectId: defect?.defectId || defect?.id || `${normalized.planId}_defect_${index}`,
-    planId: normalized.planId,
+    id: defect?.id || defect?.defectId || `${planId}_defect_${index}`,
+    defectId: defect?.defectId || defect?.id || `${planId}_defect_${index}`,
+    planId,
     defectType: String(defect?.type ?? defect?.defectType ?? defect?.defectLevel ?? '').toLowerCase(),
     defectCode: defect?.defectCode ?? '',
     defectDesc: defect?.defectDesc ?? '',
@@ -844,7 +964,7 @@ export function buildGeneratePayload(detail) {
   }))
   return {
     reportId: normalized.reportId,
-    planId: normalized.planId,
+    planId,
     itemResults,
     defectRecords,
     finishQuantity: Number(normalized?.plan?.finishQuantity ?? normalized?.finishQuantity ?? 0),

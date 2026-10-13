@@ -1,9 +1,10 @@
 export function createApiRequestQueue() {
   const pendingTasks = []
   const promisesByKey = new Map()
-  let active = false
+  const activeLanes = new Set()
   let sequence = 0
 
+  /** 按优先级和入队顺序排列等待中的请求。 */
   function sortPendingTasks() {
     pendingTasks.sort((left, right) => {
       if (left.priority !== right.priority) return right.priority - left.priority
@@ -11,21 +12,26 @@ export function createApiRequestQueue() {
     })
   }
 
+  /** 为每条空闲通道启动最高优先级请求，通道内部保持串行。 */
   function runNext() {
-    if (active || pendingTasks.length === 0) return
-    const task = pendingTasks.shift()
-    active = true
+    while (pendingTasks.length > 0) {
+      const index = pendingTasks.findIndex((task) => !activeLanes.has(task.lane))
+      if (index < 0) return
+      const task = pendingTasks.splice(index, 1)[0]
+      activeLanes.add(task.lane)
 
-    Promise.resolve()
-      .then(() => task.execute())
-      .then(task.resolve, task.reject)
-      .finally(() => {
-        if (task.key !== '') promisesByKey.delete(task.key)
-        active = false
-        runNext()
-      })
+      Promise.resolve()
+        .then(() => task.execute())
+        .then(task.resolve, task.reject)
+        .finally(() => {
+          if (task.key !== '') promisesByKey.delete(task.key)
+          activeLanes.delete(task.lane)
+          runNext()
+        })
+    }
   }
 
+  /** 按任务键去重入队；只读与写操作可在不同通道并行。 */
   function enqueue(task) {
     if (task == null || typeof task.execute !== 'function') {
       return Promise.reject(new Error('请求任务缺少 execute 方法'))
@@ -42,6 +48,7 @@ export function createApiRequestQueue() {
     })
     const queueTask = {
       key,
+      lane: String(task.lane ?? 'write'),
       priority: Number(task.priority ?? 0),
       sequence,
       execute: task.execute,
@@ -57,8 +64,9 @@ export function createApiRequestQueue() {
     return promise
   }
 
+  /** 返回待处理及正在执行的请求总数。 */
   function getSize() {
-    return pendingTasks.length + (active ? 1 : 0)
+    return pendingTasks.length + activeLanes.size
   }
 
   return {

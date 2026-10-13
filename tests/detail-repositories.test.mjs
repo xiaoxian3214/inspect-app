@@ -67,7 +67,7 @@ test('replaces report detail snapshot atomically across offline tables', async (
 
   const snapshot = database.snapshot()
   assert.equal(snapshot.report.length, 1)
-  assert.equal(snapshot.checklist.length, 1)
+  assert.equal(snapshot.item_result.filter((row) => JSON.parse(row.jsonData).checklistItem != null).length, 1)
   assert.equal(snapshot.defect.length, 1)
   assert.equal(snapshot.photo.length, 1)
   assert.equal((await repository.getPlanById('plan-1')).plan.goodsName, '鞋子')

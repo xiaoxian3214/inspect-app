@@ -100,7 +100,9 @@ export function createSyncQueueOverviewService(options) {
    * 返回列表页与详情页共用的同步队列数量和失败数量。
    */
   async function getOverview() {
-    const plans = await reportRepository.listPlans()
+    const plans = typeof reportRepository.listPlanSummaries === 'function'
+      ? await reportRepository.listPlanSummaries()
+      : await reportRepository.listPlans()
     const photos = await photoRepository.listPending()
     const operations = await requestQueueRepository.listUnfinished()
     const pendingDraftCount = plans.filter((plan) => isPlanPendingSync(plan)).length

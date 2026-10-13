@@ -120,3 +120,14 @@ test('application uvue styles avoid css values unsupported by uni-app x', async 
   }
   assert.deepEqual(failures, [])
 })
+
+/** 原生滚动组件的布尔属性必须使用表达式绑定，避免模板编译将字符串当成布尔值。 */
+test('application scroll boolean props use boolean bindings', async () => {
+  const files = await collectSourceFiles('.', ['.uvue'])
+  const failures = []
+  for (const file of files) {
+    const source = await readFile(file, 'utf8')
+    if (/(?<!:)\b(?:scroll-x|scroll-y|show-scrollbar)="(?:true|false)"/.test(source)) failures.push(file)
+  }
+  assert.deepEqual(failures, [])
+})

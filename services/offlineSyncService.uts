@@ -80,6 +80,12 @@ export function createOfflineSyncService(options) {
   function syncPendingPlans() {
     if (activeSync != null) return activeSync
     activeSync = (async () => {
+      if (typeof reportRepository.listPlanSummaries === 'function') {
+        const summaries = await reportRepository.listPlanSummaries()
+        if (!summaries.some(isPlanPendingSync)) {
+          return { pendingCount: 0, syncedCount: 0, failedCount: 0 }
+        }
+      }
       const localPlans = await reportRepository.listPlans()
       const pendingPlans = localPlans.filter(isPlanPendingSync)
       let syncedCount = 0

@@ -1,3 +1,5 @@
+type SwipeTarget = { offset: number, position: string }
+
 /**
  * 根据触摸位移锁定手势方向；纵向手势交还页面滚动，横向手势用于清单侧滑。
  */
@@ -28,7 +30,7 @@ export function resolveSwipeMove(startOffset, deltaX, leftWidth, rightWidth) {
 /**
  * 根据松手位移决定打开左侧快捷状态、右侧四种结果操作或回到关闭状态。
  */
-export function resolveSwipeTarget(offset, leftWidth, rightWidth, threshold = 48) {
+export function resolveSwipeTarget(offset, leftWidth, rightWidth, threshold = 48): SwipeTarget {
   const safeOffset = Number(offset ?? 0)
   const safeThreshold = Math.max(1, Number(threshold ?? 48))
   if (safeOffset >= safeThreshold) return { offset: Math.max(0, Number(leftWidth ?? 0)), position: 'left' }
@@ -39,7 +41,7 @@ export function resolveSwipeTarget(offset, leftWidth, rightWidth, threshold = 48
 /**
  * 根据手势起始展开状态和反向拖动距离决定松手结果，使已展开操作可短距离拖回关闭。
  */
-export function resolveSwipeRelease(offset, startOffset, deltaX, leftWidth, rightWidth, threshold = 48) {
+export function resolveSwipeRelease(offset, startOffset, deltaX, leftWidth, rightWidth, threshold = 48): SwipeTarget {
   const safeStartOffset = Number(startOffset ?? 0)
   const safeDeltaX = Number(deltaX ?? 0)
   const safeThreshold = Math.max(1, Number(threshold ?? 48))

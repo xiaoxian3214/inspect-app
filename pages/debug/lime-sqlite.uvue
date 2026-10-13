@@ -7,7 +7,7 @@
 			<text class="nav-placeholder">·</text>
 		</view>
 
-		<scroll-view class="content" scroll-y="true">
+		<scroll-view class="content" :scroll-y="true">
 			<view class="card">
 				<text class="card-title">数据库状态</text>
 				<text class="status" :class="opened ? 'status-open' : 'status-closed'">{{ opened ? '已打开' : '未打开' }}</text>
@@ -48,7 +48,7 @@
 <script setup lang="uts">
 	import { ref } from 'vue'
 	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
-	import { openDatabase, closeDatabase, executeSql, selectSql, getDatabasePath, type DatabaseOptions, type SqlOperationOptions } from '@/uni_modules/lime-sqlite'
+	import { openDatabase, closeDatabase, executeSql, selectSql, getDatabasePath } from '@/uni_modules/lime-sqlite'
 
 	const DATABASE_NAME = 'qcm_lime_sqlite_test'
 	const opened = ref(false)
@@ -78,10 +78,10 @@
 					sql: ['CREATE TABLE IF NOT EXISTS plugin_test (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, createdAt TEXT NOT NULL)'],
 					success: (createResult) => recordLog('打开并建表', JSON.stringify(createResult)),
 					fail: (error) => recordLog('建表失败', error?.errMsg)
-				} as SqlOperationOptions)
+				})
 			},
 			fail: (error) => recordLog('打开失败', error?.errMsg)
-		} as DatabaseOptions)
+		})
 	}
 
 	/** 向测试表插入一条带时间戳的数据，数据库未打开时给出明确提示。 */
@@ -94,7 +94,7 @@
 			sql: [`INSERT INTO plugin_test (content, createdAt) VALUES ('${content}', '${createdAt}')`],
 			success: (result) => { recordLog('插入成功', JSON.stringify(result)); queryTestRows() },
 			fail: (error) => recordLog('插入失败', error?.errMsg)
-		} as SqlOperationOptions)
+		})
 	}
 
 	/** 查询测试表的全部数据，并按最新插入顺序展示插件返回结果。 */
@@ -108,7 +108,7 @@
 				recordLog('查询成功', `返回 ${rows.value.length} 行`)
 			},
 			fail: (error) => recordLog('查询失败', error?.errMsg)
-		} as SqlOperationOptions)
+		})
 	}
 
 	/** 删除测试表全部记录，只影响本测试页使用的 plugin_test 表。 */
@@ -119,7 +119,7 @@
 			sql: ['DELETE FROM plugin_test'],
 			success: (result) => { rows.value = []; recordLog('清空成功', JSON.stringify(result)) },
 			fail: (error) => recordLog('清空失败', error?.errMsg)
-		} as SqlOperationOptions)
+		})
 	}
 
 	/** 关闭测试数据库连接并保留磁盘文件，方便重新打开验证持久化。 */
@@ -128,7 +128,7 @@
 			name: DATABASE_NAME,
 			success: (result) => { opened.value = false; recordLog('关闭成功', JSON.stringify(result)) },
 			fail: (error) => recordLog('关闭失败', error?.errMsg)
-		} as DatabaseOptions)
+		})
 	}
 
 	/** 将插件返回的数据库行格式化成便于查看的 JSON。 */

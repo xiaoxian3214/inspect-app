@@ -2,7 +2,7 @@
 	<view class="media-grid">
 		<view
 			v-for="(media, index) in photos"
-			:key="media.photoId || media.fileId || media.localPath || index"
+			:key="index"
 			class="media-cell"
 		>
 			<InspectionMediaItem
@@ -16,7 +16,7 @@
 		<view v-if="canAdd" class="media-cell">
 			<view class="media-add" :class="{ disabled }" @click="captureMedia">
 				<AppIcon type="camera" :size="31" color="#03a84e" />
-				<text>{{ t(addLabel) }}</text>
+				<text>{{ translateText(addLabel) }}</text>
 			</view>
 		</view>
 	</view>
@@ -36,17 +36,19 @@
 		removable: { type: Boolean, default: true }
 	})
 	const emit = defineEmits(['capture-media', 'remove-media', 'preview-media', 'retry-media'])
+	/** 为媒体添加按钮提供原生模板可调用的翻译方法。 */
+	function translateText(key: string): string { return t(key) }
 
 	/** 判断媒体数量是否仍允许继续拍摄或选择。 */
-	const canAdd = computed(() => props.photos.length < Math.max(1, Number(props.maxCount ?? 30)))
+	const canAdd = computed((): boolean => props.photos.length < Math.max(1, props.maxCount))
 	/** 通知父组件打开原生连拍相机。 */
 	function captureMedia() { if (!props.disabled && canAdd.value) emit('capture-media') }
 	/** 转发媒体删除事件。 */
-	function removeMedia(media) { emit('remove-media', media) }
+	function removeMedia(media: UTSJSONObject) { emit('remove-media', media) }
 	/** 转发媒体预览事件。 */
-	function previewMedia(media) { emit('preview-media', media) }
+	function previewMedia(media: UTSJSONObject) { emit('preview-media', media) }
 	/** 转发失败媒体重新上传事件。 */
-	function retryMedia(media) { emit('retry-media', media) }
+	function retryMedia(media: UTSJSONObject) { emit('retry-media', media) }
 </script>
 
 <style>

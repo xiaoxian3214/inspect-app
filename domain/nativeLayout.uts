@@ -1,0 +1,14 @@
+/** 将窗口高度按比例换算成原生样式可用的像素长度。 */
+export function windowHeightPx(ratio: number): string {
+  return `${Math.round(uni.getWindowInfo().windowHeight * ratio)}px`
+}
+
+/** 将设计稿的底部 rpx 留白与设备安全区相加，避免底部操作被系统手势区域遮挡。 */
+export function safeBottomPaddingPx(baseRpx: number): string {
+  return `${uni.rpx2px(baseRpx) + uni.getWindowInfo().safeAreaInsets.bottom}px`
+}
+
+/** 根据屏幕宽度和排序区内边距计算三列图片格子的正方形边长。 */
+export function photoSortCellPx(): string {
+  return `${Math.floor((uni.getWindowInfo().windowWidth - uni.rpx2px(36)) / 3)}px`
+}

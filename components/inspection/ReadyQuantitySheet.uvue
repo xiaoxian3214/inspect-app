@@ -1,35 +1,46 @@
 <template>
 	<view v-if="visible" class="ready-overlay" @click="closeSheet">
-		<view class="ready-dialog" @click.stop>
-			<text class="ready-title">{{ t('设置备货数量') }}</text>
-			<scroll-view class="ready-body" scroll-y="true">
-				<view v-for="(row, index) in rows" :key="row.planId" class="ready-item">
-					<text class="ready-product">{{ row.productName || row.planId }}</text>
-					<text class="ready-meta">{{ row.orderNo }} · {{ row.goodsNo || row.planId }}</text>
-					<view class="ready-row"><text>{{ t('原始订单数量') }}</text><text>{{ row.orderQuantity }}</text></view>
+		<view class="ready-dialog" :style="{ maxHeight: dialogMaxHeight, paddingBottom: dialogBottomPadding }" @click.stop>
+			<text class="ready-title">{{ translateText('设置备货数量') }}</text>
+			<scroll-view class="ready-body" :scroll-y="true">
+				<view v-for="(row, index) in displayRows" :key="row.planId" class="ready-item">
+					<text class="ready-product">{{ row.productName !== '' ? row.productName : row.planId }}</text>
+					<text class="ready-meta">{{ row.orderNo }} · {{ row.goodsNo !== '' ? row.goodsNo : row.planId }}</text>
+					<view class="ready-row"><text>{{ translateText('原始订单数量') }}</text><text>{{ row.orderQuantity }}</text></view>
 					<view class="ready-row">
-						<text>{{ t('新的备货数量') }}</text>
+						<text>{{ translateText('新的备货数量') }}</text>
 						<input class="ready-input" type="number" :value="row.finishQuantity" :disabled="submitting" @input="updateQuantity(index, $event)" />
 					</view>
 				</view>
-				<text v-if="rows.length === 0" class="ready-empty">{{ t('暂无可设置的计划') }}</text>
+				<text v-if="rows.length === 0" class="ready-empty">{{ translateText('暂无可设置的计划') }}</text>
 			</scroll-view>
 			<view class="ready-actions">
-				<button class="ready-button cancel" :disabled="submitting" @click="closeSheet">{{ t('取消') }}</button>
-				<button class="ready-button confirm" :disabled="submitting || rows.length === 0" @click="saveRows">{{ t(submitting ? '处理中...' : '确定') }}</button>
+				<button class="ready-button cancel" :disabled="submitting" @click="closeSheet">{{ translateText('取消') }}</button>
+				<button class="ready-button confirm" :disabled="submitting || rows.length === 0" @click="saveRows">{{ translateText(submitting ? '处理中...' : '确定') }}</button>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
+	import { windowHeightPx, safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
-	defineProps({
+	import { computed } from 'vue'
+	type ReadyRow = { planId: string, productName: string, orderNo: string, goodsNo: string, orderQuantity: string, finishQuantity: string }
+	const props = defineProps({
 		visible: { type: Boolean, default: false },
 		rows: { type: Array, default: () => [] },
 		submitting: { type: Boolean, default: false }
 	})
 	const emit = defineEmits(['close', 'update-quantity', 'save'])
+	/** 为原生备货数量弹层提供可调用翻译方法。 */
+	function translateText(key: string): string { return t(key) }
+	/** 限制底部备货弹层最大高度。 */
+	const dialogMaxHeight = computed((): string => windowHeightPx(0.9))
+	/** 计算包含系统手势区域的底部留白。 */
+	const dialogBottomPadding = computed((): string => safeBottomPaddingPx(32))
+	/** 将父组件备货行转换为原生模板可直接读取的字段。 */
+	const displayRows = computed((): ReadyRow[] => (props.rows as UTSJSONObject[]).map((raw: UTSJSONObject): ReadyRow => ({ planId: (raw['planId'] ?? '').toString(), productName: (raw['productName'] ?? '').toString(), orderNo: (raw['orderNo'] ?? '').toString(), goodsNo: (raw['goodsNo'] ?? '').toString(), orderQuantity: (raw['orderQuantity'] ?? 0).toString(), finishQuantity: (raw['finishQuantity'] ?? '').toString() })))
 
 	/**
 	 * 关闭备货数量弹层。
@@ -41,8 +52,8 @@
 	/**
 	 * 把指定行的新备货数量同步给父组件。
 	 */
-	function updateQuantity(index, event) {
-		emit('update-quantity', { index, value: String(event?.detail?.value ?? '') })
+	function updateQuantity(index: number, event: any) {
+		emit('update-quantity', { index, value: (event as UniInputEvent).detail.value })
 	}
 
 	/**
@@ -54,8 +65,8 @@
 </script>
 
 <style>
-	.ready-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2300; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.48); }
-	.ready-dialog { width: 100%; max-height: 90vh; padding: 24rpx 32rpx calc(32rpx + env(safe-area-inset-bottom)); border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
+	.ready-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2350; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.48); }
+	.ready-dialog { width: 100%; padding: 24rpx 32rpx 32rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
 	.ready-title { color: #111827; font-size: 36rpx; font-weight: 700; }
 	.ready-body { max-height: 620rpx; margin-top: 20rpx; }
 	.ready-item { padding: 24rpx 0; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }

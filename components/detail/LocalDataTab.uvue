@@ -1,19 +1,27 @@
 <template>
 	<view class="tab-content local-data-tab-content">
-		<view class="local-data-card"><view class="local-data-title"><text class="title-text">{{ t('本地报告数据') }}</text><view class="local-data-actions"><view class="action-button" @click="refresh"><text>{{ t('刷新') }}</text></view><view class="action-button primary" @click="copy"><text>{{ t('复制') }}</text></view></view></view><text class="local-data-meta">更新时间：{{ updatedAt ?? '-' }}</text><scroll-view class="json-scroll" scroll-y="true" scroll-x="true"><text class="local-data-json">{{ t(contentText ?? '暂无本地数据') }}</text></scroll-view></view>
+		<view class="local-data-card"><view class="local-data-title"><text class="title-text">{{ translateText('本地完整详情') }}</text><view class="local-data-actions"><view class="action-button" @click="refresh"><text>{{ translateText('刷新') }}</text></view><view class="action-button primary" @click="copy"><text>{{ translateText('复制完整数据') }}</text></view></view></view><view class="action-button" @click="toggleMode"><text>{{ mode === 'diagnostic' ? translateText('查看接口格式') : translateText('查看绑定诊断') }}</text></view><text class="local-data-meta">{{ loading ? translateText('加载中...') : translateText('第 {current} / {total} 段', { current: total > 0 ? currentIndex + 1 : 0, total }) }} · {{ translateText('更新时间：') }}{{ updatedAt ?? '-' }}</text><text class="local-data-meta">{{ mode === 'diagnostic' ? translateText('依次包含结果绑定、SQLite 原始结果、SQLite 组装详情和页面当前详情；分段显示，复制包含全部内容。') : translateText('从 SQLite 读取，按详情接口 data 格式展示；不是实时接口响应。') }}</text><scroll-view class="json-scroll" :scroll-y="true" :scroll-x="true"><text class="local-data-json">{{ contentText !== '' ? contentText : translateText('暂无本地数据') }}</text></scroll-view><view class="page-actions"><view class="action-button" @click="previous"><text>{{ translateText('上一段') }}</text></view><view class="action-button" @click="next"><text>{{ translateText('下一段') }}</text></view></view></view>
 	</view>
 </template>
 
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
-	defineProps({ updatedAt: { type: String, default: '' }, contentText: { type: String, default: '' }, detail: { type: Object, default: () => ({}) }, photos: { type: Array, default: () => [] }, pendingCount: { type: Number, default: 0 } })
-	const emit = defineEmits(['refresh', 'copy', 'sync'])
-	/** 请求父页重新读取当前报告的持久化原始数据。 */
+	/** 为本地原始报告页面提供可在原生模板中调用的翻译方法。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
+	defineProps({ mode: { type: String, default: 'response' }, updatedAt: { type: String, default: '' }, contentText: { type: String, default: '' }, currentIndex: { type: Number, default: 0 }, total: { type: Number, default: 0 }, loading: { type: Boolean, default: false } })
+	const emit = defineEmits(['refresh', 'copy', 'toggle-mode', 'previous', 'next'])
+	/** 请求父页重新组装完整本地详情。 */
 	function refresh() { emit('refresh') }
-	/** 请求父页复制当前报告 JSON。 */
+	/** 请求父页切换接口格式和原始绑定诊断。 */
+	function toggleMode() { emit('toggle-mode') }
+	/** 请求父页显示完整详情的上一段文本。 */
+	function previous() { emit('previous') }
+	/** 请求父页显示完整详情的下一段文本。 */
+	function next() { emit('next') }
+	/** 请求父页复制包含全部段落的详情 JSON。 */
 	function copy() { emit('copy') }
 </script>
 
 <style>
-	.tab-content, .local-data-tab-content { min-height: 900rpx; }.local-data-card { min-height: 900rpx; padding: 24rpx; background-color: #0b1220; }.local-data-title { padding-bottom: 20rpx; flex-direction: row; align-items: center; justify-content: space-between; border-bottom-width: 2rpx; border-bottom-color: #273244; }.title-text { color: #e2e8f0; font-size: 28rpx; font-weight: 600; }.local-data-actions { flex-direction: row; }.action-button { height: 58rpx; margin-left: 14rpx; padding: 0 20rpx; align-items: center; justify-content: center; border-width: 2rpx; border-color: #475569; border-radius: 12rpx; color: #374151; font-size: 23rpx; background-color: #ffffff; }.action-button.primary { border-color: #2563eb; color: #ffffff; background-color: #2563eb; }.local-data-meta { margin: 18rpx 0; color: #94a3b8; font-size: 23rpx; }.json-scroll { height: 760rpx; border-radius: 16rpx; background-color: #111827; }.local-data-json { padding: 20rpx; color: #e2e8f0; font-size: 22rpx; line-height: 34rpx; white-space: pre; }
+	.tab-content, .local-data-tab-content { min-height: 900rpx; }.local-data-card { min-height: 900rpx; padding: 24rpx; background-color: #0b1220; }.local-data-title { padding-bottom: 20rpx; flex-direction: row; align-items: center; justify-content: space-between; border-bottom-width: 2rpx; border-bottom-color: #273244; }.title-text { color: #e2e8f0; font-size: 28rpx; font-weight: 600; }.local-data-actions, .page-actions { flex-direction: row; }.page-actions { margin-top: 18rpx; justify-content: space-between; }.action-button { height: 58rpx; margin-left: 14rpx; padding: 0 20rpx; align-items: center; justify-content: center; border-width: 2rpx; border-color: #475569; border-radius: 12rpx; color: #374151; font-size: 23rpx; background-color: #ffffff; }.action-button.primary { border-color: #2563eb; color: #ffffff; background-color: #2563eb; }.local-data-meta { margin: 18rpx 0; color: #94a3b8; font-size: 23rpx; }.json-scroll { height: 760rpx; border-radius: 16rpx; background-color: #111827; }.local-data-json { padding: 20rpx; color: #e2e8f0; font-size: 22rpx; line-height: 34rpx; white-space: pre; }
 </style>

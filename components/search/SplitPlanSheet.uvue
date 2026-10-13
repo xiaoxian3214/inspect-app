@@ -1,13 +1,13 @@
 <template>
 	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
-		<view class="sheet-panel" @click.stop>
-			<text class="sheet-title">{{ t('拆分验货') }}</text>
+		<view class="sheet-panel" :style="{ maxHeight: sheetMaxHeight }" @click.stop>
+			<text class="sheet-title">{{ translateText('拆分验货') }}</text>
 			<text class="summary-text">{{ resultItems.length > 0 ? '拆分完成，可逐项下载' : `将拆分 ${previewItems.length} 条合并明细` }}</text>
 			<PlanMemberTable :items="displayItems" :downloadable="resultItems.length > 0" :localized-headers="true" :downloaded-ids="downloadedIds" :submitting="submitting" @download="downloadItem" />
 			<view class="sheet-actions">
-				<button class="action-button secondary" :disabled="submitting" @click="closeSheet">{{ t('关闭') }}</button>
+				<button class="action-button secondary" :disabled="submitting" @click="closeSheet">{{ translateText('关闭') }}</button>
 				<button v-if="resultItems.length === 0" class="action-button primary" :disabled="submitting || previewItems.length === 0" @click="confirmSplit">
-					{{ t(submitting ? '拆分中...' : '确认拆分') }}
+					{{ translateText(submitting ? '拆分中...' : '确认拆分') }}
 				</button>
 			</view>
 		</view>
@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="uts">
+	import { windowHeightPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
 	import { computed } from 'vue'
 	import PlanMemberTable from '../inspection/PlanMemberTable.uvue'
@@ -27,11 +28,15 @@
 		submitting: { type: Boolean, default: false }
 	})
 	const emit = defineEmits(['close', 'confirm', 'download'])
+	/** 为原生拆分弹层提供模板可调用的翻译方法。 */
+	function translateText(key: string): string { return t(key) }
+	/** 限制拆分确认弹层的最大高度。 */
+	const sheetMaxHeight = computed((): string => windowHeightPx(0.88))
 
 	/**
 	 * 返回拆分前预览或拆分后的结果列表。
 	 */
-	const displayItems = computed(() => props.resultItems.length > 0 ? props.resultItems : props.previewItems)
+	const displayItems = computed((): UTSJSONObject[] => props.resultItems.length > 0 ? props.resultItems as UTSJSONObject[] : props.previewItems as UTSJSONObject[])
 
 	/**
 	 * 关闭拆分弹层。
@@ -50,16 +55,16 @@
 	/**
 	 * 请求下载指定拆分结果到本地。
 	 */
-	function downloadItem(item) {
+	function downloadItem(item: UTSJSONObject) {
 		emit('download', item)
 	}
 </script>
 
 <style>
 	.sheet-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.42); }
-	.sheet-panel { width: 100%; max-height: 88vh; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
+	.sheet-panel { width: 100%; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
 	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }
-	.summary-text { display: block; margin-top: 14rpx; color: #64748b; font-size: 26rpx; }
+	.summary-text { margin-top: 14rpx; color: #64748b; font-size: 26rpx; }
 	.sheet-actions { flex-direction: row; margin-top: 32rpx; }
 	.action-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.action-button.secondary { color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }

@@ -1,7 +1,7 @@
 <template>
-	<scroll-view class="download-info-scroll" scroll-y="true">
+	<scroll-view class="download-info-scroll" :scroll-y="true">
 		<view v-if="isMerged" class="merged-info-card">
-			<text class="merged-title">{{ t('此合并验货包含以下验货：') }}</text>
+			<text class="merged-title">{{ translateText('此合并验货包含以下验货：') }}</text>
 			<PlanMemberTable :items="mergedItems" :loading="mergedLoading" />
 		</view>
 		<view class="copy-info-card">
@@ -11,8 +11,8 @@
 			</view>
 		</view>
 		<view class="section" @click="openTemplateOptions">
-			<text class="section-label">{{ t('清单') }}</text>
-			<view class="select-value"><text class="select-text">{{ templateName === '请选择清单' ? t('请选择清单') : templateName }}</text><text class="select-chevron">›</text></view>
+			<text class="section-label">{{ translateText('清单') }}</text>
+			<view class="select-value"><text class="select-text">{{ templateName === '请选择清单' ? translateText('请选择清单') : templateName }}</text><text class="select-chevron">›</text></view>
 		</view>
 	</scroll-view>
 </template>
@@ -22,6 +22,7 @@
 	import { computed } from 'vue'
 	import { buildDownloadPlanFields } from '../../domain/planDownloadPreview.uts'
 	import PlanMemberTable from './PlanMemberTable.uvue'
+	type DownloadField = { label: string, value: string }
 
 	const props = defineProps({
 		item: { type: Object, default: () => ({}) },
@@ -31,9 +32,11 @@
 		mergedLoading: { type: Boolean, default: false }
 	})
 	const emit = defineEmits(['open-template'])
+	/** 为原生下载弹层提供可调用的多语言方法。 */
+	function translateText(key: string): string { return t(key) }
 
 	/** 根据当前卡片计划生成与 H5 下载确认弹框一致的展示行。 */
-	const fields = computed(() => buildDownloadPlanFields(props.item))
+	const fields = computed((): DownloadField[] => (buildDownloadPlanFields(props.item) as UTSJSONObject[]).map((raw: UTSJSONObject): DownloadField => ({ label: (raw['label'] ?? '').toString(), value: (raw['value'] ?? '-').toString() })))
 
 	/** 请求卡片打开与复制验货共用的清单选择弹层。 */
 	function openTemplateOptions() { emit('open-template') }

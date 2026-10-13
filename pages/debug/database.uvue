@@ -14,13 +14,13 @@
 			<text class="engine-desc">数据库文件：qarma_offline.db。报告、检查项、照片路径和同步队列均持久化到原生数据库；旧版 uniStorage 数据首次启动时自动迁移。</text>
 		</view>
 
-		<scroll-view class="table-tabs" scroll-x="true">
-			<view class="table-tab-row">
-				<view v-for="table in tables" :key="table.name" class="table-tab" :class="{ active: activeTable === table.name }" @click="selectTable(table.name)">
-					<text>{{ table.name }} ({{ table.count }})</text>
-				</view>
+		<picker class="table-picker" :range="tableOptions" :value="activeTableIndex" @change="changeTable">
+			<view class="table-picker-row">
+				<text class="table-picker-label">选择数据表</text>
+				<text class="table-picker-name">{{ activeTable }} ({{ activeRows.length }})</text>
+				<text class="table-picker-arrow">⌄</text>
 			</view>
-		</scroll-view>
+		</picker>
 
 		<view class="table-head">
 			<view>
@@ -30,7 +30,7 @@
 			<text class="copy" @click="copyActiveTable">复制 JSON</text>
 		</view>
 
-		<scroll-view class="rows" scroll-y="true">
+		<scroll-view class="rows" :scroll-y="true">
 			<view v-if="loading" class="empty"><text>正在读取本地数据...</text></view>
 			<view v-else-if="activeRows.length === 0" class="empty"><text>当前表暂无数据</text></view>
 			<view v-for="(row, index) in activeRows" :key="rowKey(row, index)" class="row-card">
@@ -47,15 +47,30 @@
 	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
 	import { getLocalDatabaseSnapshot } from '../../runtime/appRuntime.uts'
 
-	const TABLE_ORDER = ['user', 'report', 'checklist', 'defect', 'photo', 'sync_log', 'request_queue', 'schema_migration', 'app_setting']
+	const TABLE_ORDER = ['qcm_inspection_plan', 'qcm_inspection_report', 'qcm_inspection_item_result', 'qcm_inspection_defect_record', 'photo', 'user', 'sync_log', 'request_queue', 'schema_migration', 'app_setting']
+	const TABLE_SOURCE = {
+		qcm_inspection_plan: 'inspection_plan',
+		qcm_inspection_report: 'report',
+		qcm_inspection_item_result: 'item_result',
+		qcm_inspection_defect_record: 'defect'
+	}
 	const snapshot = ref({})
-	const activeTable = ref('report')
+	const activeTable = ref('qcm_inspection_plan')
 	const loading = ref(true)
 
+	/** 将物理业务表名对应到运行时仓储快照的内部键。 */
+	function tableRows(name) {
+		const key = TABLE_SOURCE[name] ?? name
+		return Array.isArray(snapshot.value?.[key]) ? snapshot.value[key] : []
+	}
 	/** 返回全部本地表名称及实时行数。 */
-	const tables = computed(() => TABLE_ORDER.map((name) => ({ name, count: Array.isArray(snapshot.value?.[name]) ? snapshot.value[name].length : 0 })))
+	const tables = computed(() => TABLE_ORDER.map((name) => ({ name, count: tableRows(name).length })))
+	/** 为原生表选择器展示全部表名及行数。 */
+	const tableOptions = computed(() => tables.value.map((table) => `${table.name} (${table.count})`))
+	/** 返回当前数据表在原生选择器中的位置。 */
+	const activeTableIndex = computed(() => TABLE_ORDER.indexOf(activeTable.value))
 	/** 返回当前选中表的全部原始行。 */
-	const activeRows = computed(() => Array.isArray(snapshot.value?.[activeTable.value]) ? snapshot.value[activeTable.value] : [])
+	const activeRows = computed(() => tableRows(activeTable.value))
 
 	/** 从运行时数据库重新读取全部表的深拷贝快照。 */
 	async function loadSnapshot() {
@@ -69,11 +84,16 @@
 		}
 	}
 	/** 切换当前查看的本地数据表。 */
-	function selectTable(tableName) { activeTable.value = String(tableName ?? 'report') }
+	function selectTable(tableName) { activeTable.value = String(tableName ?? 'qcm_inspection_plan') }
+	/** 按原生选择器选中的索引切换数据表，忽略无效索引。 */
+	function changeTable(event: UniPickerChangeEvent) {
+		const index = parseInt((event.detail.value ?? '-1').toString())
+		if (index >= 0 && index < TABLE_ORDER.length) selectTable(TABLE_ORDER[index])
+	}
 	/** 将单行数据格式化为便于检查的缩进 JSON。 */
 	function formatRow(row) { try { return JSON.stringify(row, null, 2) } catch (_) { return String(row ?? '') } }
 	/** 返回本地数据行可稳定渲染的主键。 */
-	function rowKey(row, index) { return String(row?.reportId ?? row?.itemId ?? row?.defectId ?? row?.photoId ?? row?.userId ?? row?.id ?? `${activeTable.value}-${index}`) }
+	function rowKey(row, index) { return String(row?.planId ?? row?.reportId ?? row?.itemResultId ?? row?.defectId ?? row?.photoId ?? row?.userId ?? row?.id ?? `${activeTable.value}-${index}`) }
 	/** 将当前数据表完整 JSON 复制到系统剪贴板。 */
 	function copyActiveTable() { uni.setClipboardData({ data: JSON.stringify(activeRows.value, null, 2), success: () => uni.showToast({ title: '已复制当前表', icon: 'success' }) }) }
 	/** 返回验货任务列表页。 */
@@ -92,11 +112,11 @@
 	.engine-card { margin: 22rpx; padding: 22rpx; border-radius: 18rpx; background-color: #fff7ed; }
 	.engine-title { color: #9a3412; font-size: 25rpx; font-weight: 700; }
 	.engine-desc { margin-top: 10rpx; color: #c2410c; font-size: 21rpx; line-height: 1.5; }
-	.table-tabs { width: 100%; background-color: #ffffff; }
-	.table-tab-row { padding: 16rpx 20rpx; flex-direction: row; }
-	.table-tab { margin-right: 12rpx; padding: 13rpx 20rpx; border-radius: 20rpx; background-color: #f1f5f9; }
-	.table-tab { margin-right: 12rpx; padding: 13rpx 20rpx; border-radius: 20rpx; color: #64748b; font-size: 22rpx; background-color: #f1f5f9; }
-	.table-tab.active { background-color: #dcfce7; }
+	.table-picker { width: 100%; background-color: #ffffff; }
+	.table-picker-row { min-height: 88rpx; padding: 0 24rpx; flex-direction: row; align-items: center; }
+	.table-picker-label { color: #64748b; font-size: 23rpx; }
+	.table-picker-name { flex: 1; margin-left: 16rpx; color: #172033; font-size: 25rpx; text-align: right; }
+	.table-picker-arrow { margin-left: 12rpx; color: #03a84e; font-size: 30rpx; }
 	.table-head { padding: 22rpx 24rpx 12rpx; flex-direction: row; align-items: center; justify-content: space-between; }
 	.table-title { color: #172033; font-size: 29rpx; font-weight: 700; }
 	.table-count { margin-top: 4rpx; color: #94a3b8; font-size: 21rpx; }

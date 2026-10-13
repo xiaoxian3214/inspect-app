@@ -155,7 +155,7 @@ async function refreshDraftPhotosAfterUpload(planId) {
   if (localDetail == null) return null
   const photos = await photoRepository.listByReportId(planId)
   const refreshed = detailViewModel.mergeDetailPhotos(localDetail, photos)
-  return inspectionDetailService.saveDraft(planId, refreshed, { markDirty: true })
+  return inspectionDetailService.saveDraft(localDetail.planId, refreshed, { markDirty: true })
 }
 
 /** 查找尚未到期的照片重试记录，供自动同步在退避时间结束时重新运行。 */
@@ -187,6 +187,7 @@ let initialized = false
 export async function initializeRuntime() {
   if (initialized) return
   await database.open()
+  await reportRepository.migrateLegacyMergedReports()
   await userRepository.getLastSession()
   initialized = true
 }
