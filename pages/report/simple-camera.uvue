@@ -1,0 +1,112 @@
+<template>
+	<view class="camera-root">
+		<xview-camera-view
+			ref="cameraRef"
+			class="camera-view"
+			:facing="facing"
+			:flash="flashMode"
+			photo-format="jpg"
+			resolution="high"
+			:grid="gridMode"
+			:save-to-album="saveToAlbum"
+			@onCameraOpened="handleOpened"
+			@onPictureTaken="handlePhotoTaken"
+			@onCameraTakenError="handleError"
+			@onCameraError="handleError"
+			@onFocusStart="handleFocus"
+		/>
+		<view class="camera-overlay">
+			<TopSafeArea background-color="rgba(0,0,0,0.7)" />
+			<view class="header">
+				<view class="header-btn" @click="goBack"><AppIcon type="close" :size="24" color="#ffffff" /></view>
+				<text class="header-title">{{ t('拍照') }}</text>
+				<view class="header-btn" @click="toggleFlash"><text class="flash-label">{{ flashLabel }}</text></view>
+			</view>
+			<view v-if="!ready" class="state">
+				<text class="state-text">{{ t(statusText) }}</text>
+			</view>
+			<view class="menu-bar">
+				<view class="menu-btn" @click="goBack"><AppIcon type="close" :size="28" color="#ffffff" /></view>
+				<view class="shutter" @click="takePhoto"><view class="shutter-inner"></view></view>
+				<view class="menu-btn" @click="switchFacing"><AppIcon type="camera" :size="28" color="#ffffff" /></view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed, ref } from 'vue'
+	import { t } from '../../i18n/index.uts'
+	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
+	import AppIcon from '../../components/icons/AppIcon.uvue'
+
+	const cameraRef = ref<ComponentPublicInstance | null>(null)
+	const facing = ref('back')
+	const flashMode = ref('off')
+	const gridMode = ref('draw_3X3')
+	const saveToAlbum = ref(false)
+	const ready = ref(false)
+	const statusText = ref('正在启动相机…')
+	const capturing = ref(false)
+
+	/** 返回当前闪光灯模式的中文提示。 */
+	const flashLabel = computed(() => flashMode.value === 'on' ? '闪光开' : (flashMode.value === 'auto' ? '自动' : '闪光关'))
+
+	/** 相机就绪时更新状态。 */
+	function handleOpened() { ready.value = true; statusText.value = '轻触快门拍照' }
+	/** 聚焦事件记录。 */
+	function handleFocus(e: any) { console.log('[SimpleCamera] focus', e) }
+	/** 相机错误处理。 */
+	function handleError(e: any) { statusText.value = `相机错误: ${(e?.detail?.message ?? '未知').toString()}` }
+
+	/** 拍照：调用原生 takePhoto，等 onPictureTaken 回调。 */
+	function takePhoto() { if (!ready.value || capturing.value) return; capturing.value = true; cameraRef.value?.$callMethod('takePhoto') }
+
+	/** 切换前后摄像头。 */
+	function switchFacing() { facing.value = facing.value === 'back' ? 'front' : 'back'; cameraRef.value?.$callMethod('setFacing', facing.value) }
+
+	/** 循环切换闪光灯模式：off → on → auto → off。 */
+	function toggleFlash() { flashMode.value = flashMode.value === 'off' ? 'on' : (flashMode.value === 'on' ? 'auto' : 'off'); cameraRef.value?.$callMethod('setFlash', flashMode.value) }
+
+	/** 参照 takePhoto.nvue 的 getTakenRes 模式：调用上一页 setImage 方法回传路径。 */
+	function goBackWithResult(path: string) {
+		const pages = getCurrentPages()
+		const prevPage = pages[pages.length - 2]
+		if (prevPage != null && typeof (prevPage as any).$vm?.setImage === 'function') {
+			(prevPage as any).$vm.setImage({ path })
+		}
+		uni.navigateBack()
+	}
+
+	/** 拍照回调：持久化临时文件，参照 takePhoto.nvue 通过 getCurrentPages 回传结果。 */
+	function handlePhotoTaken(e: any) {
+		const tempPath = (e?.detail?.path ?? '').toString().trim()
+		capturing.value = false
+		if (tempPath === '') return
+		const fileManager = uni.getFileSystemManager()
+		fileManager.saveFile({
+			tempFilePath: tempPath,
+			success: (result) => goBackWithResult(result?.savedFilePath ?? tempPath),
+			fail: () => goBackWithResult(tempPath)
+		})
+	}
+
+	/** 返回上一页。 */
+	function goBack() { uni.navigateBack() }
+</script>
+
+<style>
+	.camera-root { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background-color: #000000; }
+	.camera-view { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+	.camera-overlay { position: absolute; left: 0; top: 0; right: 0; bottom: 0; flex-direction: column; }
+	.header { flex-direction: row; align-items: center; justify-content: space-between; padding: 20rpx 28rpx; }
+	.header-btn { padding: 18rpx; min-width: 80rpx; }
+	.header-title { color: #ffffff; font-size: 32rpx; font-weight: 600; }
+	.flash-label { color: #ffffff; font-size: 24rpx; }
+	.state { flex: 1; align-items: center; justify-content: center; }
+	.state-text { color: rgba(255, 255, 255, 0.7); font-size: 26rpx; }
+	.menu-bar { height: 200rpx; padding: 0 60rpx 40rpx; flex-direction: row; align-items: center; justify-content: space-between; margin-top: auto; }
+	.menu-btn { width: 100rpx; height: 100rpx; align-items: center; justify-content: center; }
+	.shutter { width: 140rpx; height: 140rpx; align-items: center; justify-content: center; border: 8rpx solid #ffffff; border-radius: 50%; }
+	.shutter-inner { width: 114rpx; height: 114rpx; border-radius: 50%; background-color: #ffffff; }
+</style>

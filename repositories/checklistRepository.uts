@@ -27,7 +27,7 @@ export function createChecklistRepository(database) {
     const normalizedReportId = String(reportId ?? '').trim()
     return database.readTable('item_result')
       .filter((row) => String(row?.planId ?? '') === normalizedReportId && row?.itemResultId?.startsWith(`${normalizedReportId}::checklist::`))
-      .sort((left, right) => Number(JSON.parse(left.jsonData ?? '{}').sortOrder ?? 0) - Number(JSON.parse(right.jsonData ?? '{}').sortOrder ?? 0))
+      .sort((left, right) => parseInt(String(JSON.parse(left.jsonData ?? '{}').sortOrder ?? 0)) - parseInt(String(JSON.parse(right.jsonData ?? '{}').sortOrder ?? 0)))
       .map(parseChecklistRow)
   }
 

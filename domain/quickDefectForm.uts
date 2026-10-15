@@ -1,7 +1,7 @@
 /** 从服务端或本地疵点恢复编辑草稿，保留检查项和合并验货关联。 */
 export function createDefectDraft(defect) {
-  const commonFlag = Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1 ? 1 : 0
-  const quantity = Number(defect?.quantity === 'other' ? defect?.customQuantity : (defect?.quantity ?? defect?.defectCount ?? 1))
+  const commonFlag = parseInt(String(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0))) === 1 ? 1 : 0
+  const quantity = parseFloat(String(defect?.quantity === 'other' ? defect?.customQuantity : (defect?.quantity ?? defect?.defectCount ?? 1)))
   const usesOtherQuantity = defect?.quantity === 'other' || quantity > 19
   return {
     ...defect,
@@ -31,8 +31,8 @@ export function setDefectCommon(draft, checked) {
 
 /** 获取实际受影响数量，普遍性疵点返回 null。 */
 export function getDefectQuantity(draft) {
-  if (Number(draft?.commonFlag ?? 0) === 1) return null
-  return Number(draft?.quantity === 'other' ? draft?.customQuantity : draft?.quantity)
+  if (parseInt(String(draft?.commonFlag ?? 0)) === 1) return null
+  return parseInt(String(draft?.quantity === 'other' ? draft?.customQuantity : draft?.quantity))
 }
 
 /** 校验必选疵点类别及受影响数量，返回空字符串表示可保存。 */

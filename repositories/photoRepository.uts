@@ -62,7 +62,7 @@ export function createPhotoRepository(database) {
     const detail = parseReportRow(current)
     const parentPlanId = String(detail?.plan?.parentPlanId ?? '').trim()
     const reportEntityId = String(detail?.report?.id ?? '').trim()
-    if (Number(detail?.plan?.mergeType ?? 0) !== 2 || parentPlanId === '' || reportEntityId === '') return new Set([normalizedPlanId])
+    if (parseInt(String(detail?.plan?.mergeType ?? 0)) !== 2 || parentPlanId === '' || reportEntityId === '') return new Set([normalizedPlanId])
     const memberIds = new Set((Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : [])
       .map((plan) => String(plan?.id ?? plan?.planId ?? '').trim()).filter((id) => id !== ''))
     const sharedIds = new Set([normalizedPlanId])
@@ -84,7 +84,7 @@ export function createPhotoRepository(database) {
     const seen = new Set()
     return database.readTable('photo')
       .filter((row) => sharedPlanIds.has(String(row?.reportId ?? '')))
-      .sort((left, right) => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+      .sort((left, right) => parseInt(String(left?.sortNo ?? 0)) - parseInt(String(right?.sortNo ?? 0)))
       .filter((row) => {
         const photoId = String(row?.sourcePhotoId ?? row?.photoId ?? '')
         if (seen.has(photoId)) return false

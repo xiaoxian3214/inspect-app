@@ -3,7 +3,7 @@
 		<InspectionDetailHeader
 			:detail="detail ?? {}"
 			:active-tab="activeTab"
-			:progress="Number(detail?.progress ?? 0)"
+			:progress="parseInt(String(detail?.progress ?? 0))"
 			:is-online="online"
 			:syncing="syncing || automaticSyncing"
 			:uploading="automaticUploading || manualUploading"
@@ -30,16 +30,17 @@
 		<view v-if="!loading && detail != null && activeTab === 'defects'" class="floating-defect-button" :style="{ bottom: safeBottomPaddingPx(24) }" @click="openNewDefect()"><text class="floating-defect-plus">＋</text><text class="floating-defect-label">{{ t('新增疵点') }}</text></view>
 
 
-		<CheckItemSheet :visible="showItemSheet" :item="editingItem" :defects="editingItemDefects" :goods-flag="editingItemGoodsFlag" :is-online="online" :sorting="sortSubmitting" :sort-saved-revision="sortSavedRevision" @close="closeItemSheet" @select-result="selectChecklistItemResult" @auto-save="autoSaveChecklistItem" @photos-sorted="sortChecklistPhotos" @add-photo="addChecklistPhoto" @remove-photo="removeChecklistPhoto" @preview-photo="openPhotoEditor" @retry-photo="retryMediaUpload" @open-defect="openDefect" @copy-items="openItemCopySheet" @batch-move="openItemBatchMoveSheet" @reset-item="confirmResetChecklistItem" @add-checkpoint-photo="addCheckPointPhoto" />
+		<CheckItemSheet :visible="showItemSheet" :item="editingItem" :defects="editingItemDefects" :goods-flag="editingItemGoodsFlag" :is-online="online" :sorting="sortSubmitting" :sort-saved-revision="sortSavedRevision" @close="closeItemSheet" @select-result="selectChecklistItemResult" @auto-save="autoSaveChecklistItem" @photos-sorted="sortChecklistPhotos" @add-photo="addChecklistPhoto" @remove-photo="requestChecklistPhotoRemoval" @preview-photo="openPhotoEditor" @retry-photo="retryMediaUpload" @open-defect="openDefect" @copy-items="openItemCopySheet" @batch-move="openItemBatchMoveSheet" @reset-item="confirmResetChecklistItem" @add-checkpoint-photo="addCheckPointPhoto" />
 		<QuickDefectSheet :visible="showDefectSheet" :editing="isEditingDefect" :defect="editingDefect" :items="baseChecklistItems" :level-options="defectLevels" :category-tree="defectTree" @close="closeDefectSheet" @save="saveDefect" @delete="confirmRemoveDefect" @add-photo="addDefectPhoto" @remove-photo="removeDefectPhoto" @preview-photo="openPhotoEditor" @retry-photo="retryMediaUpload" />
 		<FinishInspectionSheet :visible="showFinishSheet" :product-title="String(detail?.plan?.goodsName ?? '')" :quantity-totals="finishQuantities" :overall-result="overallResult" :overall-remarks="overallRemarks" :pending-upload-count="pendingUploadCount" :submitting="submitting" :defect-stats="finishSummary.defectStats" :exceeds-aql="finishSummary.exceedsAql" :failed-checkpoints="finishSummary.failedCheckpoints" @close="closeFinishSheet" @set-ready-quantity="openReadyQuantity" @update-result="updateOverallResult" @update-remarks="updateOverallRemarks" @submit="submitFinalReport" />
 		<BottomActionSheet :visible="showMoreSheet" title="详情操作" :actions="moreActions" :show-icons="true" @select="handleMoreAction" @cancel="closeMoreActions" />
 		<ReadyQuantitySheet :visible="showReadyQuantity" :rows="quantityRows" :submitting="quantitySubmitting" @close="closeReadyQuantity" @update-quantity="updateReadyQuantity" @save="saveReadyQuantities" />
 		<CopyCheckItemsSheet :visible="showCopySheet" :items="baseChecklistItems" :source-item-id="copySourceItemId" :plans="copyTargetPlans" :loading-plans="copyPlansLoading" :submitting="copySubmitting" @close="closeCopySheet" @submit="submitCopyItems" />
 		<BatchMoveMediaSheet :visible="showBatchMoveSheet" :photos="moveSourceItemId ? (detail?.checklistData?.[moveSourceItemId]?.photos ?? []).filter((photo) => photo?.bizType !== 'checkPoint') : (detail?.photos ?? []).filter((photo) => photo?.ownerType === 'checklist' && photo?.bizType !== 'checkPoint')" :items="batchMoveTargets" :source-item-id="moveSourceItemId" :submitting="batchMoveSubmitting" @close="closeBatchMoveSheet" @submit="submitBatchMove" />
-		<PhotoEditorSheet :visible="showPhotoEditor" :photo="previewPhoto" @close="closePhotoEditor" @delete="deletePreviewPhoto" />
-		<SampleQuantitySheet :visible="showSampleQuantity" :value="Number(detail?.plan?.sampleQuantity ?? 0)" :submitting="sampleQuantitySubmitting" @close="closeSampleQuantity" @save="saveSampleQuantity" />
+		<PhotoEditorSheet :visible="showPhotoEditor" :photo="previewPhoto" :photos="previewPhotos" :saving="previewEditSaving" @close="closePhotoEditor" @delete="deletePreviewPhoto" @select-media="selectPreviewMedia" @edited="savePreviewEdit" />
+		<SampleQuantitySheet :visible="showSampleQuantity" :value="parseInt(String(detail?.plan?.sampleQuantity ?? 0))" :submitting="sampleQuantitySubmitting" @close="closeSampleQuantity" @save="saveSampleQuantity" />
 		<ConfirmActionSheet :visible="showDeleteDefectConfirm" title="删除疵点" message="删除后本地记录将无法恢复，是否继续？" confirm-text="确认删除" :danger="true" :submitting="deleteDefectSubmitting" @close="closeDeleteDefectConfirm" @confirm="deleteConfirmedDefect" />
+		<ConfirmActionSheet :visible="showDeleteChecklistPhotoConfirm" variant="dialog" title="删除已上传媒体" message="该媒体已上传到服务器，删除后会同步移除服务端文件，确定继续吗？" confirm-text="确认删除" :danger="true" :submitting="deleteChecklistPhotoSubmitting" @close="closeDeleteChecklistPhotoConfirm" @confirm="confirmDeleteChecklistPhoto" />
 		<ConfirmActionSheet :visible="showResetItemConfirm" title="重置检查点" message="请确认您是否把当前检查点重置到下载/初始创建的状态？" confirm-text="确认重置" :danger="true" :submitting="resetItemSubmitting" @close="closeResetChecklistItem" @confirm="resetChecklistItem" />
 		<ConfirmActionSheet :visible="showMissingDataConfirm" variant="dialog" title="强制性数据缺失" message="有的检查项目要求必须有相关信息或图片，否则无法提交验货报告" confirm-text="同意" @close="closeMissingDataConfirm" @confirm="confirmMissingData" />
 		<ConfirmActionSheet :visible="showBatchResult" :title="batchResultTitle" :message="batchResultMessage" confirm-text="我知道了" :show-cancel="false" @close="dismissBatchResult" @confirm="dismissBatchResult" />
@@ -62,6 +63,7 @@
 	import CopyCheckItemsSheet from '../../components/detail/CopyCheckItemsSheet.uvue'
 	import BatchMoveMediaSheet from '../../components/detail/BatchMoveMediaSheet.uvue'
 	import PhotoEditorSheet from '../../components/detail/PhotoEditorSheet.uvue'
+	import { editedMediaMetadata, replaceMedia } from '../../domain/mediaViewer.uts'
 	import SampleQuantitySheet from '../../components/detail/SampleQuantitySheet.uvue'
 	import BottomActionSheet from '../../components/common/BottomActionSheet.uvue'
 	import ConfirmActionSheet from '../../components/common/ConfirmActionSheet.uvue'
@@ -69,7 +71,7 @@
 	import { applyFinishQuantityRows, applySampleQuantity, buildBatchMoveTargets, buildBatchPhotoCopyRequests, buildDefectViewModel, buildFinishQuantityTotals, buildFinishSummary, buildGeneratePayload, makeChecklistDataKey, makeItemResultId, mergeDetailPhotos, normalizeInspectionDetail, normalizeOverallResult, selectCopyTargetPlans, updateChecklistItem, updateChecklistResult, validateFinalSubmission } from '../../domain/detailViewModel.uts'
 	import { buildLocalDetailResponse, buildLocalDetailDebugSnapshot, getLocalDetailDebugPage } from '../../domain/localReportDiagnostic.uts'
 	import { buildChecklistMediaMetadata, buildDefectMediaMetadata } from '../../domain/mediaUploadMetadata.uts'
-	import { waitForCurrentPlanReported } from '../../domain/finalSubmissionPolicy.uts'
+	import { isPhotoUploaded, waitForCurrentPlanReported } from '../../domain/finalSubmissionPolicy.uts'
 	import { resolveReportPdfDownloadId } from '../../domain/reportPdf.uts'
 	import { createChecklistCopyService } from '../../services/checklistCopyService.uts'
 	import { createOnlineMediaService } from '../../services/onlineMediaService.uts'
@@ -140,7 +142,12 @@
 	const resetItemId = ref('')
 	const showPhotoEditor = ref(false)
 	const previewPhoto = ref({})
+	const previewPhotos = ref([])
+	const previewEditSaving = ref(false)
 	const previewItem = ref({})
+	const showDeleteChecklistPhotoConfirm = ref(false)
+	const pendingChecklistPhoto = ref({})
+	const deleteChecklistPhotoSubmitting = ref(false)
 	const fileSystemManager = uni.getFileSystemManager()
 	const previewOwnerType = ref('checklist')
 	const showSampleQuantity = ref(false)
@@ -225,7 +232,7 @@
 		return { ...base, itemId: key, baseItemId: baseId, sonPlanId, data: detail.value?.checklistData?.[key] ?? {} }
 	})
 	/** 按当前检查项所属计划决定检查点图片入口是否开放。 */
-	const editingItemGoodsFlag = computed(() => { const selectedId = String(editingItem.value?.sonPlanId ?? planId.value); const plans = Array.isArray(detail.value?.inspectionPlans) ? detail.value.inspectionPlans : []; const selectedPlan = plans.find((plan) => String(plan?.id ?? plan?.planId ?? '') === selectedId); return Number(selectedPlan?.goodsFlag ?? detail.value?.plan?.goodsFlag ?? 0) })
+	const editingItemGoodsFlag = computed(() => { const selectedId = String(editingItem.value?.sonPlanId ?? planId.value); const plans = Array.isArray(detail.value?.inspectionPlans) ? detail.value.inspectionPlans : []; const selectedPlan = plans.find((plan) => String(plan?.id ?? plan?.planId ?? '') === selectedId); return parseInt(String(selectedPlan?.goodsFlag ?? detail.value?.plan?.goodsFlag ?? 0)) })
 	/** 返回当前普通检查项或合并子计划检查项关联的疵点记录。 */
 	const editingItemDefects = computed(() => {
 		const item = editingItem.value ?? {}
@@ -261,7 +268,7 @@
 	/** 显示统一轻提示。 */
 	function showToast(message) { uni.showToast({ title: t(String(message ?? '')), icon: 'none', duration: 2500 }) }
 	/** 刷新全局同步队列；忽略比后续刷新更晚返回的旧快照。 */
-	async function refreshSyncOverview() { const requestId = ++overviewRequestId; const connected = await isNetworkOnline(); const overview = await getOfflineSyncOverview(); if (requestId !== overviewRequestId) return; online.value = connected; pendingSyncCount.value = Number(overview?.pendingCount ?? 0); failedSyncCount.value = Number(overview?.failedCount ?? 0); pendingSyncItems.value = Array.isArray(overview?.queueItems) ? overview.queueItems : [] }
+	async function refreshSyncOverview() { const requestId = ++overviewRequestId; const connected = await isNetworkOnline(); const overview = await getOfflineSyncOverview(); if (requestId !== overviewRequestId) return; online.value = connected; pendingSyncCount.value = parseInt(String(overview?.pendingCount ?? 0)); failedSyncCount.value = parseInt(String(overview?.failedCount ?? 0)); pendingSyncItems.value = Array.isArray(overview?.queueItems) ? overview.queueItems : [] }
 	/** 自动同步后台进度推送到顶部云图标；本计划图片完成后同步刷新当前详情。 */
 	function handleAutomaticSyncStatus(state) { automaticUploading.value = state?.phase === 'uploading'; automaticSyncing.value = state?.phase !== 'idle'; if (!pageLoaded) return; refreshSyncOverview().catch(() => { failedSyncCount.value = Math.max(1, failedSyncCount.value) }); if (state?.phase === 'uploaded') refreshPhotoState().catch(() => { failedSyncCount.value = Math.max(1, failedSyncCount.value) }) }
 	/** 内容保存入队后请求处理同步队列；在线立即执行，离线由网络恢复监听继续处理。 */
@@ -352,13 +359,13 @@
 	}
 
 	/** 打开普通检查项或指定合并子计划检查项编辑弹层。 */
-	function openChecklistItem(item, sonPlanId = '') { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? ''); editingItemId.value = makeChecklistDataKey(baseId, sonPlanId); showItemSheet.value = true }
+	function openChecklistItem(item: UTSJSONObject, sonPlanId: string = '') { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? ''); editingItemId.value = makeChecklistDataKey(baseId, sonPlanId); showItemSheet.value = true }
 	/** 关闭检查项编辑弹层。 */
 	function closeItemSheet() { if (sortSubmitting.value) return; showItemSheet.value = false; editingItemId.value = '' }
 	/** 快速设置普通或合并子行结果，不重建媒体；不合格时打开关联疵点弹层。 */
-	function setItemResult(itemId, result, sonPlanId = '', checklistItem: any | null = null) { const dataKey = makeChecklistDataKey(itemId, sonPlanId); detail.value = updateChecklistResult(detail.value, dataKey, result); scheduleDraftSave('item', dataKey); if (result === 'fail') openNewDefect(checklistItem ?? baseChecklistItems.value.find((item) => String(item?.baseItemId ?? item?.itemId ?? item?.id ?? '') === String(itemId ?? '')), sonPlanId) }
+	function setItemResult(itemId: string, result: any, sonPlanId: string = '', checklistItem: any | null = null) { const dataKey = makeChecklistDataKey(itemId, sonPlanId); detail.value = updateChecklistResult(detail.value, dataKey, result); scheduleDraftSave('item', dataKey); if (result === 'fail') openNewDefect(checklistItem ?? baseChecklistItems.value.find((item) => String(item?.baseItemId ?? item?.itemId ?? item?.id ?? '') === String(itemId ?? '')), sonPlanId) }
 	/** 模拟 H5 左滑快捷动作：未设置结果时自动标记为合格。 */
-	function handleChecklistSwipeOpen(itemId, sonPlanId = '') { const dataKey = makeChecklistDataKey(itemId, sonPlanId); if (!detail.value?.checklistData?.[dataKey]?.result) setItemResult(itemId, 'pass', sonPlanId) }
+	function handleChecklistSwipeOpen(itemId: string, sonPlanId: string = '') { const dataKey = makeChecklistDataKey(itemId, sonPlanId); if (!detail.value?.checklistData?.[dataKey]?.result) setItemResult(itemId, 'pass', sonPlanId) }
 	/** 自动保存检查项输入、备注和分组数据，并保持当前弹框继续打开。 */
 	function autoSaveChecklistItem(payload) { const itemId = String(payload?.item?.itemId ?? editingItemId.value); const data = payload?.data ?? {}; detail.value = updateChecklistItem(detail.value, itemId, { ...data, completed: data?.completed === true }); scheduleDraftSave('item', itemId) }
 	/** 联网依次保存服务端文件顺序和普通报告；失败时不把临时顺序写入本地草稿。 */
@@ -417,7 +424,7 @@
 		const captured = await chooseCapturedMedia()
 		const durationByPath = captured?.durationByPath || new Map()
 		const photos = []
-		const firstSortNo = Math.max(1, Number(metadata?.sortNo ?? 1))
+		const firstSortNo = Math.max(1, parseInt(String(metadata?.sortNo ?? 1)))
 		for (const entry of (captured?.entries ?? [])) {
 			const isVideo = entry.mediaKind === 'video'
 			const localPath = await persistMediaPath(entry.path, isVideo)
@@ -426,7 +433,7 @@
 		return photos
 	}
 	/** 为普通或合并子行添加手机本地图片并立即保存草稿。 */
-	async function addChecklistPhoto(item, sonPlanId = '') { try { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').split('__')[0]; const childPlanId = String(sonPlanId ?? item?.sonPlanId ?? ''); const itemKey = makeChecklistDataKey(baseId, childPlanId); const current = detail.value?.checklistData?.[itemKey] ?? {}; const uploadMetadata = buildChecklistMediaMetadata(detail.value, item, childPlanId, (current?.photos ?? []).length + 1); const photos = await createLocalPhotos('checklist', itemKey, { ...uploadMetadata, dataKey: itemKey, baseItemId: baseId, sonPlanId: childPlanId || null }); if (photos.length === 0) return; detail.value = updateChecklistItem(detail.value, itemKey, { photos: [...(current?.photos ?? []), ...photos], completed: current?.completed === true || String(current?.result ?? '') !== '' }); editingItemId.value = itemKey; scheduleDraftSave('item', itemKey) } catch (error) { showToast(error?.message ?? t('添加图片失败')) } }
+	async function addChecklistPhoto(item: UTSJSONObject, sonPlanId: string = '') { try { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').split('__')[0]; const childPlanId = String(sonPlanId ?? item?.sonPlanId ?? ''); const itemKey = makeChecklistDataKey(baseId, childPlanId); const current = detail.value?.checklistData?.[itemKey] ?? {}; const uploadMetadata = buildChecklistMediaMetadata(detail.value, item, childPlanId, (current?.photos ?? []).length + 1); const photos = await createLocalPhotos('checklist', itemKey, { ...uploadMetadata, dataKey: itemKey, baseItemId: baseId, sonPlanId: childPlanId || null }); if (photos.length === 0) return; detail.value = updateChecklistItem(detail.value, itemKey, { photos: [...(current?.photos ?? []), ...photos], completed: current?.completed === true || String(current?.result ?? '') !== '' }); editingItemId.value = itemKey; scheduleDraftSave('item', itemKey) } catch (error) { showToast(error?.message ?? t('添加图片失败')) } }
 	/** 拍摄检查点图片并以独立 bizType 持久化，保留原有检查结果媒体。 */
 	async function addCheckPointPhoto(item) { try { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').split('__')[0]; const childPlanId = String(item?.sonPlanId ?? ''); const itemKey = makeChecklistDataKey(baseId, childPlanId); const current = detail.value?.checklistData?.[itemKey] ?? {}; const metadata = buildChecklistMediaMetadata(detail.value, item, childPlanId, (current?.photos ?? []).length + 1); const photos = await createLocalPhotos('checklist', itemKey, { ...metadata, bizType: 'checkPoint', dataKey: itemKey, baseItemId: baseId, sonPlanId: childPlanId || null }); if (photos.length === 0) return; detail.value = updateChecklistItem(detail.value, itemKey, { photos: [...(current?.photos ?? []), ...photos] }); await persistDraft({ markDirty: true, changes: { itemIds: [itemKey] } }) } catch (error) { showToast(error?.message ?? t('添加检查点图片失败')) } }
 	/** 请求二次确认当前检查项的离线重置。 */
@@ -436,18 +443,81 @@
 	/** 删除当前检查项本地媒体及服务端文件关联，再持久化空结果草稿。 */
 	async function resetChecklistItem() { const itemId = resetItemId.value; if (!itemId) return; resetItemSubmitting.value = true; try { const current = detail.value?.checklistData?.[itemId] ?? {}; for (const photo of (current?.photos ?? [])) await removePhotoRecord(photo); detail.value = updateChecklistItem(detail.value, itemId, { result: '', comment: '', photos: [], measurements: [], textGroups: [], barcode: '', barcodeList: [], barcodeItems: [], completed: false }); await persistDraft({ markDirty: true, changes: { itemIds: [itemId] } }); showResetItemConfirm.value = false; resetItemId.value = ''; closeItemSheet(); showToast('检查点已重置') } catch (error) { showToast(error?.message ?? t('重置检查点失败')) } finally { resetItemSubmitting.value = false } }
 	/** 处理清单相机入口并沿用普通或合并子行关联。 */
-	async function handleChecklistItemPhotoCapture(item, sonPlanId = '') { await addChecklistPhoto(item, sonPlanId) }
-	/** 删除检查项本地图片，并在联网时同步删除服务端文件。 */
+	async function handleChecklistItemPhotoCapture(item: UTSJSONObject, sonPlanId: string = '') { await addChecklistPhoto(item, sonPlanId) }
+	/** 删除检查项本地媒体；已有服务端文件则持久化删除任务，随后保存草稿。 */
 	async function removeChecklistPhoto(payload) { const itemId = String(payload?.item?.itemId ?? payload?.item?.id ?? editingItemId.value); await removePhotoRecord(payload?.photo); const current = detail.value?.checklistData?.[itemId] ?? {}; detail.value = updateChecklistItem(detail.value, itemId, { photos: (current?.photos ?? []).filter((photo) => photo !== payload?.photo && photo?.photoId !== payload?.photo?.photoId) }); await persistDraft({ markDirty: true, changes: { itemIds: [itemId] } }) }
+	/** 已上传检查项媒体先等待用户确认；本地待上传媒体直接删除并返回是否完成。 */
+	async function requestChecklistPhotoRemoval(payload: UTSJSONObject, fromPreview: boolean = false) {
+		const photo = payload?.photo
+		if (photo == null || showDeleteChecklistPhotoConfirm.value || deleteChecklistPhotoSubmitting.value) return false
+		if (isPhotoUploaded(photo)) {
+			pendingChecklistPhoto.value = { ...payload, fromPreview }
+			showDeleteChecklistPhotoConfirm.value = true
+			return false
+		}
+		try { await removeChecklistPhoto(payload); return true }
+		catch (error) { showToast(error?.message ?? t('删除媒体失败，请重试')); return false }
+	}
+	/** 取消删除已上传媒体，保留图片和预览弹层。 */
+	function closeDeleteChecklistPhotoConfirm() { if (deleteChecklistPhotoSubmitting.value) return; showDeleteChecklistPhotoConfirm.value = false; pendingChecklistPhoto.value = {} }
+	/** 用户确认后删除已上传媒体并持久化检查项草稿。 */
+	async function confirmDeleteChecklistPhoto() {
+		if (deleteChecklistPhotoSubmitting.value || !pendingChecklistPhoto.value?.photo) return
+		deleteChecklistPhotoSubmitting.value = true
+		const payload = pendingChecklistPhoto.value
+		try {
+			await removeChecklistPhoto(payload)
+			showDeleteChecklistPhotoConfirm.value = false
+			pendingChecklistPhoto.value = {}
+			if (payload.fromPreview) closePhotoEditor()
+		} catch (error) { showToast(error?.message ?? t('删除媒体失败，请重试')) }
+		finally { deleteChecklistPhotoSubmitting.value = false }
+	}
 	/** 打开检查项图片预览编辑弹层。 */
-	function openPhotoEditor(payload) { previewPhoto.value = payload?.photo ?? {}; previewItem.value = (payload?.item || payload?.defect) ?? {}; previewOwnerType.value = payload?.defect ? 'defect' : 'checklist'; showPhotoEditor.value = true }
+	function openPhotoEditor(payload) { previewPhoto.value = payload?.photo ?? {}; previewPhotos.value = payload?.photos ?? [previewPhoto.value]; previewItem.value = (payload?.item || payload?.defect) ?? {}; previewOwnerType.value = payload?.defect ? 'defect' : 'checklist'; showPhotoEditor.value = true }
 	/** 关闭图片预览编辑弹层。 */
-	function closePhotoEditor() { showPhotoEditor.value = false; previewPhoto.value = {}; previewItem.value = {}; previewOwnerType.value = 'checklist' }
-	/** 删除正在预览的检查项图片。 */
-	async function deletePreviewPhoto() { if (previewOwnerType.value === 'defect') await removeDefectPhoto({ defect: previewItem.value, photo: previewPhoto.value }); else await removeChecklistPhoto({ item: previewItem.value, photo: previewPhoto.value }); closePhotoEditor() }
+	function closePhotoEditor() { showPhotoEditor.value = false; previewPhoto.value = {}; previewPhotos.value = []; previewItem.value = {}; previewOwnerType.value = 'checklist' }
+	/** 切换当前预览媒体，同步更新随后编辑或删除的目标。 */
+	function selectPreviewMedia(photo) { previewPhoto.value = photo }
+	/** 将编辑后的持久化图片作为新待上传记录替换原图，并保存对应检查项或疵点草稿。 */
+	/** 编辑保存：保持原 photoId，仅更新 localPath 并标记 pending，由同步服务上传替换服务端文件。 */
+	async function savePreviewEdit(localPath: string) {
+		if (previewEditSaving.value) return
+		const original = previewPhoto.value
+		if (original == null || (original?.photoId == null && original?.fileId == null && original?.localPath == null)) return
+		previewEditSaving.value = true
+		try {
+			if (automaticUploading.value || manualUploading.value) throw new Error('图片正在上传，请稍后再保存编辑')
+			const latest = (await photoRepository.listByReportId(planId.value)).find((photo) => original?.photoId != null && photo?.photoId === original.photoId) ?? original
+			if (latest?.uploadStatus === 'uploading') throw new Error('图片正在上传，请稍后再保存编辑')
+			// 原地更新：保留 photoId/fileId，只改 localPath + 重置上传状态
+			const edited = { ...latest, localPath, uploadStatus: 'pending', uploadError: '', retryCount: 0, nextRetryAt: '' }
+			await photoRepository.save(planId.value, edited)
+			if (previewOwnerType.value === 'defect') {
+				const defectId = String(previewItem.value?.defectId ?? previewItem.value?.id ?? '')
+				const photos = replaceMedia(previewItem.value?.photos ?? editingDefect.value?.photos ?? previewPhotos.value, original, edited)
+				editingDefect.value = { ...editingDefect.value, ...previewItem.value, photos }
+				const defects = (detail.value?.defects ?? []).map((defect) => String(defect?.defectId ?? defect?.id ?? '') === defectId ? { ...defect, photos: replaceMedia(defect?.photos ?? [], original, edited) } : defect)
+				const retainedPhotos = (detail.value?.photos ?? []).filter((photo) => !(photo?.ownerType === 'defect' && String(photo?.ownerId ?? '') === defectId))
+				detail.value = normalizeInspectionDetail({ ...detail.value, defects, photos: retainedPhotos }, planId.value)
+				if (defects.some((defect) => String(defect?.defectId ?? defect?.id ?? '') === defectId)) await persistDraft({ markDirty: true, changes: { defectIds: [defectId] } })
+			} else {
+				const itemId = String(previewItem.value?.itemId ?? previewItem.value?.id ?? editingItemId.value)
+				const current = detail.value?.checklistData?.[itemId] ?? {}
+				detail.value = updateChecklistItem(detail.value, itemId, { photos: replaceMedia(current?.photos ?? [], original, edited) })
+				await persistDraft({ markDirty: true, changes: { itemIds: [itemId] } })
+			}
+			previewPhotos.value = replaceMedia(previewPhotos.value, original, edited)
+			previewPhoto.value = edited
+			showToast('图片编辑已保存，等待上传')
+		} catch (error) { showToast(error?.message ?? t('保存图片失败')) }
+		finally { previewEditSaving.value = false }
+	}
+	/** 删除预览媒体；检查项已上传媒体先经二次确认，疵点媒体沿用原流程。 */
+	async function deletePreviewPhoto() { if (previewOwnerType.value === 'defect') { await removeDefectPhoto({ defect: previewItem.value, photo: previewPhoto.value }); closePhotoEditor(); return }; if (await requestChecklistPhotoRemoval({ item: previewItem.value, photo: previewPhoto.value }, true)) closePhotoEditor() }
 
 	/** 打开新增疵点弹层，并在从清单进入时保留主行或合并子行关联。 */
-	function openNewDefect(item: any | null = null, sonPlanId = '') { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? ''); const childPlanId = String(sonPlanId ?? item?.sonPlanId ?? ''); isEditingDefect.value = false; editingDefect.value = { type: 'MINOR', quantity: 1, photos: [], checkItemId: baseId, checkItemName: (item?.itemName ?? item?.name) ?? '', checkItemResultId: baseId !== '' ? makeItemResultId(baseId, childPlanId) : '', sonPlanId: childPlanId !== '' ? childPlanId : null }; showDefectSheet.value = true }
+	function openNewDefect(item: any | null = null, sonPlanId: string = '') { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? ''); const childPlanId = String(sonPlanId ?? item?.sonPlanId ?? ''); isEditingDefect.value = false; editingDefect.value = { type: 'MINOR', quantity: 1, photos: [], checkItemId: baseId, checkItemName: (item?.itemName ?? item?.name) ?? '', checkItemResultId: baseId !== '' ? makeItemResultId(baseId, childPlanId) : '', sonPlanId: childPlanId !== '' ? childPlanId : null }; showDefectSheet.value = true }
 	/** 打开已有疵点编辑弹层。 */
 	function openDefect(defect) { isEditingDefect.value = true; editingDefect.value = { ...defect, photos: [...(defect?.photos ?? [])] }; showDefectSheet.value = true }
 	/** 关闭疵点编辑弹层。 */
@@ -541,7 +611,7 @@
 				await persistDraft({ markDirty: true })
 				const result = await syncOfflineDataAutomatically()
 				await refreshPhotoState()
-					const resultFailedCount = Number(result?.failedCount ?? 0) + Number(result?.failedPhotoCount ?? 0)
+					const resultFailedCount = parseInt(String(result?.failedCount ?? 0)) + parseInt(String(result?.failedPhotoCount ?? 0))
 					await refreshSyncOverview()
 					failedSyncCount.value = Math.max(failedSyncCount.value, resultFailedCount)
 					showToast(resultFailedCount > 0 ? '部分数据同步失败，请稍后重试' : '同步完成')
@@ -727,7 +797,7 @@
 	async function saveReadyQuantities() {
 		quantitySubmitting.value = true
 		try {
-			const rows = quantityRows.value.map((row) => ({ ...row, finishQuantity: Number(row?.finishQuantity ?? 0) }))
+			const rows = quantityRows.value.map((row) => ({ ...row, finishQuantity: parseInt(String(row?.finishQuantity ?? 0)) }))
 			for (const row of rows) {
 				const targetPlanId = String(row?.id ?? '').trim()
 				if (targetPlanId === '' || targetPlanId === planId.value) continue
@@ -747,7 +817,7 @@
 	/** 关闭抽样数量底部输入弹层。 */
 	function closeSampleQuantity() { if (!sampleQuantitySubmitting.value) showSampleQuantity.value = false }
 	/** 先更新当前计划抽样数量到本地报告，再由普通草稿队列自动同步。 */
-	async function saveSampleQuantity(value) { sampleQuantitySubmitting.value = true; try { detail.value = applySampleQuantity(detail.value, Number(value ?? 0)); await persistDraft({ markDirty: true }); showSampleQuantity.value = false; showToast('抽样数量已保存，联网后将自动同步') } catch (error) { showToast(error?.message ?? t('更新失败')) } finally { sampleQuantitySubmitting.value = false } }
+	async function saveSampleQuantity(value) { sampleQuantitySubmitting.value = true; try { detail.value = applySampleQuantity(detail.value, parseInt(String(value ?? 0))); await persistDraft({ markDirty: true }); showSampleQuantity.value = false; showToast('抽样数量已保存，联网后将自动同步') } catch (error) { showToast(error?.message ?? t('更新失败')) } finally { sampleQuantitySubmitting.value = false } }
 
 	/** 解析路由计划 ID 并初始化详情页。 */
 	function handlePageLoad(options) { planId.value = decodeURIComponent(String(options?.planId ?? '')).trim(); if (planId.value === '') { loading.value = false; errorMessage.value = '计划ID缺失，无法加载详情'; return }; unsubscribeAutomaticSyncStatus = subscribeAutomaticSyncStatus(handleAutomaticSyncStatus); loadDetail() }

@@ -56,8 +56,8 @@ export function createOnlineMediaService(options) {
       const results = Array.isArray(response?.results) ? response.results : []
       const failures = results.filter((result) => result?.success === false)
       const targetCount = Array.isArray(request?.targetItemIds) ? request.targetItemIds.length : 1
-      const failed = Number(response?.failCount ?? failures.length)
-      successCount += Number(response?.successCount ?? Math.max(0, targetCount - failed))
+      const failed = parseInt(String(response?.failCount ?? failures.length))
+      successCount += parseInt(String(response?.successCount ?? Math.max(0, targetCount - failed)))
       failCount += failed
       for (const result of failures) {
         const reason = String(result?.errorMessage ?? result?.message ?? '').trim()

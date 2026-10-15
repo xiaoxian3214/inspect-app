@@ -137,6 +137,7 @@
 			@close="closeUserDrawer"
 			@change-language="setLanguage"
 			@invite-vendor="handleInviteVendor"
+			@open-custom-camera="handleOpenCustomCamera"
 			@view-local-data="handleViewLocalData"
 			@clear-cache="handleClearLocalCache"
 			@check-for-updates="handleCheckForUpdates"
@@ -290,7 +291,7 @@
 			if (tab.key === 'local') continue
 			const merged = mergePlansLocalFirst(localPlans.value, remoteListMap[tab.key] ?? [])
 			const visibleCount = merged.filter((item) => isPlanInTab(item, tab.key)).length
-			result[tab.key] = Math.max(visibleCount, Number(totalMap[tab.key] ?? 0))
+			result[tab.key] = Math.max(visibleCount, parseInt(String(totalMap[tab.key] ?? 0)))
 		}
 		return result
 	})
@@ -298,17 +299,17 @@
 	/**
 	 * 返回当前页签已加载的远程页码，尚未加载时按第一页展示。
 	 */
-	const currentPage = computed(() => Number(pageMap[activeTab.value] ?? 1))
+	const currentPage = computed(() => parseInt(String(pageMap[activeTab.value] ?? 1)))
 
 	/**
 	 * 返回当前页签本地可见数量与远程接口总数的较大值。
 	 */
-	const total = computed(() => Math.max(visiblePlans.value.length, Number(totalMap[activeTab.value] ?? 0)))
+	const total = computed(() => Math.max(visiblePlans.value.length, parseInt(String(totalMap[activeTab.value] ?? 0))))
 
 	/**
 	 * 判断当前页签是否已经加载过云端列表。
 	 */
-	const hasRemoteLoaded = computed(() => Number(pageMap[activeTab.value] ?? 0) > 0)
+	const hasRemoteLoaded = computed(() => parseInt(String(pageMap[activeTab.value] ?? 0)) > 0)
 
 	/**
 	 * 计算当前远程结果对应的总页数。
@@ -392,9 +393,9 @@
 		currentUserId.value = session?.userId ?? ''
 		const overview = await planListService.getOverview()
 		const syncOverview = await getOfflineSyncOverview()
-		localTotal.value = Number(overview?.total ?? 0)
-		pendingSyncCount.value = Number(syncOverview?.pendingCount ?? 0)
-		failedSyncCount.value = Number(syncOverview?.failedCount ?? 0)
+		localTotal.value = parseInt(String(overview?.total ?? 0))
+		pendingSyncCount.value = parseInt(String(syncOverview?.pendingCount ?? 0))
+		failedSyncCount.value = parseInt(String(syncOverview?.failedCount ?? 0))
 		pendingSyncItems.value = Array.isArray(syncOverview?.queueItems) ? syncOverview.queueItems : []
 		latestDownloadedAt.value = formatDateTime(overview?.latestDownloadedAt ?? '')
 	}
@@ -450,7 +451,7 @@
 					})
 					remoteListMap[activeTab.value] = normalizeRemoteRecords(result?.records ?? [])
 					pageMap[activeTab.value] = page
-					totalMap[activeTab.value] = Number(result?.total ?? 0)
+					totalMap[activeTab.value] = parseInt(String(result?.total ?? 0))
 				} catch (error) {
 					errorMessage.value = error?.message ?? t('云端列表加载失败，已保留当前列表和本地数据')
 				}
@@ -524,17 +525,17 @@
 		failedSyncCount.value = 0
 		try {
 			const result = await syncOfflineDataAutomatically()
-			const resultFailedCount = Number(result?.failedCount ?? 0) + Number(result?.failedPhotoCount ?? 0)
+			const resultFailedCount = parseInt(String(result?.failedCount ?? 0)) + parseInt(String(result?.failedPhotoCount ?? 0))
 			await refreshLocalList()
 			failedSyncCount.value = Math.max(failedSyncCount.value, resultFailedCount)
 			if (failedSyncCount.value > 0) {
 				uni.showToast({
-					title: t('已同步 {synced} 条，失败 {failed} 项', { synced: Number(result?.syncedCount ?? 0), failed: failedSyncCount.value }),
+					title: t('已同步 {synced} 条，失败 {failed} 项', { synced: parseInt(String(result?.syncedCount ?? 0)), failed: failedSyncCount.value }),
 					icon: 'none'
 				})
 				return
 			}
-			const totalCount = Number(result?.syncedCount ?? 0) + Number(result?.uploadedPhotoCount ?? 0)
+			const totalCount = parseInt(String(result?.syncedCount ?? 0)) + parseInt(String(result?.uploadedPhotoCount ?? 0))
 			uni.showToast({ title: totalCount > 0 ? t('同步成功，共 {count} 项', { count: totalCount }) : t('本地数据已是最新'), icon: totalCount > 0 ? 'success' : 'none' })
 		} catch (error) {
 			failedSyncCount.value = Math.max(1, pendingSyncCount.value)
@@ -622,6 +623,27 @@
 			inviteGenerating.value = false
 		}
 	}
+
+	/**
+	 * 关闭用户抽屉并跳转到自定义拍照页面，供离线验货现场独立拍摄使用。
+	 */
+	/** 关闭用户抽屉并跳转到自定义拍照页面。 */
+	/** 关闭用户抽屉并跳转到自定义拍照页面（对标 takePhoto.nvue 单拍模式）。 */
+	function handleOpenCustomCamera() {
+		closeUserDrawer()
+		uni.navigateTo({ url: '/pages/report/simple-camera' })
+	}
+	/** 接收自定义拍照页面回传的照片路径（对标 takePhoto.nvue 的 setImage 模式）。 */
+	function setImage(result: UTSJSONObject) {
+		const path = String(result?.path ?? '').trim()
+		if (path !== '') {
+			console.log('[list] custom camera photo saved:', path)
+			uni.showToast({ title: t('照片已保存'), icon: 'success' })
+		}
+	}
+
+	// 暴露 setImage 供自定义拍照页面通过 getCurrentPages + $vm.setImage 回传结果
+	defineExpose({ setImage })
 
 	/**
 	 * 展示本地计划、待同步数量和最近更新时间摘要。

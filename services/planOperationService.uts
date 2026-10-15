@@ -49,7 +49,7 @@ export function createPlanOperationService(options) {
         const recordId = searchViewModel.getPlanOperationId(record)
         if (recordId !== '') memberIds.add(recordId)
       }
-      if (records.length === 0 || page * pageSize >= Number(response?.total ?? records.length)) break
+      if (records.length === 0 || page * pageSize >= parseInt(String(response?.total ?? records.length))) break
       page += 1
     }
     return memberIds
@@ -61,7 +61,7 @@ export function createPlanOperationService(options) {
   async function releasePlan(item, reportDeleteFlag = 0) {
     const planId = searchViewModel.getPlanOperationId(item)
     if (planId === '') throw new Error('计划ID缺失，无法执行操作')
-    const mergeType = Number(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0)
+    const mergeType = parseInt(String(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0))
     const mergedParentPlanId = searchViewModel.getItemParentPlanId(item)
     const parentPlanId = mergeType === 2 ? (mergedParentPlanId !== '' ? mergedParentPlanId : planId) : ''
     const removeIdSet = new Set([planId])

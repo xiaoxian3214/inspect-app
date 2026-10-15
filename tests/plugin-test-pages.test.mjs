@@ -16,6 +16,8 @@ test('lime sqlite test page exercises the installed plugin API', async () => {
   assert.match(page, /CREATE TABLE IF NOT EXISTS plugin_test/)
   assert.match(page, /INSERT INTO plugin_test/)
   assert.match(page, /DELETE FROM plugin_test/)
+  assert.ok(page.indexOf('function queryTestRows()') < page.indexOf('function insertTestRow()'))
+  assert.doesNotMatch(page, /\bString\s*\(/)
 })
 
 test('xview camera test page exposes capture controls and result preview', async () => {

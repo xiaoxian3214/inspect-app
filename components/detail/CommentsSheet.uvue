@@ -40,14 +40,14 @@
 				</view>
 			</scroll-view>
 			<view class="editor">
-				<view v-if="String(replyTarget.id ?? '') !== ''" class="reply-target">
+				<view v-if="(replyTarget.id ?? '').toString() !== ''" class="reply-target">
 				<text class="reply-target-text">{{ t('回复给：{name}', { name: replyTarget.authorName ?? '-' }) }}</text>
 					<text class="reply-target-cancel" @click="cancelReply">{{ t('取消回复') }}</text>
 				</view>
-				<textarea class="comment-input" :value="draft" :placeholder="t(String(replyTarget.id ?? '') !== '' ? '写回复' : '写评论')" :maxlength="500" @input="handleInput" />
+				<textarea class="comment-input" :value="draft" :placeholder="t((replyTarget.id ?? '').toString() !== '' ? '写回复' : '写评论')" :maxlength="500" @input="handleInput" />
 				<view class="editor-actions">
-					<button v-if="String(replyTarget.id ?? '') !== ''" class="editor-button secondary" :disabled="saving" @click="cancelReply">{{ t('取消') }}</button>
-					<button class="editor-button primary" :disabled="saving || draft.trim() === ''" @click="submitComment">{{ t(saving ? '提交中...' : (String(replyTarget.id ?? '') !== '' ? '提交回复' : '提交评论')) }}</button>
+					<button v-if="(replyTarget.id ?? '').toString() !== ''" class="editor-button secondary" :disabled="saving" @click="cancelReply">{{ t('取消') }}</button>
+					<button class="editor-button primary" :disabled="saving || draft.trim() === ''" @click="submitComment">{{ t(saving ? '提交中...' : ((replyTarget.id ?? '').toString() !== '' ? '提交回复' : '提交评论')) }}</button>
 				</view>
 			</view>
 		</view>
@@ -79,12 +79,12 @@
 	watch(() => props.visible, (visible) => { if (visible) { resetEditor(); loadComments() } })
 
 	/** 显示统一轻提示。 */
-	function showToast(message) { uni.showToast({ title: t(String(message ?? '')), icon: 'none', duration: 2400 }) }
+	function showToast(message) { uni.showToast({ title: t((message ?? '').toString()), icon: 'none', duration: 2400 }) }
 	/** 重置草稿与回复目标，便于每次打开弹层回到干净状态。 */
 	function resetEditor() { draft.value = ''; replyTarget.value = {}; deletingId.value = '' }
 	/** 按 H5 归一化规则加载报告全部评论并压平为两级楼层。 */
 	async function loadComments() {
-		const reportId = String(props.reportId ?? '').trim()
+		const reportId = (props.reportId ?? '').toString().trim()
 		if (reportId === '') return
 		loading.value = true
 		try {
@@ -101,7 +101,7 @@
 	/** 取消回复目标并清空草稿。 */
 	function cancelReply() { replyTarget.value = {}; draft.value = '' }
 	/** 同步评论输入草稿。 */
-	function handleInput(event) { draft.value = String(event?.detail?.value ?? '') }
+	function handleInput(event) { draft.value = (event?.detail?.value ?? '').toString() }
 	/** 提交评论或楼层回复，成功后重新拉取全部评论。 */
 	async function submitComment() {
 		if (saving.value) return
@@ -109,7 +109,7 @@
 		if (!validation.valid) { showToast(validation.message); return }
 		saving.value = true
 		try {
-			const params = buildReportCommentParams({ reportId: props.reportId, content: draft.value, parentId: String(replyTarget.value?.id ?? '') })
+			const params = buildReportCommentParams({ reportId: props.reportId, content: draft.value, parentId: (replyTarget.value?.id ?? '').toString() })
 			await reportCommentsApi.createReportComment(params)
 			showToast('提交成功')
 			cancelReply()
@@ -122,7 +122,7 @@
 	}
 	/** 二次确认后删除评论；删除的是当前回复目标时同步取消回复。 */
 	async function removeComment(comment) {
-		const commentId = String(comment?.id ?? '').trim()
+		const commentId = (comment?.id ?? '').toString().trim()
 		if (commentId === '' || deletingId.value !== '') return
 		uni.showModal({
 			title: t('删除评论'),
@@ -132,7 +132,7 @@
 				deletingId.value = commentId
 				try {
 					await reportCommentsApi.deleteReportComment(commentId)
-					if (String(replyTarget.value?.id ?? '') === commentId) cancelReply()
+					if ((replyTarget.value?.id ?? '').toString() === commentId) cancelReply()
 					showToast('删除成功')
 					await loadComments()
 				} catch (error) {

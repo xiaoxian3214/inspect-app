@@ -30,7 +30,7 @@
 			<view class="card">
 				<text class="card-title">查询结果（{{ rows.length }} 行）</text>
 				<text v-if="rows.length === 0" class="empty">暂无数据，请先打开数据库并插入测试行。</text>
-				<view v-for="(row, index) in rows" :key="String(row?.id ?? index)" class="row-item">
+				<view v-for="(row, index) in rows" :key="(row?.id ?? index).toString()" class="row-item">
 					<text class="row-index">#{{ index + 1 }}</text>
 					<text class="row-json">{{ formatRow(row) }}</text>
 				</view>
@@ -54,15 +54,15 @@
 	const opened = ref(false)
 	const inputValue = ref('测试数据')
 	const rows = ref([])
-	const databasePath = ref(String(getDatabasePath(DATABASE_NAME) ?? '暂未返回路径'))
+	const databasePath = ref((getDatabasePath(DATABASE_NAME) ?? '暂未返回路径').toString())
 	const logMessage = ref('等待操作')
 
 	/** 将用户输入转义成安全的 SQLite 文本字面量内容。 */
-	function escapeSqlText(value) { return String(value ?? '').replace(/'/g, "''") }
+	function escapeSqlText(value) { return (value ?? '').toString().replace(/'/g, "''") }
 
 	/** 记录插件操作结果，并同步向开发者控制台输出详细信息。 */
 	function recordLog(action, detail) {
-		logMessage.value = `${action}：${String(detail ?? '成功')}`
+		logMessage.value = `${action}：${(detail ?? '成功').toString()}`
 		console.log(`[lime-sqlite test] ${action}`, detail)
 	}
 
@@ -72,7 +72,7 @@
 			name: DATABASE_NAME,
 			success: (result) => {
 				opened.value = true
-			databasePath.value = String(getDatabasePath(DATABASE_NAME) ?? databasePath.value)
+				databasePath.value = (getDatabasePath(DATABASE_NAME) ?? databasePath.value).toString()
 				executeSql({
 					name: DATABASE_NAME,
 					sql: ['CREATE TABLE IF NOT EXISTS plugin_test (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, createdAt TEXT NOT NULL)'],
@@ -81,19 +81,6 @@
 				})
 			},
 			fail: (error) => recordLog('打开失败', error?.errMsg)
-		})
-	}
-
-	/** 向测试表插入一条带时间戳的数据，数据库未打开时给出明确提示。 */
-	function insertTestRow() {
-		if (!opened.value) { recordLog('插入失败', '请先打开数据库'); return }
-		const content = escapeSqlText(inputValue.value.trim() ?? '测试数据')
-		const createdAt = escapeSqlText(new Date().toISOString())
-		executeSql({
-			name: DATABASE_NAME,
-			sql: [`INSERT INTO plugin_test (content, createdAt) VALUES ('${content}', '${createdAt}')`],
-			success: (result) => { recordLog('插入成功', JSON.stringify(result)); queryTestRows() },
-			fail: (error) => recordLog('插入失败', error?.errMsg)
 		})
 	}
 
@@ -108,6 +95,19 @@
 				recordLog('查询成功', `返回 ${rows.value.length} 行`)
 			},
 			fail: (error) => recordLog('查询失败', error?.errMsg)
+		})
+	}
+
+	/** 向测试表插入一条带时间戳的数据，数据库未打开时给出明确提示。 */
+	function insertTestRow() {
+		if (!opened.value) { recordLog('插入失败', '请先打开数据库'); return }
+		const content = escapeSqlText(inputValue.value.trim() ?? '测试数据')
+		const createdAt = escapeSqlText(new Date().toISOString())
+		executeSql({
+			name: DATABASE_NAME,
+			sql: [`INSERT INTO plugin_test (content, createdAt) VALUES ('${content}', '${createdAt}')`],
+			success: (result) => { recordLog('插入成功', JSON.stringify(result)); queryTestRows() },
+			fail: (error) => recordLog('插入失败', error?.errMsg)
 		})
 	}
 
@@ -132,7 +132,7 @@
 	}
 
 	/** 将插件返回的数据库行格式化成便于查看的 JSON。 */
-	function formatRow(row) { try { return JSON.stringify(row, null, 2) } catch (_) { return String(row) } }
+	function formatRow(row) { try { return JSON.stringify(row, null, 2) } catch (_) { return (row ?? '').toString() } }
 
 	/** 返回上一页面。 */
 	function goBack() { uni.navigateBack() }

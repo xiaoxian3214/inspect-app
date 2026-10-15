@@ -1,12 +1,12 @@
 <template>
 	<view class="camera-page">
-		<xview-camera-view ref="nativeCameraRef" class="camera-preview" :facing="devicePosition" :flash="flashMode" photo-format="jpg" resolution="high" :save-to-album="false" @onCameraOpened="handleCameraReady" @onCameraClosed="handleCameraStopped" @onPictureTaken="handleNativePhoto" @onVideoTakenStart="handleVideoStarted" @onVideoTakenEnd="handleNativeVideo" @onCameraTakenError="handleCameraError" @onCameraError="handleCameraError" />
+		<xview-camera-view ref="nativeCameraRef" class="camera-preview" :facing="devicePosition" :flash="flashMode" :photo-format="photoFormat" :resolution="photoResolution" :grid="gridMode" :save-to-album="saveToAlbum" @onCameraOpened="handleCameraReady" @onCameraClosed="handleCameraStopped" @onPictureTaken="handleNativePhoto" @onVideoTakenStart="handleVideoStarted" @onVideoTakenEnd="handleNativeVideo" @onCameraTakenError="handleCameraError" @onCameraError="handleCameraError" />
 		<view class="camera-overlay">
 			<TopSafeArea background-color="rgba(0,0,0,0.72)" />
 			<view class="camera-header">
 				<view class="header-action" @click="cancelCapture"><AppIcon type="close" :size="24" color="#ffffff" /></view>
 				<text class="camera-title">{{ t('连续拍照') }}</text>
-				<view class="header-action" @click="toggleFlash"><text class="header-action-text">{{ t(flashLabel) }}</text></view>
+				<view class="header-action" @click="toggleSettings"><AppIcon type="gear" :size="22" color="#ffffff" /></view>
 			</view>
 			<view v-if="!cameraReady" class="camera-state">
 				<view v-if="cameraErrorMessage === ''" class="camera-loading-dot"></view>
@@ -16,6 +16,75 @@
 			<view v-if="videoRecording" class="recording-indicator">
 				<view class="recording-dot"></view>
 				<text class="recording-text">{{ formatVideoDurationLabel(videoElapsedSeconds) }} / {{ formatVideoDurationLabel(MAX_VIDEO_DURATION_SECONDS) }}</text>
+			</view>
+			<view v-if="showSettings" class="camera-settings" @click.stop="() => {}">
+				<scroll-view class="settings-scroll" :scroll-y="true">
+					<view class="settings-group">
+						<text class="settings-label">{{ t('闪光灯') }}</text>
+						<view class="settings-options">
+							<text class="settings-option" :class="{ active: flashMode === 'off' }" @click="applyFlash('off')">{{ t('关闭') }}</text>
+							<text class="settings-option" :class="{ active: flashMode === 'on' }" @click="applyFlash('on')">{{ t('开启') }}</text>
+							<text class="settings-option" :class="{ active: flashMode === 'auto' }" @click="applyFlash('auto')">{{ t('自动') }}</text>
+						</view>
+					</view>
+					<view class="settings-group">
+						<text class="settings-label">{{ t('网格') }}</text>
+						<view class="settings-options">
+							<text class="settings-option" :class="{ active: gridMode === 'off' }" @click="applyGrid('off')">{{ t('关闭') }}</text>
+							<text class="settings-option" :class="{ active: gridMode === 'draw_3X3' }" @click="applyGrid('draw_3X3')">3x3</text>
+							<text class="settings-option" :class="{ active: gridMode === 'draw_4x4' }" @click="applyGrid('draw_4x4')">4x4</text>
+							<text class="settings-option" :class="{ active: gridMode === 'draw_phi' }" @click="applyGrid('draw_phi')">{{ t('黄金') }}</text>
+						</view>
+					</view>
+					<view class="settings-group">
+						<text class="settings-label">{{ t('分辨率') }}</text>
+						<view class="settings-options">
+							<text class="settings-option" :class="{ active: photoResolution === 'low' }" @click="applyResolution('low')">{{ t('低') }}</text>
+							<text class="settings-option" :class="{ active: photoResolution === 'medium' }" @click="applyResolution('medium')">{{ t('中') }}</text>
+							<text class="settings-option" :class="{ active: photoResolution === 'high' }" @click="applyResolution('high')">{{ t('高') }}</text>
+						</view>
+					</view>
+					<view class="settings-group">
+						<text class="settings-label">{{ t('缩放') }}</text>
+						<view class="settings-options">
+							<text class="settings-option" @click="applyZoom('ultraWide')">{{ t('超广角') }}</text>
+							<text class="settings-option" @click="applyZoom('reset')">1.0x</text>
+							<text class="settings-option" @click="applyZoom('in')">{{ t('放大') }}</text>
+							<text class="settings-option" @click="applyZoom('out')">{{ t('缩小') }}</text>
+						</view>
+					</view>
+					<view class="settings-group">
+						<text class="settings-label">{{ t('HDR') }}</text>
+						<view class="settings-options">
+							<text class="settings-option" :class="{ active: hdrMode === 'off' }" @click="applyHdr('off')">{{ t('关闭') }}</text>
+							<text class="settings-option" :class="{ active: hdrMode === 'on' }" @click="applyHdr('on')">{{ t('开启') }}</text>
+						</view>
+					</view>
+					<view class="settings-group">
+						<text class="settings-label">{{ t('白平衡') }}</text>
+						<view class="settings-options">
+							<text class="settings-option" :class="{ active: whiteBalanceMode === 'auto' }" @click="applyWhiteBalance('auto')">{{ t('自动') }}</text>
+							<text class="settings-option" :class="{ active: whiteBalanceMode === 'incandescent' }" @click="applyWhiteBalance('incandescent')">{{ t('白炽') }}</text>
+							<text class="settings-option" :class="{ active: whiteBalanceMode === 'fluorescent' }" @click="applyWhiteBalance('fluorescent')">{{ t('荧光') }}</text>
+							<text class="settings-option" :class="{ active: whiteBalanceMode === 'daylight' }" @click="applyWhiteBalance('daylight')">{{ t('日光') }}</text>
+							<text class="settings-option" :class="{ active: whiteBalanceMode === 'cloudy' }" @click="applyWhiteBalance('cloudy')">{{ t('多云') }}</text>
+						</view>
+					</view>
+					<view class="settings-group">
+						<text class="settings-label">{{ t('照片格式') }}</text>
+						<view class="settings-options">
+							<text class="settings-option" :class="{ active: photoFormat === 'jpg' }" @click="applyPhotoFormat('jpg')">JPG</text>
+							<text class="settings-option" :class="{ active: photoFormat === 'jpeg' }" @click="applyPhotoFormat('jpeg')">JPEG</text>
+						</view>
+					</view>
+					<view class="settings-group">
+						<text class="settings-label">{{ t('保存到相册') }}</text>
+						<view class="settings-options">
+							<text class="settings-option" :class="{ active: saveToAlbum }" @click="applySaveToAlbum(true)">{{ t('是') }}</text>
+							<text class="settings-option" :class="{ active: !saveToAlbum }" @click="applySaveToAlbum(false)">{{ t('否') }}</text>
+						</view>
+					</view>
+				</scroll-view>
 			</view>
 			<view class="camera-spacer"></view>
 			<view class="capture-panel" :style="{ paddingBottom: safeBottomPaddingPx(22) }">
@@ -71,6 +140,13 @@
 	const videoElapsedSeconds = ref(0)
 	const devicePosition = ref('back')
 	const flashMode = ref('off')
+	const showSettings = ref(false)
+	const gridMode = ref('off')
+	const photoResolution = ref('high')
+	const photoFormat = ref('jpg')
+	const hdrMode = ref('off')
+	const whiteBalanceMode = ref('auto')
+	const saveToAlbum = ref(false)
 	const capturing = ref(false)
 	const cameraReady = ref(false)
 	const cameraErrorMessage = ref('')
@@ -81,11 +157,10 @@
 	let videoTimerId: number | null = null
 	let resultSent = false
 	let orientationTrackingStarted = false
+	let currentZoomLevel = 1.0
 
 	/** 返回当前仍可拍摄或选择的媒体数量。 */
 	const remainingCount = computed(() => Math.max(0, maxCount.value - capturedPaths.value.length))
-	/** 返回当前闪光灯模式的中文提示。 */
-	const flashLabel = computed(() => flashMode.value === 'on' ? '闪光开' : (flashMode.value === 'auto' ? '自动' : '闪光关'))
 	/** 判断当前快门是否应禁用：录像中可随时停止，拍照中需避免连点。 */
 	const shutterDisabled = computed(() => {
 		if (videoRecording.value) return false
@@ -94,13 +169,13 @@
 	})
 	/** 返回指定照片相对其拍摄姿态需要旋转的原生样式。 */
 	function getThumbnailImageStyle(index) {
-		const captureRotation = Number(capturedRotations.value[index] ?? 0)
+		const captureRotation = parseInt(String(capturedRotations.value[index] ?? 0))
 		const rotationDelta = resolveMediaPreviewRotationDelta(thumbnailRotation.value, captureRotation)
 		return { transform: `rotate(${rotationDelta}deg)` }
 	}
 	/** 将视频秒数格式化为 mm:ss 展示标签。 */
 	function formatVideoDurationLabel(totalSeconds) {
-		const safeSeconds = Math.max(0, Math.round(Number(totalSeconds ?? 0)))
+		const safeSeconds = Math.max(0, Math.round(parseInt(String(totalSeconds ?? 0))))
 		const minutes = Math.floor(safeSeconds / 60)
 		const seconds = safeSeconds % 60
 		return `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds}`
@@ -110,7 +185,7 @@
 		return formatVideoDurationLabel(capturedDurations.value[index] ?? 0)
 	}
 	/** 追加媒体路径并记录每个媒体加入时的姿态、类型与视频时长，已有媒体保留原始信息。 */
-	function appendCapturedMedia(paths, captureRotation: number = thumbnailRotation.value, mediaKind = 'image', durationSeconds = 0) {
+	function appendCapturedMedia(paths: string[], captureRotation: number = thumbnailRotation.value, mediaKind: string = 'image', durationSeconds: number = 0) {
 		const currentPaths = [...capturedPaths.value]
 		const currentRotations = [...capturedRotations.value]
 		const currentKinds = [...capturedMediaKinds.value]
@@ -121,9 +196,9 @@
 		const nextDurations = []
 		nextPaths.forEach((path) => {
 			const existingIndex = currentPaths.indexOf(path)
-			nextRotations.push(existingIndex >= 0 ? Number(currentRotations[existingIndex] ?? 0) : Number(captureRotation ?? 0))
+			nextRotations.push(existingIndex >= 0 ? parseInt(String(currentRotations[existingIndex] ?? 0)) : parseInt(String(captureRotation ?? 0)))
 			nextKinds.push(existingIndex >= 0 ? currentKinds[existingIndex] : (mediaKind === 'video' ? 'video' : 'image'))
-			nextDurations.push(existingIndex >= 0 ? Number(currentDurations[existingIndex] ?? 0) : Number(durationSeconds ?? 0))
+			nextDurations.push(existingIndex >= 0 ? parseInt(String(currentDurations[existingIndex] ?? 0)) : parseInt(String(durationSeconds ?? 0)))
 		})
 		capturedPaths.value = nextPaths
 		capturedRotations.value = nextRotations
@@ -162,7 +237,7 @@
 	/** 解析相机请求参数并限制单次最大媒体数量。 */
 	function handlePageLoad(options) {
 		requestId.value = decodeURIComponent(String(options?.requestId ?? '')).trim()
-		maxCount.value = Math.max(1, Math.min(60, Number(options?.maxCount ?? 30)))
+		maxCount.value = Math.max(1, Math.min(60, parseInt(String(options?.maxCount ?? 30))))
 	}
 	/** CameraX 或 AVCaptureSession 完成初始化后开放拍摄按钮。 */
 	function handleCameraReady() { cameraReady.value = true; cameraErrorMessage.value = '' }
@@ -175,6 +250,58 @@
 		if (tempPath === '') { capturing.value = false; uni.showToast({ title: t('拍照结果为空，请重试'), icon: 'none' }); return }
 		appendCapturedMedia([tempPath], captureRotation)
 		capturing.value = false
+	}
+	/** 调用 CameraX 或 AVCapturePhotoOutput 拍摄一张照片，并记录按下快门时的设备姿态。 */
+	function takePhoto() {
+		if (!cameraReady.value || nativeCameraRef.value == null) { uni.showToast({ title: t(cameraErrorMessage.value ?? '相机仍在启动，请稍候'), icon: 'none' }); return }
+		if (capturing.value || remainingCount.value <= 0) return
+		pendingCaptureRotation = thumbnailRotation.value
+		capturing.value = true
+		nativeCameraRef.value?.$callMethod('takePhoto')
+	}
+	/** 调用原生录像输出开始录制视频，实际开始时机由 videorecordingstarted 事件确认。 */
+	function startVideoRecording() {
+		if (!cameraReady.value || nativeCameraRef.value == null) { uni.showToast({ title: t(cameraErrorMessage.value ?? '相机仍在启动，请稍候'), icon: 'none' }); return }
+		if (videoRecording.value || remainingCount.value <= 0) return
+		pendingCaptureRotation = thumbnailRotation.value
+		nativeCameraRef.value?.$callMethod('startVideo', MAX_VIDEO_DURATION_SECONDS * 1000)
+	}
+	/** 停止原生录像并等待 videocaptured 事件回传本地视频路径。 */
+	function stopVideoRecording() {
+		if (!videoRecording.value) return
+		nativeCameraRef.value?.$callMethod('stopVideo')
+	}
+	/** 从系统相册补充选择图片，并立即追加临时路径到缩略图列表。 */
+	function chooseFromAlbum() {
+		if (remainingCount.value <= 0) return
+		const selectionRotation = thumbnailRotation.value
+		uni.chooseImage({
+			count: remainingCount.value,
+			sizeType: ['compressed'],
+			sourceType: ['album'],
+			success: (result) => { appendCapturedMedia(result?.tempFilePaths ?? [], selectionRotation) }
+		})
+	}
+	/** 从系统相册选择单个视频，校验 60 秒与 200MB 上限后按视频类型追加。 */
+	function chooseVideoFromAlbum() {
+		if (remainingCount.value <= 0) return
+		const selectionRotation = thumbnailRotation.value
+		uni.chooseVideo({
+			sourceType: ['album'],
+			compressed: false,
+			maxDuration: MAX_VIDEO_DURATION_SECONDS,
+			success: (result) => {
+				const videoPath = String(result?.tempFilePath ?? '').trim()
+				if (videoPath === '') return
+				const durationSeconds = Math.round(parseInt(String(result?.duration ?? 0)))
+				const durationCheck = validateVideoDuration(durationSeconds)
+				if (!durationCheck.valid) { uni.showToast({ title: durationCheck.message, icon: 'none' }); return }
+				const sizeMb = parseInt(String(result?.size ?? 0)) / (1024 * 1024)
+				const sizeCheck = validateVideoSize(sizeMb)
+				if (!sizeCheck.valid) { uni.showToast({ title: sizeCheck.message, icon: 'none' }); return }
+				appendCapturedMedia([videoPath], selectionRotation, 'video', durationSeconds)
+			}
+		})
 	}
 	/** 原生录像正式开始后启动秒级倒计时，并在达到 60 秒上限时自动停止。 */
 	function handleVideoStarted() {
@@ -210,62 +337,10 @@
 		if (videoRecording.value || capturing.value) return
 		captureMode.value = mode === 'video' ? 'video' : 'photo'
 	}
-	/** 调用 CameraX 或 AVCapturePhotoOutput 拍摄一张照片，并记录按下快门时的设备姿态。 */
-	function takePhoto() {
-		if (!cameraReady.value || nativeCameraRef.value == null) { uni.showToast({ title: t(cameraErrorMessage.value ?? '相机仍在启动，请稍候'), icon: 'none' }); return }
-		if (capturing.value || remainingCount.value <= 0) return
-		pendingCaptureRotation = thumbnailRotation.value
-		capturing.value = true
-		nativeCameraRef.value?.$callMethod('takePhoto')
-	}
-	/** 调用原生录像输出开始录制视频，实际开始时机由 videorecordingstarted 事件确认。 */
-	function startVideoRecording() {
-		if (!cameraReady.value || nativeCameraRef.value == null) { uni.showToast({ title: t(cameraErrorMessage.value ?? '相机仍在启动，请稍候'), icon: 'none' }); return }
-		if (videoRecording.value || remainingCount.value <= 0) return
-		pendingCaptureRotation = thumbnailRotation.value
-		nativeCameraRef.value?.$callMethod('startVideo', MAX_VIDEO_DURATION_SECONDS * 1000)
-	}
-	/** 停止原生录像并等待 videocaptured 事件回传本地视频路径。 */
-	function stopVideoRecording() {
-		if (!videoRecording.value) return
-		nativeCameraRef.value?.$callMethod('stopVideo')
-	}
 	/** 按当前模式从系统相册选择图片或视频。 */
 	function chooseMediaFromAlbum() {
 		if (captureMode.value === 'video') chooseVideoFromAlbum()
 		else chooseFromAlbum()
-	}
-	/** 从系统相册补充选择图片，并立即追加临时路径到缩略图列表。 */
-	function chooseFromAlbum() {
-		if (remainingCount.value <= 0) return
-		const selectionRotation = thumbnailRotation.value
-		uni.chooseImage({
-			count: remainingCount.value,
-			sizeType: ['compressed'],
-			sourceType: ['album'],
-			success: (result) => { appendCapturedMedia(result?.tempFilePaths ?? [], selectionRotation) }
-		})
-	}
-	/** 从系统相册选择单个视频，校验 60 秒与 200MB 上限后按视频类型追加。 */
-	function chooseVideoFromAlbum() {
-		if (remainingCount.value <= 0) return
-		const selectionRotation = thumbnailRotation.value
-		uni.chooseVideo({
-			sourceType: ['album'],
-			compressed: false,
-			maxDuration: MAX_VIDEO_DURATION_SECONDS,
-			success: (result) => {
-				const videoPath = String(result?.tempFilePath ?? '').trim()
-				if (videoPath === '') return
-				const durationSeconds = Math.round(Number(result?.duration ?? 0))
-				const durationCheck = validateVideoDuration(durationSeconds)
-				if (!durationCheck.valid) { uni.showToast({ title: durationCheck.message, icon: 'none' }); return }
-				const sizeMb = Number(result?.size ?? 0) / (1024 * 1024)
-				const sizeCheck = validateVideoSize(sizeMb)
-				if (!sizeCheck.valid) { uni.showToast({ title: sizeCheck.message, icon: 'none' }); return }
-				appendCapturedMedia([videoPath], selectionRotation, 'video', durationSeconds)
-			}
-		})
 	}
 	/** 从当前尚未确认的连拍缩略图列表中删除指定媒体。 */
 	function removeCapture(index) {
@@ -287,7 +362,28 @@
 	/** 在后置和前置镜头之间切换并要求原生组件重新绑定当前镜头；录像中禁止切换。 */
 	function switchCamera() { if (videoRecording.value) return; devicePosition.value = devicePosition.value === 'back' ? 'front' : 'back'; nativeCameraRef.value?.$callMethod('setFacing', devicePosition.value) }
 	/** 循环切换关闭、开启和自动闪光模式，并立即同步到原生拍照输出；录像中禁止切换。 */
-	function toggleFlash() { if (videoRecording.value) return; flashMode.value = flashMode.value === 'off' ? 'on' : (flashMode.value === 'on' ? 'auto' : 'off'); nativeCameraRef.value?.$callMethod('setFlash', flashMode.value) }
+	function applyFlash(mode: string) { if (videoRecording.value) return; flashMode.value = mode; nativeCameraRef.value?.$callMethod('setFlash', mode) }
+	/** 切换设置面板显示/隐藏。 */
+	function toggleSettings() { showSettings.value = !showSettings.value }
+	/** 应用网格覆盖模式（off / draw_3X3 / draw_4x4 / draw_phi）。 */
+	function applyGrid(mode: string) { gridMode.value = mode; nativeCameraRef.value?.$callMethod('setGrid', mode, '#a0a0a0') }
+	/** 应用照片分辨率（low / medium / high）。 */
+	function applyResolution(resolution: string) { photoResolution.value = resolution; nativeCameraRef.value?.$callMethod('setResolution', resolution) }
+	/** 控制数字变焦或超广角切换。 */
+	function applyZoom(action: string) {
+		if (action === 'ultraWide') { nativeCameraRef.value?.$callMethod('switchUltraWide') }
+		else if (action === 'reset') { currentZoomLevel = 1.0; nativeCameraRef.value?.$callMethod('resetZoom') }
+		else if (action === 'in') { currentZoomLevel = Math.min(5.0, currentZoomLevel + 0.3); nativeCameraRef.value?.$callMethod('setLinearZoom', currentZoomLevel) }
+		else if (action === 'out') { currentZoomLevel = Math.max(0.5, currentZoomLevel - 0.3); nativeCameraRef.value?.$callMethod('setLinearZoom', currentZoomLevel) }
+	}
+	/** 切换 HDR 开关。 */
+	function applyHdr(mode: string) { hdrMode.value = mode; nativeCameraRef.value?.$callMethod('setHdr', mode) }
+	/** 切换白平衡模式。 */
+	function applyWhiteBalance(mode: string) { whiteBalanceMode.value = mode; nativeCameraRef.value?.$callMethod('setWhiteBalance', mode) }
+	/** 设置照片输出格式（jpg / jpeg）。 */
+	function applyPhotoFormat(format: string) { photoFormat.value = format; nativeCameraRef.value?.$callMethod('setPhotoFormat', format) }
+	/** 控制是否将拍摄结果同时保存到系统相册。 */
+	function applySaveToAlbum(save: boolean) { saveToAlbum.value = save; nativeCameraRef.value?.$callMethod('setSaveToAlbum', save) }
 	/** 将已确认的全部本地媒体（含类型与视频时长）返回详情页并关闭相机。 */
 	function confirmCapture() {
 		if (capturedPaths.value.length === 0 || resultSent) return
@@ -295,7 +391,7 @@
 		const items = capturedPaths.value.map((path, index) => ({
 			path: path,
 			mediaKind: capturedMediaKinds.value[index] === 'video' ? 'video' : 'image',
-			durationSeconds: Number(capturedDurations.value[index] ?? 0)
+			durationSeconds: parseInt(String(capturedDurations.value[index] ?? 0))
 		}))
 		uni.$emit(buildCameraCaptureEventName(requestId.value), { items, cancelled: false })
 		uni.navigateBack()
@@ -375,5 +471,12 @@
 	.capture-count { color: rgba(255, 255, 255, 0.78); font-size: 21rpx; }
 	.confirm-button { min-width: 190rpx; height: 70rpx; padding: 0 24rpx; border-radius: 35rpx; align-items: center; justify-content: center; background-color: #03ae4f; }
 	.confirm-button.disabled { opacity: 0.45; }
+	.camera-settings { position: absolute; left: 0; right: 0; top: 94rpx; bottom: 0; z-index: 60; background-color: rgba(0, 0, 0, 0.88); }
+	.settings-scroll { padding: 20rpx 28rpx; }
+	.settings-group { margin-bottom: 22rpx; }
+	.settings-label { color: #94a3b8; font-size: 22rpx; margin-bottom: 10rpx; }
+	.settings-options { flex-direction: row; flex-wrap: wrap; }
+	.settings-option { padding: 10rpx 24rpx; margin: 6rpx 10rpx 6rpx 0; border-radius: 22rpx; color: #cbd5e1; font-size: 23rpx; background-color: rgba(255, 255, 255, 0.1); }
+	.settings-option.active { color: #ffffff; background-color: #03ae4f; }
 	.confirm-button { min-width: 190rpx; height: 70rpx; padding: 0 24rpx; border-radius: 35rpx; align-items: center; justify-content: center; color: #ffffff; font-size: 25rpx; font-weight: 600; background-color: #03ae4f; }
 </style>

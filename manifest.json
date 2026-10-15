@@ -2,7 +2,7 @@
 	"name": "中艺验货",
 	"appid": "__UNI__1FFA0B1",
 	"description": "支持 Android 与 iOS 的离线验货应用",
-	"versionName": "1.0.0",
+	"versionName": "1.0.1",
 	"versionCode": "100",
 	"uni-app-x": {
 		"styleIsolationVersion": "2"
@@ -34,10 +34,10 @@
 		"distribute": {
 			"icons": {
 				"android": {
-					"hdpi": "",
-					"xhdpi": "",
-					"xxhdpi": "",
-					"xxxhdpi": ""
+					"hdpi": "static/icons/inspection-hdpi.png",
+					"xhdpi": "static/icons/inspection-xhdpi.png",
+					"xxhdpi": "static/icons/inspection-xxhdpi.png",
+					"xxxhdpi": "static/icons/inspection-xxxhdpi.png"
 				}
 			}
 		}
@@ -48,10 +48,10 @@
 				"uni-barcode-scanning": {}
 			},
 			"icons": {
-				"hdpi": "/Users/cengxianwei/Downloads/验货app图标生成.png",
-				"xhdpi": "/Users/cengxianwei/Downloads/验货app图标生成.png",
-				"xxhdpi": "/Users/cengxianwei/Downloads/验货app图标生成.png",
-				"xxxhdpi": "/Users/cengxianwei/Downloads/验货app图标生成.png"
+				"hdpi": "static/icons/inspection-hdpi.png",
+				"xhdpi": "static/icons/inspection-xhdpi.png",
+				"xxhdpi": "static/icons/inspection-xxhdpi.png",
+				"xxxhdpi": "static/icons/inspection-xxxhdpi.png"
 			},
 			"splashScreens": {
 				"default": {}
@@ -64,7 +64,7 @@
 				"uni-barcode-scanning": {}
 			},
 			"icons": {
-				"appstore": "/Users/cengxianwei/Downloads/验货app图标生成.png"
+				"appstore": "static/icons/inspection-appstore.png"
 			},
 			"splashScreens": {},
 			"privacyDescription": {

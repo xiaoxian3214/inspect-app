@@ -53,7 +53,7 @@ function normalizeSpecAttributes(specAttributes) {
  * 按服务端 sortOrder 对检查项节点排序。
  */
 function sortByOrder(left, right) {
-  return Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0)
+  return parseInt(String(left?.sortOrder ?? 0)) - parseInt(String(right?.sortOrder ?? 0))
 }
 
 /**
@@ -77,9 +77,9 @@ export function buildStandardItemsFromItemResults(itemResults: any[] = []) {
       itemName: (row?.localizedItemName || pickLocalizedText(row?.itemName)) ?? '',
       itemDescription: (row?.localizedItemDescription || pickLocalizedText(row?.itemDescription)) ?? '',
       itemType: row?.itemType ?? 'Standard',
-      isRequired: Number(row?.isRequired ?? 0),
-      isPhotoRequired: Number(row?.isPhotoRequired ?? 0),
-      sortOrder: Number(row?.sortOrder ?? 0),
+      isRequired: parseInt(String(row?.isRequired ?? 0)),
+      isPhotoRequired: parseInt(String(row?.isPhotoRequired ?? 0)),
+      sortOrder: parseInt(String(row?.sortOrder ?? 0)),
       specAttributes: normalizeSpecAttributes(row?.specAttributes),
       children: []
     }
@@ -191,7 +191,7 @@ export function buildDefectViewModel(defects, severityOptions: any[] = []) {
     groupMap.set(key, {
       key,
       label: option?.label || defaultLabels[key],
-      order: Number(option?.sortOrder ?? 999),
+      order: parseInt(String(option?.sortOrder ?? 999)),
       affectedTotal: 0,
       items: []
     })
@@ -205,7 +205,7 @@ export function buildDefectViewModel(defects, severityOptions: any[] = []) {
     }
     const group = groupMap.get(key)
     group.items.push(defect)
-    const quantity = Number(defect?.quantity ?? defect?.defectCount ?? 0)
+    const quantity = parseInt(String(defect?.quantity ?? defect?.defectCount ?? 0))
     if (quantity > 0) group.affectedTotal += quantity
   })
   return {
@@ -260,8 +260,8 @@ export function buildPlanInfoFields(plan) {
 export function buildMergedPlanSummary(inspectionPlans) {
   const rows = Array.isArray(inspectionPlans) ? inspectionPlans : []
   return rows.reduce((totals, row) => ({
-    requiredQuantity: totals.requiredQuantity + (Number(row?.requiredQuantity) ?? 0),
-    sampleSize: totals.sampleSize + (Number(row?.sampleSize) ?? 0)
+    requiredQuantity: totals.requiredQuantity + (parseInt(String(row?.requiredQuantity)) ?? 0),
+    sampleSize: totals.sampleSize + (parseInt(String(row?.sampleSize)) ?? 0)
   }), { requiredQuantity: 0, sampleSize: 0 })
 }
 
@@ -275,9 +275,9 @@ export function buildFinishQuantityTotals(detail) {
     if (planId !== '' && seen.has(planId)) return totals
     if (planId !== '') seen.add(planId)
     return {
-      orderQuantity: totals.orderQuantity + Number(plan?.requiredQuantity ?? 0),
-      readyQuantity: totals.readyQuantity + Number(plan?.finishQuantity ?? plan?.readyQuantity ?? 0),
-      sampleQuantity: totals.sampleQuantity + Number(plan?.sampleQuantity ?? plan?.sampleSize ?? 0)
+      orderQuantity: totals.orderQuantity + parseInt(String(plan?.requiredQuantity ?? 0)),
+      readyQuantity: totals.readyQuantity + parseInt(String(plan?.finishQuantity ?? plan?.readyQuantity ?? 0)),
+      sampleQuantity: totals.sampleQuantity + parseInt(String(plan?.sampleQuantity ?? plan?.sampleSize ?? 0))
     }
   }, { orderQuantity: 0, readyQuantity: 0, sampleQuantity: 0 })
 }
@@ -424,7 +424,7 @@ function normalizeDefects(defects) {
       id: defect?.id || defectId,
       defectId,
       type: (defect?.type || defect?.defectType || defect?.defectLevel) ?? 'MINOR',
-      quantity: Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1 ? null : Number(defect?.quantity ?? defect?.defectCount ?? 0),
+      quantity: parseInt(String(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0))) === 1 ? null : parseFloat(String(defect?.quantity ?? defect?.defectCount ?? 0)),
       description: (defect?.description || defect?.remark) ?? '',
       checkItemId: defect?.checkItemId || derivedCheckItemId,
       checkItemResultId,
@@ -488,12 +488,12 @@ export function filterCopyTargetPlans(plans, currentDetail) {
     const plan = row?.plan ?? row
     const id = String(plan?.id ?? plan?.planId ?? '').trim()
     const parentId = String(plan?.parentPlanId ?? row?.parentPlanId ?? '').trim()
-    const status = Number(plan?.status ?? row?.status ?? 0)
-    const mergeType = Number(plan?.mergeType ?? row?.mergeType ?? 0)
+    const status = parseInt(String(plan?.status ?? row?.status ?? 0))
+    const mergeType = parseInt(String(plan?.mergeType ?? row?.mergeType ?? 0))
     const lockFlag = plan?.lockFlag ?? row?.lockFlag
     return id !== '' && !excludedIds.has(id) && !excludedIds.has(parentId)
       && mergeType === 0 && [0, 1].includes(status)
-      && (lockFlag == null || Number(lockFlag) === 1)
+      && (lockFlag == null || parseInt(String(lockFlag)) === 1)
   })
 }
 
@@ -508,7 +508,7 @@ export function selectCopyTargetPlans(remotePlans, localPlans, currentDetail, in
     const plan = row?.plan ?? row
     const id = String(plan?.id ?? plan?.planId ?? '').trim()
     if (seen.has(id)) continue
-    if (Number(plan?.lockFlag ?? row?.lockFlag) !== 1
+    if (parseInt(String(plan?.lockFlag ?? row?.lockFlag)) !== 1
       || (userId !== '' && String(plan?.inspectorId ?? row?.inspectorId ?? '').trim() !== userId)) continue
     seen.add(id)
     selected.push(plan)
@@ -980,7 +980,7 @@ export function applyFinishQuantityRows(detail, rows) {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
   const quantityByPlanId = new Map((Array.isArray(rows) ? rows : []).map((row) => [
     String(row?.id ?? row?.planId ?? '').trim(),
-    Number(row?.finishQuantity ?? 0)
+    parseInt(String(row?.finishQuantity ?? 0))
   ]))
   const currentPlanId = String(normalized?.plan?.id ?? normalized?.plan?.planId ?? normalized?.planId ?? '').trim()
   const plan = quantityByPlanId.has(currentPlanId)
@@ -998,7 +998,7 @@ export function applyFinishQuantityRows(detail, rows) {
  */
 export function applySampleQuantity(detail, value) {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
-  const quantity = Number(value ?? 0)
+  const quantity = parseInt(String(value ?? 0))
   const currentPlanId = String(normalized?.plan?.id ?? normalized?.plan?.planId ?? normalized?.planId ?? '').trim()
   const inspectionPlans = (Array.isArray(normalized?.inspectionPlans) ? normalized.inspectionPlans : []).map((row) => {
     const rowId = String(row?.id ?? row?.planId ?? '').trim()
@@ -1020,7 +1020,7 @@ function buildUploadedFileList(photos) {
       fileId: String(photo?.fileId ?? ''),
       filePath: photo?.filePath ?? '',
       thumbnailPath: photo?.thumbnailPath ?? '',
-      ...(photo?.sortNo != null ? { sortNo: Number(photo.sortNo) } : {}),
+      ...(photo?.sortNo != null ? { sortNo: parseInt(String(photo.sortNo)) } : {}),
       ...(photo?.bizType ? { bizType: photo.bizType } : {}),
       ...(photo?.fileType ? { fileType: photo.fileType } : {}),
       ...(photo?.fileExt ? { fileExt: photo.fileExt } : {}),
@@ -1122,8 +1122,8 @@ export function buildGeneratePayload(detail) {
     defectCode: defect?.defectCode ?? '',
     defectDesc: defect?.defectDesc ?? '',
     itemResultId: (defect?.checkItemResultId || defect?.itemResultId) ?? '',
-    defectCount: Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)) === 1 ? null : Number(defect?.quantity ?? defect?.defectCount ?? 0),
-    commonFlag: Number(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0)),
+    defectCount: parseInt(String(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0))) === 1 ? null : parseFloat(String(defect?.quantity ?? defect?.defectCount ?? 0)),
+    commonFlag: parseInt(String(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0))),
     remark: (defect?.description || defect?.remark) ?? '',
     findUser: inspectorName,
     sonPlanId: defect?.sonPlanId || null
@@ -1133,8 +1133,8 @@ export function buildGeneratePayload(detail) {
     planId,
     itemResults,
     defectRecords,
-    finishQuantity: Number(normalized?.plan?.finishQuantity ?? normalized?.finishQuantity ?? 0),
-    sampleQuantity: Number(normalized?.plan?.sampleQuantity ?? normalized?.sampleQuantity ?? normalized?.plan?.sampleSize ?? 0),
+    finishQuantity: parseInt(String(normalized?.plan?.finishQuantity ?? normalized?.finishQuantity ?? 0)),
+    sampleQuantity: parseInt(String(normalized?.plan?.sampleQuantity ?? normalized?.sampleQuantity ?? normalized?.plan?.sampleSize ?? 0)),
     overallResult: null,
     overallRemarks: String(normalized?.overallRemarks ?? normalized?.plan?.overallRemarks ?? ''),
     finishFlag: '0'
@@ -1196,15 +1196,15 @@ export function buildFinishSummary(detail, summary: any = {}) {
   const totals = { critical: 0, major: 0, minor: 0 }
   normalized.defects.forEach((defect) => {
     const key = resolveFinishSeverityKey(defect?.type || defect?.defectType || defect?.defectLevel, defect?.typeLabel || defect?.defectLevel)
-    const quantity = Number(defect?.quantity ?? defect?.defectCount ?? 0)
+    const quantity = parseInt(String(defect?.quantity ?? defect?.defectCount ?? 0))
     if (key !== '' && Number.isFinite(quantity) && quantity > 0) {
       totals[key] += quantity
     }
   })
   const defectStats = [
-    { key: 'critical', label: '极严重', actual: totals.critical, max: Number(plan?.criticalAc ?? 0) },
-    { key: 'major', label: '大', actual: totals.major, max: Number(plan?.majorAc ?? 0) },
-    { key: 'minor', label: '小', actual: totals.minor, max: Number(plan?.minorAc ?? 0) }
+    { key: 'critical', label: '极严重', actual: totals.critical, max: parseInt(String(plan?.criticalAc ?? 0)) },
+    { key: 'major', label: '大', actual: totals.major, max: parseInt(String(plan?.majorAc ?? 0)) },
+    { key: 'minor', label: '小', actual: totals.minor, max: parseInt(String(plan?.minorAc ?? 0)) }
   ].map((row) => ({ ...row, exceed: row.actual > row.max }))
   const exceedsAql = defectStats.some((row) => row.exceed)
   const failedCheckpoints = normalized.checklistItems

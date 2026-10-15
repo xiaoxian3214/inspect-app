@@ -32,11 +32,11 @@ export function createRequestQueueRepository(database) {
       url: task?.url ?? '',
       payload: JSON.stringify(task?.payload ?? {}),
       headers: JSON.stringify(task?.headers ?? {}),
-      priority: Number(task?.priority ?? 0),
+      priority: parseInt(String(task?.priority ?? 0)),
       dedupeKey,
       status: 'PENDING',
-      retryCount: Number(task?.retryCount ?? 0),
-      maxRetries: Number(task?.maxRetries ?? 3),
+      retryCount: parseInt(String(task?.retryCount ?? 0)),
+      maxRetries: parseInt(String(task?.maxRetries ?? 3)),
       nextRunAt: task?.nextRunAt || now,
       lastError: '',
       createdAt: now,
@@ -54,7 +54,7 @@ export function createRequestQueueRepository(database) {
     return database.readTable('request_queue')
       .filter((row) => (row?.status === 'PENDING' || row?.status === 'FAILED') && new Date(row?.nextRunAt ?? 0).getTime() <= now)
       .sort((left, right) => {
-        const priorityDifference = Number(right?.priority ?? 0) - Number(left?.priority ?? 0)
+        const priorityDifference = parseInt(String(right?.priority ?? 0)) - parseInt(String(left?.priority ?? 0))
         return priorityDifference !== 0 ? priorityDifference : String(left?.createdAt ?? '').localeCompare(String(right?.createdAt ?? ''))
       })
       .map(normalizeTaskRow)
@@ -80,7 +80,7 @@ export function createRequestQueueRepository(database) {
    * 记录任务失败原因和下次重试时间。
    */
   async function fail(task, error) {
-    const retryCount = Number(task?.retryCount ?? 0) + 1
+    const retryCount = parseInt(String(task?.retryCount ?? 0)) + 1
     const delayMs = Math.min(60000, 1000 * Math.pow(2, retryCount))
     await database.transaction(async (transaction) => transaction.upsert('request_queue', 'id', {
       ...task,

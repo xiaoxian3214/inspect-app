@@ -3,7 +3,7 @@ export function normalizePlanStatus(itemOrStatus) {
   const rawStatus = itemOrStatus != null && typeof itemOrStatus === 'object'
     ? (itemOrStatus.status ?? itemOrStatus.plan?.status)
     : itemOrStatus
-  const numericStatus = Number(rawStatus)
+  const numericStatus = parseInt(String(rawStatus))
   if (Number.isFinite(numericStatus)) {
     if (numericStatus === 0) return 0
     if (numericStatus === 1 || numericStatus === 2) return 1
@@ -153,7 +153,7 @@ export function splitDownloadDataToLocalPlans(downloadData) {
       status: normalizePlanStatus(downloadData),
       syncStatus: 'SYNCED',
       pendingSyncPayload: null,
-      progress: Number(downloadData?.progress ?? 0),
+      progress: parseInt(String(downloadData?.progress ?? 0)),
       downloadedAt
     }]
   }
@@ -166,7 +166,7 @@ export function splitDownloadDataToLocalPlans(downloadData) {
     status: normalizePlanStatus(plan?.status ?? downloadData?.status),
     syncStatus: 'SYNCED',
     pendingSyncPayload: null,
-    progress: Number(downloadData?.progress ?? 0),
+    progress: parseInt(String(downloadData?.progress ?? 0)),
     downloadedAt
   }))
 }

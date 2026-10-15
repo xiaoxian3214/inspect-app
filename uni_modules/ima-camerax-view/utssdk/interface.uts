@@ -1,0 +1,71 @@
+/**
+ * ima-camera 跨平台 API 类型定义
+ */
+
+export type CameraFacing = 'front' | 'back'
+
+export type FlashMode = 'off' | 'on' | 'auto' | 'torch'
+
+export type PhotoResolution = 'low' | 'medium' | 'high' | 'original'
+
+export type LensType = 'ultraWide' | 'wide' | 'tele' | 'unknown'
+
+export type CameraEventName =
+	| 'opened'
+	| 'closed'
+	| 'error'
+	| 'photo'
+	| 'videoStart'
+	| 'videoEnd'
+	| 'video'
+	| 'videoProgress'
+	| 'orientationChange'
+	| 'zoomChanged'
+	| 'focusStart'
+	| 'focusEnd'
+	| 'cameraChange'
+	| 'takeError'
+
+export type LensInfo = {
+	id : string
+	type : LensType
+	focalLength : number
+	zoomRatioMin : number
+	zoomRatioMax : number
+}
+
+export type ZoomState = {
+	minZoomRatio : number
+	maxZoomRatio : number
+	linearZoom : number
+	zoomRatio : number
+}
+
+export type CapturePhotoOptions = {
+	outputDir ?: string
+	fileName ?: string
+	saveToGallery ?: boolean
+	jpegQuality ?: number
+}
+
+export type RecordingOptions = {
+	outputDir ?: string
+	fileName ?: string
+	saveToGallery ?: boolean
+	maxDurationMs ?: number
+}
+
+export type CameraEventListener = (event : string, data : any) => void
+
+export type PermissionSuccess = (allRight : boolean, grantedList : Array<string>) => void
+
+export type PermissionError = (doNotAskAgain : boolean, grantedList : Array<string>) => void
+
+export type KeyListenerCallback = (action : string, code : number, name : string) => void
+
+export type KeyListenerOptions = {
+	type : string
+	intercept ?: boolean
+	doubleInterval ?: number
+	longPressTime ?: number
+}

@@ -27,14 +27,14 @@ export function createPlanApi(apiClient) {
     if (Array.isArray(data)) return { records: data, total: data.length }
     return {
       records: Array.isArray(data?.records) ? data.records : [],
-      total: Number(data?.total ?? data?.records?.length ?? 0)
+      total: parseInt(String(data?.total ?? data?.records?.length ?? 0))
     }
   }
 
   /**
    * 下载指定计划并生成可供离线验货使用的本地报告数据。
    */
-  async function downloadPlan(planId, payload: any = {}) {
+  async function downloadPlan(planId: string, payload: any = {}) {
     return apiClient.request({
       url: `/api/reports/generate/empty/${encodeURIComponent(String(planId))}`,
       method: 'POST',
@@ -84,7 +84,7 @@ export function createPlanApi(apiClient) {
       key: 'plans:pending-count',
       priority: 20
     })
-    return Number(result?.count ?? result?.pendingCount ?? result ?? 0)
+    return parseInt(String(result?.count ?? result?.pendingCount ?? result ?? 0))
   }
 
   /**
@@ -101,7 +101,7 @@ export function createPlanApi(apiClient) {
     return rows.map((item) => ({
       value: String(item?.dictValue ?? item?.value ?? item?.code ?? '').trim(),
       label: String(item?.dictLabel ?? item?.label ?? item?.name ?? '').trim(),
-      sortOrder: Number(item?.sortOrder ?? 0)
+      sortOrder: parseInt(String(item?.sortOrder ?? 0))
     })).filter((item) => item.value !== '' && item.label !== '')
       .sort((left, right) => left.sortOrder - right.sortOrder)
   }
@@ -168,10 +168,10 @@ export function createPlanApi(apiClient) {
   /**
    * 按 H5 查询参数契约复制当前或整个合并验货计划。
    */
-  async function copyPlan(planId, payload: any = {}) {
+  async function copyPlan(planId: string, payload: any = {}) {
     const normalizedPlanId = String(planId ?? '').trim()
     const inspectType = String(payload?.inspectType ?? '').trim()
-    const copyFlag = Number(payload?.copyFlag ?? 0)
+    const copyFlag = parseInt(String(payload?.copyFlag ?? 0))
     if (normalizedPlanId === '') throw new Error('计划ID缺失，无法复制')
     if (inspectType === '') throw new Error('检查类型缺失，无法复制')
     if (copyFlag !== 1 && copyFlag !== 2) throw new Error('复制类型缺失，无法复制')
@@ -201,9 +201,9 @@ export function createPlanApi(apiClient) {
     return apiClient.request({
       url: `/api/reports/generate/release/${encodeURIComponent(normalizedPlanId)}`,
       method: 'POST',
-      query: { reportDeleteFlag: Number(reportDeleteFlag ?? 0) },
+      query: { reportDeleteFlag: parseInt(String(reportDeleteFlag ?? 0)) },
       data: {},
-      key: `plans:release:${normalizedPlanId}:${Number(reportDeleteFlag ?? 0)}`,
+      key: `plans:release:${normalizedPlanId}:${parseInt(String(reportDeleteFlag ?? 0))}`,
       priority: 70,
       timeout: 60000
     })
@@ -214,7 +214,7 @@ export function createPlanApi(apiClient) {
    */
   async function updateFinishQuantity(planId, finishQuantity) {
     const normalizedPlanId = String(planId ?? '').trim()
-    const quantity = Number(finishQuantity)
+    const quantity = parseInt(String(finishQuantity))
     if (normalizedPlanId === '') throw new Error('计划ID缺失，无法更新备货数量')
     if (!Number.isFinite(quantity) || quantity < 0) throw new Error('请输入有效的备货数量')
     return apiClient.request({
@@ -287,7 +287,7 @@ export function createPlanApi(apiClient) {
    */
   async function updateSampleQuantity(planId, sampleQuantity) {
     const normalizedPlanId = String(planId ?? '').trim()
-    const quantity = Number(sampleQuantity)
+    const quantity = parseInt(String(sampleQuantity))
     if (normalizedPlanId === '') throw new Error('计划ID缺失，无法更新样品数量')
     if (!Number.isFinite(quantity) || quantity < 0) throw new Error('请输入有效的样品数量')
     return apiClient.request({
@@ -305,7 +305,7 @@ export function createPlanApi(apiClient) {
    */
   async function splitByQuantity(planId, quantityValue) {
     const normalizedPlanId = String(planId ?? '').trim()
-    const quantity = Number(quantityValue)
+    const quantity = parseInt(String(quantityValue))
     if (normalizedPlanId === '') throw new Error('计划ID缺失，无法按数量拆分')
     if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('请输入有效的拆分数量')
     return apiClient.request({

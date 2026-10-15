@@ -35,7 +35,7 @@ export function buildFabActions(statusKey) {
  */
 export function resolveDownloadState(options: any = {}) {
   if (options?.isLocalDownloaded === true) return 'downloaded'
-  if (Number(options?.lockFlag ?? 0) !== 1) return 'available'
+  if (parseInt(String(options?.lockFlag ?? 0)) !== 1) return 'available'
 
   const inspectorId = String(options?.inspectorId ?? '').trim()
   const currentUserId = String(options?.currentUserId ?? '').trim()
@@ -73,7 +73,7 @@ export function buildCardActions(options: any = {}) {
  */
 export function resolveCardClickAction(options: any = {}) {
   if (options?.selectionMode === true) return 'toggle-merge'
-  if (Number(options?.status ?? 0) === 3) return 'open-actions'
+  if (parseInt(String(options?.status ?? 0)) === 3) return 'open-actions'
   const downloadState = String(options?.downloadState ?? 'available')
   if (options?.isLocalDownloaded !== true) {
     if (downloadState === 'locked') return 'open-actions'
@@ -88,5 +88,5 @@ export function resolveCardClickAction(options: any = {}) {
 export function canStartSync(options: any = {}) {
   return options?.isSyncing !== true
     && options?.isOnline === true
-    && Number(options?.pendingCount ?? 0) > 0
+    && parseInt(String(options?.pendingCount ?? 0)) > 0
 }

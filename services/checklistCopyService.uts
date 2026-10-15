@@ -59,8 +59,8 @@ export function createChecklistCopyService(options) {
     const response = await planApi.copyCheckItems({ sourcePlanId, ...payload, targetPlanIds })
     const results = Array.isArray(response?.results) ? response.results : []
     const failedResults = results.filter((result) => result?.success === false)
-    const failCount = Number(response?.failCount ?? failedResults.length)
-    const successCount = Number(response?.successCount ?? (targetPlanIds.length - failCount))
+    const failCount = parseInt(String(response?.failCount ?? failedResults.length))
+    const successCount = parseInt(String(response?.successCount ?? (targetPlanIds.length - failCount)))
     const errorMessages = [...new Set(failedResults.map((result) => String(result?.errorMessage ?? result?.message ?? '').trim()).filter((message) => message !== ''))]
     const successfulPlanIds = results.length > 0
       ? targetPlanIds.filter((id) => results.some((result) => String(result?.targetPlanId ?? '') === String(id) && result?.success === true))

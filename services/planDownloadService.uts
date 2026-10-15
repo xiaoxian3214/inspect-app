@@ -27,7 +27,7 @@ export function createPlanDownloadService(options) {
       return {
         ...completed,
         listCard: source ?? completed?.listCard,
-        status: Number.isFinite(Number(completed?.status)) ? Number(completed.status) : 0,
+        status: Number.isFinite(parseInt(String(completed?.status))) ? parseInt(String(completed.status)) : 0,
         downloadedAt: completed?.downloadedAt ?? new Date().toISOString()
       }
     })

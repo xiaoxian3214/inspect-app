@@ -1,32 +1,47 @@
 <template>
 	<view v-if="visible" class="overlay" @click="closeSheet">
 		<view class="editor" :style="{ maxHeight: editorMaxHeight, paddingBottom: editorBottomPadding }" @click.stop="stopEvent">
+			<view v-if="photos.length > 1" class="viewer-navigation">
+				<text class="navigation-action" @click="previousPhoto">{{ translateText('上一张') }}</text>
+				<text class="navigation-count">{{ currentIndex + 1 }} / {{ photos.length }}</text>
+				<text class="navigation-action" @click="nextPhoto">{{ translateText('下一张') }}</text>
+			</view>
 			<video v-if="isVideo" class="preview-video" :style="{ height: previewHeight }" :src="videoSource" />
 			<InspectionMediaImage v-else class="preview" :style="{ height: previewHeight }" :media="photo" view-mode="preview" image-mode="aspectFit" />
 			<view class="meta"><text>{{ translateText(metaLabel) }}</text></view>
 			<view class="actions">
 				<button class="button close-button" @click="closeSheet">{{ translateText('关闭') }}</button>
+				<button v-if="!isVideo" class="button edit-button" @click="openImageEditor">{{ translateText('编辑图片') }}</button>
 				<button class="button delete-button" @click="deletePhoto">{{ translateText(isVideo ? '删除视频' : '删除图片') }}</button>
 			</view>
 		</view>
 	</view>
+	<ImageMarkupEditor :visible="editing" :source="editSource" @cancel="closeImageEditor" @edited="saveEditedImage" />
 </template>
 
 <script setup lang="uts">
 	import { windowHeightPx, safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
-	import { computed } from 'vue'
+	import { computed, ref, watch } from 'vue'
 	import InspectionMediaImage from './InspectionMediaImage.uvue'
+	import ImageMarkupEditor from './ImageMarkupEditor.uvue'
 	import { API_BASE_URL } from '../../config/appConfig.uts'
 	import { getMediaDisplayUrl } from '../../domain/mediaDisplay.uts'
+	import { adjacentMedia, findMediaIndex } from '../../domain/mediaViewer.uts'
 	import { isVideoMedia } from '../../domain/photoUploadPolicy.uts'
+	import { reportFileApi } from '../../runtime/appRuntime.uts'
 
-	const props = defineProps({ visible: { type: Boolean, default: false }, photo: { type: Object, default: () => ({}) } })
-	const emit = defineEmits(['close', 'delete'])
+	const props = defineProps({ visible: { type: Boolean, default: false }, photo: { type: Object, default: () => ({}) }, photos: { type: Array, default: () => [] }, saving: { type: Boolean, default: false } })
+	const emit = defineEmits(['close', 'delete', 'select-media', 'edited'])
+	const editing = ref(false)
+	const editSource = ref('')
+	const openingEditor = ref(false)
 	/** 为原生媒体预览模板提供可调用的翻译方法。 */
 	function translateText(key: string): string { return t(key) }
 	/** 读取媒体对象的动态本地路径和服务端文件字段。 */
 	const photoData = computed((): UTSJSONObject => props.photo as UTSJSONObject)
+	/** 返回当前图片在所属媒体库中的位置，用于显示导航进度。 */
+	const currentIndex = computed((): number => findMediaIndex(props.photos, photoData.value))
 	/** 限制媒体编辑弹层最大高度。 */
 	const editorMaxHeight = computed((): string => windowHeightPx(0.94))
 	/** 让图片和视频预览共用设备窗口高度。 */
@@ -48,9 +63,46 @@
 		return isVideo.value ? '本地视频，等待上传' : '本地图片，等待上传'
 	})
 	/** 关闭媒体预览编辑弹层。 */
-	function closeSheet() { emit('close') }
+	function closeSheet() { if (props.saving) return; emit('close') }
 	/** 请求删除当前预览媒体。 */
-	function deletePhoto() { emit('delete') }
+	function deletePhoto() { if (props.saving) return; emit('delete') }
+	/** 在当前检查项或疵点媒体库中循环切换，并交由父页面更新删除目标。 */
+	function navigatePhoto(offset: number) { if (props.saving) return; const next = adjacentMedia(props.photos, photoData.value, offset); if (next != null) emit('select-media', next) }
+	/** 预览当前媒体库的上一张。 */
+	function previousPhoto() { navigatePhoto(-1) }
+	/** 预览当前媒体库的下一张。 */
+	function nextPhoto() { navigatePhoto(1) }
+	/** 本地图片直接编辑；仅有服务端文件时先鉴权下载预览图到本地。 */
+	async function openImageEditor() {
+		if (isVideo.value || openingEditor.value || props.saving) return
+		openingEditor.value = true
+		try {
+			const localPath = (photoData.value['localPath'] ?? '').toString().trim()
+			const fileId = (photoData.value['fileId'] ?? '').toString().trim()
+			let localAvailable = false
+			if (localPath !== '') {
+				localAvailable = await new Promise<boolean>((resolve) => {
+					uni.getImageInfo({ src: localPath, success: () => resolve(true), fail: () => { console.warn('[PhotoEditorSheet] localPath not readable:', localPath); resolve(false) } })
+				})
+			}
+			editSource.value = localAvailable ? localPath : fileId !== '' ? await reportFileApi.downloadInspectFile(fileId, 'preview') : ''
+			if (editSource.value === '') {
+				if (fileId !== '' && localPath !== '') throw new Error('本地图片不可用且服务端下载失败，请检查网络后重试')
+				if (fileId !== '') throw new Error('服务端图片下载失败，请检查网络后重试')
+				throw new Error('当前图片没有可编辑的本地文件')
+			}
+			editing.value = true
+		} catch (error) { uni.showToast({ title: t(((error as Error)?.message ?? t('下载图片失败')).toString()), icon: 'none', duration: 2500 }) }
+		finally { openingEditor.value = false }
+	}
+	/** 关闭画布编辑器并丢弃未保存的笔画。 */
+	function closeImageEditor() { editing.value = false; editSource.value = '' }
+	/** 将已保存的本地新图路径交给页面持久化为待上传媒体。 */
+	function saveEditedImage(path: string) { emit('edited', path) }
+	/** 切换预览目标或关闭弹层时清空旧图的编辑状态。 */
+	watch((): UTSJSONObject => photoData.value, () => closeImageEditor())
+	/** 关闭媒体预览时保证子编辑器不残留。 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (!visible) closeImageEditor() })
 	/** 阻止点击预览区域关闭弹层。 */
 	function stopEvent() {}
 </script>
@@ -58,11 +110,15 @@
 <style>
 	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2400; justify-content: flex-end; background-color: rgba(0,0,0,.82); }
 	.editor { width: 100%; padding: 24rpx 24rpx 24rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #0f172a; }
+	.viewer-navigation { height: 70rpx; flex-direction: row; align-items: center; justify-content: space-between; }
+	.navigation-action { padding: 12rpx; color: #fff; font-size: 27rpx; }
+	.navigation-count { color: #cbd5e1; font-size: 24rpx; }
 	.preview { width: 100%; border-radius: 20rpx; }
 	.preview-video { width: 100%; border-radius: 20rpx; background-color: #020617; }
 	.meta { margin-top: 18rpx; align-items: center; color: #fff; font-size: 23rpx; }
 	.actions { margin-top: 24rpx; flex-direction: row; }
 	.button { flex: 1; height: 80rpx; margin: 0 8rpx; border-radius: 17rpx; font-size: 25rpx; }
 	.close-button { color: #334155; background-color: #fff; }
+	.edit-button { color: #fff; background-color: #16a34a; }
 	.delete-button { color: #fff; background-color: #ef4444; }
 </style>

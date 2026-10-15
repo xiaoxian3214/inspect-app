@@ -1,0 +1,543 @@
+<template>
+	<view v-if="visible" class="markup-root">
+		<TopSafeArea background-color="#222222" />
+		<view class="markup-header">
+			<text class="header-action" @click="cancelEdit">{{ cancelLabel }}</text>
+			<text class="header-title">{{ editorTitle }}</text>
+			<text class="header-action save-action" :class="{ disabled: saving }" @click="saveImage">{{ saveLabel }}</text>
+		</view>
+		<view class="editor-body">
+			<view v-if="displaySrc !== ''" class="image-stage" :style="stageStyle" @touchstart="handleStageTouchStart" @touchmove="handleStageTouchMove" @touchend="handleStageTouchEnd">
+				<image class="edit-image" :src="displaySrc" mode="aspectFit" :style="imageStyle" />
+				<view class="annotation-layer">
+					<template v-for="item, index in visibleObjects" :key="item.id">
+						<view v-if="item.type === 'arrow'" class="annotation-line" :class="{ selected: item === selectedObj }" :style="lineStyle(item)">
+							<view class="arrow-head" :style="arrowHeadStyle(item)"></view>
+						</view>
+						<view v-else-if="item.type === 'rect'" class="annotation-rect" :class="{ selected: item === selectedObj }" :style="rectStyle(item)"></view>
+						<view v-else-if="item.type === 'ellipse'" class="annotation-ellipse" :class="{ selected: item === selectedObj }" :style="ellipseStyle(item)"></view>
+						<text v-else-if="item.type === 'text'" class="annotation-text" :class="{ selected: item === selectedObj }" :style="textStyle(item)">{{ item.text }}</text>
+						<template v-else-if="item.type === 'path'">
+							<view v-for="seg, segIndex in pathSegments(item)" :key="`s_${segIndex}`" class="annotation-line" :style="segmentStyle(seg, item)"></view>
+						</template>
+					</template>
+				</view>
+			</view>
+			<view v-else-if="loading" class="editor-loading"><text>{{ loadingLabel }}</text></view>
+			<view v-else class="editor-loading" @click="retryLoad"><text>{{ loadFailedLabel }}</text></view>
+		</view>
+		<view class="editor-toolbar">
+			<view v-for="tool in tools" :key="tool.id" class="tool-item" :class="{ active: currentTool === tool.id }" @click="selectTool(tool.id)">
+				<text class="tool-icon" :class="{ 'tool-active': currentTool === tool.id }">{{ tool.icon }}</text>
+				<text class="tool-label" :class="{ 'tool-active': currentTool === tool.id }">{{ tool.label }}</text>
+			</view>
+		</view>
+		<view v-if="showColorBar" class="sub-toolbar">
+			<view class="color-selector">
+				<view v-for="c in colorOptions" :key="c" class="color-dot" :class="{ active: activeColor === c }" :style="{ backgroundColor: c }" @click="activeColor = c"></view>
+			</view>
+		</view>
+		<view v-if="showTextInput" class="text-input-overlay" @click="cancelTextInput">
+			<view class="text-input-box" @click.stop="() => {}">
+				<input class="text-input" :value="textInputValue" maxlength="60" :placeholder="textPlaceholder" @input="onTextInput" @confirm="confirmTextInput" />
+				<view class="text-color-row">
+					<view v-for="c in colorOptions" :key="c" class="color-dot" :class="{ active: activeColor === c }" :style="{ backgroundColor: c }" @click="activeColor = c"></view>
+				</view>
+				<view class="text-input-actions">
+					<text class="text-btn cancel" @click="cancelTextInput">{{ cancelLabel }}</text>
+					<text class="text-btn confirm" @click="confirmTextInput">{{ confirmLabel }}</text>
+				</view>
+			</view>
+		</view>
+		<canvas v-if="saving" id="markup-save-canvas" type="2d" class="save-canvas" :width="saveCanvasWidth" :height="saveCanvasHeight" :style="{ width: saveCanvasWidth + 'px', height: saveCanvasHeight + 'px' }" />
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { computed, getCurrentInstance, nextTick, ref, watch } from 'vue'
+	import TopSafeArea from '../common/TopSafeArea.uvue'
+	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
+	import { canvasImageSource } from '../../domain/mediaViewer.uts'
+	import { t } from '../../i18n/index.uts'
+
+	const props = defineProps({ visible: { type: Boolean, default: false }, source: { type: String, default: '' } })
+	const emit = defineEmits(['cancel', 'edited'])
+	const instance = getCurrentInstance()?.proxy
+
+	/** 读取取消按钮的当前语言文案。 */
+	const cancelLabel = computed(() => t('取消'))
+	/** 读取图片编辑器标题的当前语言文案。 */
+	const editorTitle = computed(() => t('编辑图片'))
+	/** 读取图片加载中的当前语言提示。 */
+	const loadingLabel = computed(() => t('加载中…'))
+	/** 读取图片加载失败时的当前语言重试提示。 */
+	const loadFailedLabel = computed(() => t('加载失败，点击重试'))
+	/** 读取标注文字输入框的当前语言占位提示。 */
+	const textPlaceholder = computed(() => t('输入文字'))
+	/** 读取确认按钮的当前语言文案。 */
+	const confirmLabel = computed(() => t('确定'))
+
+	/** 编辑工具定义 */
+	const tools = [
+		{ id: 'select', icon: '☝', label: t('选择') },
+		{ id: 'arrow', icon: '➤', label: t('箭头') },
+		{ id: 'draw', icon: '✏', label: t('画笔') },
+		{ id: 'text', icon: 'T', label: t('文字') },
+		{ id: 'rect', icon: '□', label: t('矩形') },
+		{ id: 'ellipse', icon: '○', label: t('圆形') },
+		{ id: 'rotate', icon: '↻', label: t('旋转') },
+		{ id: 'undo', icon: '↩', label: t('撤销') },
+		{ id: 'delete', icon: '🗑', label: t('删除') }
+	]
+	const colorOptions = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff', '#000000']
+
+	const currentTool = ref('select')
+	const activeColor = ref('#ef4444')
+	const showColorBar = computed(() => ['arrow', 'draw', 'rect', 'ellipse', 'text'].includes(currentTool.value))
+	const showTextInput = ref(false)
+	const textInputValue = ref('')
+	const displaySrc = ref('')
+	const sourceImage = ref({ width: 0, height: 0, path: '' } as ImageInfo)
+	const stageWidth = ref(375)
+	const stageHeight = ref(280)
+	const stageTop = ref(0)
+	const stageRect = ref<StageOffset>({ left: 0, top: 0 })
+	const saveCanvasWidth = ref(1)
+	const saveCanvasHeight = ref(1)
+	const saving = ref(false)
+	/** 按保存状态选择当前语言按钮文案。 */
+	const saveLabel = computed(() => t(saving.value ? '保存中…' : '完成'))
+	const loading = ref(true)
+	const rotation = ref(0)
+
+	const objects = ref<AnnotationObject[]>([])
+	const selectedObj = ref<AnnotationObject | null>(null)
+	const currentDraft = ref<AnnotationObject | null>(null)
+	const visibleObjects = computed(() => currentDraft.value != null ? [...objects.value, currentDraft.value] : objects.value)
+
+	const imageDisplayWidth = computed(() => rotation.value === 90 || rotation.value === 270 ? stageHeight.value : stageWidth.value)
+	const imageDisplayHeight = computed(() => rotation.value === 90 || rotation.value === 270 ? stageWidth.value : stageHeight.value)
+	const stageStyle = computed(() => ({ width: stageWidth.value + 'px', height: stageHeight.value + 'px', marginTop: stageTop.value + 'px' }))
+	const imageStyle = computed(() => ({ width: imageDisplayWidth.value + 'px', height: imageDisplayHeight.value + 'px', transform: `translate(-50%, -50%) rotate(${rotation.value}deg)` }))
+	/** 舞台始终按当前旋转后的图片比例布局，标注坐标直接覆盖完整舞台。 */
+	const imageFitRect = computed((): StageRect => ({ left: 0, top: 0, width: stageWidth.value, height: stageHeight.value }))
+
+	// 导出画布单边最大像素：必须限制内存占用，否则 1200 万像素原图会创建约 4032×3024 位图（近 50MB×2 加 PNG 编码缓冲），
+	// 在 Android 上触发 OOM 导致点击保存闪退。2048 在画质（约 300 万像素）与稳定性之间取平衡。
+	const MAX_SAVE_CANVAS_SIDE = 2048
+	let isDrawing = false
+	let isDragging = false
+	let dragStartPoint: Point | null = null
+	let dragOriginal: AnnotationObject | null = null
+	let textPlacePoint: Point = { x: 0, y: 0 }
+	let objectId = 0
+	let loadRequestId = 0
+
+	type ImageInfo = { width: number, height: number, path: string }
+	type Point = { x: number, y: number }
+	type StageOffset = { left: number, top: number }
+	type ObjectBox = { x: number, y: number, w: number, h: number }
+	type StageRect = { left: number, top: number, width: number, height: number }
+	type Segment = { x1: number, y1: number, x2: number, y2: number }
+	type AnnotationObject = UTSJSONObject
+
+	/** 重置编辑器到初始状态 */
+	function resetEditorState() {
+		loadRequestId += 1
+		objects.value = []
+		selectedObj.value = null
+		currentDraft.value = null
+		currentTool.value = 'select'
+		rotation.value = 0
+		displaySrc.value = ''
+		sourceImage.value = { width: 0, height: 0, path: '' }
+		isDrawing = false
+		isDragging = false
+		dragStartPoint = null
+		dragOriginal = null
+		loading.value = true
+	}
+
+	/** 根据图片实际宽高比计算舞台尺寸，填满可用空间（对标预览模式）。 */
+	function layoutStage(imageWidth: number, imageHeight: number) {
+		const sys = uni.getWindowInfo()
+		const bodyReserve = 250
+		const availableWidth = Math.max(320, Math.floor(sys.windowWidth))
+		const availableHeight = Math.max(260, sys.windowHeight - bodyReserve)
+		const stageRotated = rotation.value === 90 || rotation.value === 270
+		const displayWidth = stageRotated ? imageHeight : imageWidth
+		const displayHeight = stageRotated ? imageWidth : imageHeight
+		const imageRatio = displayWidth / Math.max(1, displayHeight)
+		const availableRatio = availableWidth / availableHeight
+		if (imageRatio >= availableRatio) {
+			stageWidth.value = availableWidth
+			stageHeight.value = Math.round(availableWidth / imageRatio)
+		} else {
+			stageHeight.value = availableHeight
+			stageWidth.value = Math.round(availableHeight * imageRatio)
+		}
+		stageTop.value = Math.max(0, Math.floor((availableHeight - stageHeight.value) / 2))
+		const scale = Math.min(1, MAX_SAVE_CANVAS_SIDE / Math.max(displayWidth, displayHeight, 1))
+		saveCanvasWidth.value = Math.max(1, Math.round(displayWidth * scale))
+		saveCanvasHeight.value = Math.max(1, Math.round(displayHeight * scale))
+	}
+
+	/** 查询舞台在屏幕中的位置 */
+	function queryStageRect() {
+		uni.createSelectorQuery().in(instance!).select('.image-stage').boundingClientRect().exec((rects) => {
+			const rect = rects[0] as NodeInfo
+			if (rect != null) stageRect.value = { left: parseFloat((rect.left ?? 0).toString()), top: parseFloat((rect.top ?? 0).toString()) }
+		})
+	}
+
+	/** 加载图片并计算舞台布局 */
+	function loadImage() {
+		const src = (props.source ?? '').toString().trim()
+		if (src === '') { loading.value = false; return }
+		const requestId = ++loadRequestId
+		uni.getImageInfo({
+			src: src,
+			success: (info) => {
+				if (requestId !== loadRequestId || !props.visible) return
+				const w = parseFloat((info.width ?? 0).toString())
+				const h = parseFloat((info.height ?? 0).toString())
+				if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) { loading.value = false; return }
+				sourceImage.value = { width: w, height: h, path: (info.path ?? src).toString() }
+				displaySrc.value = (info.path ?? src).toString()
+				layoutStage(w, h)
+				loading.value = false
+				setTimeout(queryStageRect, 60)
+			},
+			fail: () => { if (requestId === loadRequestId && props.visible) loading.value = false }
+		})
+	}
+
+	/** 生成唯一标注 ID */
+	function nextObjectId(): string { objectId += 1; return `a_${Date.now()}_${objectId}` }
+
+	/** 深拷贝标注对象 */
+	function cloneObject(item: AnnotationObject): AnnotationObject { return JSON.parse(JSON.stringify(item)) as AnnotationObject }
+
+	/** 限制坐标在舞台范围内 */
+	function clampPoint(point: Point): Point { return { x: Math.max(0, Math.min(stageWidth.value, point.x)), y: Math.max(0, Math.min(stageHeight.value, point.y)) } }
+
+	/** 将触摸事件转换为舞台坐标 */
+	function getEventPoint(e: UniTouchEvent): Point {
+		const touch = e.touches[0]
+		if (touch == null) return { x: 0, y: 0 }
+		const touchX: number = parseFloat((touch.clientX ?? 0).toString())
+		const touchY: number = parseFloat((touch.clientY ?? 0).toString())
+		return clampPoint({ x: touchX - stageRect.value.left, y: touchY - stageRect.value.top })
+	}
+
+	/** 两点间距离 */
+	function distance(x1: number, y1: number, x2: number, y2: number): number { const dx = x2 - x1; const dy = y2 - y1; return Math.sqrt(dx * dx + dy * dy) }
+
+	/** 判断草稿标注是否有效 */
+	function isValidDraft(item: AnnotationObject): boolean {
+		if (item['type'] === 'path') { const points = item['points'] as Point[]; return Array.isArray(points) && points.length > 1 }
+		if (item['type'] === 'arrow') return distance(parseInt((item['x1']).toString()), parseInt((item['y1']).toString()), parseInt((item['x2']).toString()), parseInt((item['y2']).toString())) > 5
+		if (item['type'] === 'rect') return Math.abs(parseInt((item['w'] ?? 0).toString())) > 5 || Math.abs(parseInt((item['h'] ?? 0).toString())) > 5
+		if (item['type'] === 'ellipse') return parseInt((item['rx'] ?? 0).toString()) > 5 || parseInt((item['ry'] ?? 0).toString()) > 5
+		return true
+	}
+
+	/** 移动标注对象 */
+	function moveObject(target: AnnotationObject, original: AnnotationObject, dx: number, dy: number) {
+		if (target['type'] === 'arrow') { target['x1'] = parseInt((original['x1']).toString()) + dx; target['y1'] = parseInt((original['y1']).toString()) + dy; target['x2'] = parseInt((original['x2']).toString()) + dx; target['y2'] = parseInt((original['y2']).toString()) + dy }
+		else if (target['type'] === 'path') target['points'] = (original['points'] as Point[]).map(p => ({ x: p.x + dx, y: p.y + dy }))
+		else if (target['type'] === 'rect') { target['x'] = parseInt((original['x']).toString()) + dx; target['y'] = parseInt((original['y']).toString()) + dy }
+		else if (target['type'] === 'ellipse') { target['cx'] = parseInt((original['cx']).toString()) + dx; target['cy'] = parseInt((original['cy']).toString()) + dy }
+		else if (target['type'] === 'text') { target['x'] = parseInt((original['x']).toString()) + dx; target['y'] = parseInt((original['y']).toString()) + dy }
+	}
+
+	/** 获取标注包围盒 */
+	function getObjectBox(item: AnnotationObject): ObjectBox {
+		if (item['type'] === 'arrow') { const x = Math.min(parseInt((item['x1']).toString()), parseInt((item['x2']).toString())); const y = Math.min(parseInt((item['y1']).toString()), parseInt((item['y2']).toString())); return { x, y, w: Math.abs(parseInt((item['x2']).toString()) - parseInt((item['x1']).toString())), h: Math.abs(parseInt((item['y2']).toString()) - parseInt((item['y1']).toString())) } }
+		if (item['type'] === 'path') { const points = (item['points'] as Point[]) ?? []; const xs = points.map(p => p.x); const ys = points.map(p => p.y); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) } }
+		if (item['type'] === 'rect') return { x: Math.min(parseInt((item['x']).toString()), parseInt((item['x']).toString()) + parseInt((item['w']).toString())), y: Math.min(parseInt((item['y']).toString()), parseInt((item['y']).toString()) + parseInt((item['h']).toString())), w: Math.abs(parseInt((item['w']).toString())), h: Math.abs(parseInt((item['h']).toString())) }
+		if (item['type'] === 'ellipse') return { x: parseInt((item['cx']).toString()) - parseInt((item['rx']).toString()), y: parseInt((item['cy']).toString()) - parseInt((item['ry']).toString()), w: parseInt((item['rx']).toString()) * 2, h: parseInt((item['ry']).toString()) * 2 }
+		if (item['type'] === 'text') return { x: parseInt((item['x']).toString()), y: parseInt((item['y']).toString()) - parseInt((item['fontSize'] ?? 24).toString()), w: (item['text'] ?? '').toString().length * parseInt((item['fontSize'] ?? 24).toString()) * 0.65, h: parseInt((item['fontSize'] ?? 24).toString()) * 1.2 }
+		return { x: 0, y: 0, w: 0, h: 0 }
+	}
+
+	/** 查找触点下的标注 */
+	function findObjectAtPoint(point: Point): AnnotationObject | null {
+		for (let i = objects.value.length - 1; i >= 0; i--) {
+			const box = getObjectBox(objects.value[i])
+			const pad = 18
+			if (point.x >= box.x - pad && point.x <= box.x + box.w + pad && point.y >= box.y - pad && point.y <= box.y + box.h + pad) return objects.value[i]
+		}
+		return null
+	}
+
+	/** 触摸开始 */
+	function handleStageTouchStart(e: UniTouchEvent) {
+		queryStageRect()
+		if (e.touches.length === 0) return
+		const point = getEventPoint(e)
+		if (currentTool.value === 'text') { textPlacePoint = point; return }
+		if (currentTool.value === 'select') {
+			const selected = findObjectAtPoint(point)
+			selectedObj.value = selected
+			if (selected != null) { isDragging = true; dragStartPoint = point; dragOriginal = cloneObject(selected) }
+			return
+		}
+		isDrawing = true
+		const base: UTSJSONObject = { id: nextObjectId(), type: currentTool.value, color: activeColor.value, width: 3 }
+		if (currentTool.value === 'draw') currentDraft.value = { ...base, type: 'path', points: [point] }
+		else if (currentTool.value === 'arrow') currentDraft.value = { ...base, x1: point.x, y1: point.y, x2: point.x, y2: point.y }
+		else if (currentTool.value === 'rect') currentDraft.value = { ...base, x: point.x, y: point.y, w: 0, h: 0 }
+		else if (currentTool.value === 'ellipse') currentDraft.value = { ...base, cx: point.x, cy: point.y, rx: 0, ry: 0 }
+	}
+
+	/** 触摸移动 */
+	function handleStageTouchMove(e: UniTouchEvent) {
+		if (e.touches.length === 0) return
+		const point = getEventPoint(e)
+		const selected = selectedObj.value
+		const original = dragOriginal
+		const start = dragStartPoint
+		if (isDragging && selected != null && original != null && start != null) {
+			moveObject(selected, original, point.x - start.x, point.y - start.y)
+			return
+		}
+		const draft = currentDraft.value
+		if (!isDrawing || draft == null) return
+		if (draft['type'] === 'path') {
+			const points = draft['points'] as Point[]
+			currentDraft.value = { ...draft, points: [...points, point] }
+		} else if (draft['type'] === 'arrow') currentDraft.value = { ...draft, x2: point.x, y2: point.y }
+		else if (draft['type'] === 'rect') currentDraft.value = { ...draft, w: point.x - parseFloat((draft['x'] ?? 0).toString()), h: point.y - parseFloat((draft['y'] ?? 0).toString()) }
+		else if (draft['type'] === 'ellipse') currentDraft.value = { ...draft, rx: Math.abs(point.x - parseFloat((draft['cx'] ?? 0).toString())), ry: Math.abs(point.y - parseFloat((draft['cy'] ?? 0).toString())) }
+	}
+
+	/** 触摸结束 */
+	function handleStageTouchEnd() {
+		if (currentTool.value === 'text') { showTextInput.value = true; return }
+		if (isDragging) { isDragging = false; dragStartPoint = null; dragOriginal = null; return }
+		const draft = currentDraft.value
+		if (!isDrawing || draft == null) return
+		isDrawing = false
+		if (isValidDraft(draft)) objects.value = [...objects.value, draft]
+		currentDraft.value = null
+	}
+
+	/** 路径分段 */
+	function pathSegments(item: AnnotationObject): Segment[] {
+		const points = (item['points'] as Point[]) ?? []
+		const segs: Segment[] = []
+		for (let i = 1; i < points.length; i++) segs.push({ x1: points[i - 1].x, y1: points[i - 1].y, x2: points[i].x, y2: points[i].y })
+		return segs
+	}
+
+	/** 线段 CSS 样式 */
+	function segmentStyle(seg: Segment, item: AnnotationObject): UTSJSONObject {
+		const x1 = seg.x1, y1 = seg.y1, x2 = seg.x2, y2 = seg.y2
+		const len = distance(x1, y1, x2, y2)
+		const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
+		const w = parseInt((item['width'] ?? 3).toString())
+		return { left: x1 + 'px', top: (y1 - w / 2) + 'px', width: len + 'px', height: w + 'px', backgroundColor: (item['color']).toString(), transform: `rotate(${angle}deg)` }
+	}
+
+	/** 箭头线段样式 */
+	function lineStyle(item: AnnotationObject) { return segmentStyle({ x1: parseInt((item['x1']).toString()), y1: parseInt((item['y1']).toString()), x2: parseInt((item['x2']).toString()), y2: parseInt((item['y2']).toString()) }, item) }
+
+	/** 箭头头部样式 */
+	function arrowHeadStyle(item: AnnotationObject): UTSJSONObject {
+		const len = distance(parseInt((item['x1']).toString()), parseInt((item['y1']).toString()), parseInt((item['x2']).toString()), parseInt((item['y2']).toString()))
+		return { left: Math.max(0, len - 2) + 'px', borderLeftColor: (item['color']).toString() }
+	}
+
+	/** 矩形样式 */
+	function rectStyle(item: AnnotationObject): UTSJSONObject {
+		const x = Math.min(parseInt((item['x']).toString()), parseInt((item['x']).toString()) + parseInt((item['w']).toString())), y = Math.min(parseInt((item['y']).toString()), parseInt((item['y']).toString()) + parseInt((item['h']).toString()))
+		return { left: x + 'px', top: y + 'px', width: Math.abs(parseInt((item['w']).toString())) + 'px', height: Math.abs(parseInt((item['h']).toString())) + 'px', borderColor: (item['color']).toString(), borderWidth: parseInt((item['width'] ?? 3).toString()) + 'px' }
+	}
+
+	/** 圆形样式 */
+	function ellipseStyle(item: AnnotationObject): UTSJSONObject {
+		return { left: (parseInt((item['cx']).toString()) - parseInt((item['rx']).toString())) + 'px', top: (parseInt((item['cy']).toString()) - parseInt((item['ry']).toString())) + 'px', width: (parseInt((item['rx']).toString()) * 2) + 'px', height: (parseInt((item['ry']).toString()) * 2) + 'px', borderColor: (item['color']).toString(), borderWidth: parseInt((item['width'] ?? 3).toString()) + 'px' }
+	}
+
+	/** 文字样式 */
+	function textStyle(item: AnnotationObject): UTSJSONObject {
+		const fs = parseInt((item['fontSize'] ?? 24).toString())
+		return { left: parseInt((item['x']).toString()) + 'px', top: (parseInt((item['y']).toString()) - fs) + 'px', color: (item['color']).toString(), fontSize: fs + 'px' }
+	}
+
+	/** 选择工具 */
+	function selectTool(toolId: string) {
+		if (toolId === 'undo') { objects.value = objects.value.slice(0, -1); selectedObj.value = null; return }
+		if (toolId === 'delete') { if (selectedObj.value != null) objects.value = objects.value.filter(item => item !== selectedObj.value); else objects.value = objects.value.slice(0, -1); selectedObj.value = null; return }
+		if (toolId === 'rotate') { rotation.value = ((rotation.value + 90) % 360 + 360) % 360; selectedObj.value = null; const si = sourceImage.value; if (si.width > 0) layoutStage(si.width, si.height); setTimeout(queryStageRect, 80); return }
+		currentTool.value = toolId; selectedObj.value = null; currentDraft.value = null
+	}
+
+	/** 确认文字输入 */
+	function confirmTextInput() {
+		const text = textInputValue.value.trim()
+		if (text !== '') objects.value = [...objects.value, { id: nextObjectId(), type: 'text', text, x: textPlacePoint.x, y: textPlacePoint.y, color: activeColor.value, fontSize: 24 }]
+		showTextInput.value = false; textInputValue.value = ''
+	}
+
+	/** 取消文字输入 */
+	function cancelTextInput() { showTextInput.value = false; textInputValue.value = '' }
+
+	/** 输入框内容变化 */
+	function onTextInput(e: UniInputEvent) { textInputValue.value = e.detail.value }
+
+	/** 取消编辑 */
+	function cancelEdit() { if (!saving.value) { resetEditorState(); emit('cancel') } }
+
+	/** 点击重试 */
+	function retryLoad() { resetEditorState(); loadImage() }
+
+	/** 在 Canvas 上绘制标注 */
+	function drawAnnotationToCanvas(rc: CanvasRenderingContext2D, item: AnnotationObject, sx: number, sy: number, rect: StageRect) {
+		const map = (x: number, y: number): Point => ({ x: (x - rect.left) * sx, y: (y - rect.top) * sy })
+		rc.save()
+		const w = parseInt((item['width'] ?? 3).toString()) * sx
+		if (item['type'] === 'arrow') {
+			const s = map(parseInt((item['x1']).toString()), parseInt((item['y1']).toString())); const e = map(parseInt((item['x2']).toString()), parseInt((item['y2']).toString()))
+			rc.strokeStyle = (item['color']).toString(); rc.fillStyle = (item['color']).toString(); rc.lineWidth = w; rc.lineCap = 'round'
+			rc.beginPath(); rc.moveTo(s.x, s.y); rc.lineTo(e.x, e.y); rc.stroke()
+			const head = Math.max(w * 5, 12); const angle = Math.atan2(e.y - s.y, e.x - s.x)
+			rc.beginPath(); rc.moveTo(e.x, e.y)
+			rc.lineTo(e.x - head * Math.cos(angle - Math.PI / 6), e.y - head * Math.sin(angle - Math.PI / 6))
+			rc.lineTo(e.x - head * Math.cos(angle + Math.PI / 6), e.y - head * Math.sin(angle + Math.PI / 6)); rc.closePath(); rc.fill()
+		} else if (item['type'] === 'path') {
+			rc.strokeStyle = (item['color']).toString(); rc.lineWidth = w; rc.lineCap = 'round'; rc.lineJoin = 'round'
+			const points = (item['points'] as Point[]) ?? []
+			if (points.length > 0) { rc.beginPath(); const first = map(points[0].x, points[0].y); rc.moveTo(first.x, first.y); for (let i = 1; i < points.length; i++) { const p = map(points[i].x, points[i].y); rc.lineTo(p.x, p.y) }; rc.stroke() }
+		} else if (item['type'] === 'rect') {
+			rc.strokeStyle = (item['color']).toString(); rc.lineWidth = w
+			const p = map(Math.min(parseInt((item['x']).toString()), parseInt((item['x']).toString()) + parseInt((item['w']).toString())), Math.min(parseInt((item['y']).toString()), parseInt((item['y']).toString()) + parseInt((item['h']).toString())))
+			rc.strokeRect(p.x, p.y, Math.abs(parseInt((item['w']).toString())) * sx, Math.abs(parseInt((item['h']).toString())) * sy)
+		} else if (item['type'] === 'ellipse') {
+			rc.strokeStyle = (item['color']).toString(); rc.lineWidth = w
+			const c = map(parseInt((item['cx']).toString()), parseInt((item['cy']).toString()))
+			rc.beginPath(); rc.ellipse(c.x, c.y, parseInt((item['rx']).toString()) * sx, parseInt((item['ry']).toString()) * sy, 0, 0, Math.PI * 2); rc.stroke()
+		} else if (item['type'] === 'text') {
+			rc.fillStyle = (item['color']).toString(); rc.font = `${parseInt((item['fontSize'] ?? 24).toString()) * sx}px sans-serif`
+			const p = map(parseInt((item['x']).toString()), parseInt((item['y']).toString())); rc.fillText((item['text'] ?? '').toString(), p.x, p.y)
+		}
+		rc.restore()
+	}
+
+	/** 保存图片：无标注时直接返回原路径（无变更）；有标注时用 Canvas 合成导出。 */
+	async function saveImage() {
+		if (saving.value || displaySrc.value === '') return
+		saving.value = true
+		const si = sourceImage.value
+		const srcPath = si.path !== '' ? si.path : displaySrc.value
+		// 无标注、无旋转：直接回传原路径，无需 Canvas
+		if (objects.value.length === 0 && rotation.value === 0) {
+			saving.value = false
+			emit('edited', srcPath)
+			return
+		}
+		// 有标注或旋转：Canvas 合成（尺寸已在 layoutStage 中按原图分辨率设定）
+		try {
+			await nextTick()
+			await new Promise<void>(resolve => {
+				setTimeout(() => { resolve() }, 80)
+			})
+			await new Promise<void>((resolve, reject) => {
+				let finished = false
+				// 导出看门狗：原生回调若始终不触发，页面会永久停留在“保存中”，超时后明确失败并恢复按钮。
+				const watchdog = setTimeout(() => {
+					if (finished) return
+					finished = true
+					reject(new Error('图片导出超时，请重试'))
+				}, 15000)
+				/** 结束导出并清理看门狗，保证 Promise 只结算一次。 */
+				const settle = (error: Error | null, resultPath: string) => {
+					if (finished) return
+					finished = true
+					clearTimeout(watchdog)
+					if (error != null) { reject(error); return }
+					emit('edited', resultPath)
+					resolve()
+				}
+				uni.createCanvasContextAsync({ id: 'markup-save-canvas', component: instance!, success: (ctx) => {
+					try {
+						const rc = ctx.getContext('2d')
+						if (rc == null) { settle(new Error('canvas context is null'), ''); return }
+						const cw = saveCanvasWidth.value; const ch = saveCanvasHeight.value
+						rc.clearRect(0, 0, cw, ch)
+						rc.fillStyle = '#ffffff'; rc.fillRect(0, 0, cw, ch)
+						rc.save(); rc.translate(cw / 2, ch / 2); rc.rotate(rotation.value * Math.PI / 180)
+						const img = ctx.createImage()
+						img.onload = () => {
+							try {
+								const exportRotated = rotation.value === 90 || rotation.value === 270
+								const drawWidth = exportRotated ? ch : cw
+								const drawHeight = exportRotated ? cw : ch
+								rc.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+								rc.restore()
+								const rect = imageFitRect.value; const sx = cw / Math.max(1, rect.width); const sy = ch / Math.max(1, rect.height)
+								for (const item of objects.value) drawAnnotationToCanvas(rc, item, sx, sy, rect)
+								const dataUrl = ctx.toDataURL()
+								if (!dataUrl.startsWith('data:image/png;base64,')) { settle(new Error('导出失败'), ''); return }
+								const path = `${uni.env.USER_DATA_PATH}/inspection-edit-${Date.now()}.png`
+								uni.getFileSystemManager().writeFile({ filePath: path, data: dataUrl.split(',')[1], encoding: 'base64', success: () => settle(null, path), fail: (err) => settle(new Error(err.errMsg), '') })
+							} catch (err) { settle(new Error((err).toString()), '') }
+						}
+						img.onerror = () => settle(new Error('原图解码失败'), '')
+						// 先挂载回调再设置 src，避免解码回调早于 onload/onerror 注册而丢失。
+						img.src = canvasImageSource({ path: si.path, width: si.width, height: si.height }, displaySrc.value)
+					} catch (err) { settle(new Error((err).toString()), '') }
+				}, fail: (err) => settle(new Error(err.errMsg), '') })
+			})
+		} catch (error) { uni.showToast({ title: t(((error as Error)?.message ?? '保存失败').toString()), icon: 'none' }) } finally { saving.value = false }
+	}
+
+	/** 弹窗可见时加载图片 */
+	watch((): string => `${props.visible}:${props.source}`, () => {
+		resetEditorState()
+		if (props.visible && props.source !== '') loadImage()
+	}, { immediate: true })
+</script>
+
+<style>
+	.markup-root { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2600; background-color: #1a1a1a; }
+	.markup-header { height: 100rpx; padding: 0 32rpx; flex-direction: row; align-items: center; justify-content: space-between; background-color: #222222; }
+	.header-action { color: #cccccc; font-size: 28rpx; padding: 20rpx 16rpx; min-width: 96rpx; }
+	.header-title { color: #ffffff; font-size: 30rpx; font-weight: 600; }
+	.save-action { color: #22c55e; font-weight: 600; }
+	.save-action.disabled { opacity: 0.7; }
+	.editor-body { flex: 1; overflow: hidden; background-color: #111111; }
+	.image-stage { position: relative; width: 100%; overflow: hidden; background-color: #000000; }
+	.edit-image { position: absolute; left: 50%; top: 50%; transform-origin: center center; }
+	.annotation-layer { position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 1; }
+	.annotation-line { position: absolute; transform-origin: 0 50%; border-radius: 999px; }
+	.annotation-line.selected { box-shadow: 0 0 0 4rpx rgba(34, 197, 94, 0.6); }
+	.arrow-head { position: absolute; top: 50%; width: 0; height: 0; border-top: 10rpx solid transparent; border-bottom: 10rpx solid transparent; border-left: 18rpx solid #ef4444; transform: translateY(-50%); }
+	.annotation-rect { position: absolute; box-sizing: border-box; border-style: solid; }
+	.annotation-rect.selected { box-shadow: 0 0 0 4rpx rgba(34, 197, 94, 0.6); }
+	.annotation-ellipse { position: absolute; border-radius: 50%; box-sizing: border-box; border-style: solid; }
+	.annotation-ellipse.selected { box-shadow: 0 0 0 4rpx rgba(34, 197, 94, 0.6); }
+	.annotation-text { position: absolute; font-weight: 700; line-height: 1.2; }
+	.annotation-text.selected { text-shadow: 0 0 8rpx #22c55e; }
+	.editor-loading { flex: 1; align-items: center; justify-content: center; color: #94a3b8; font-size: 28rpx; }
+	.editor-toolbar { position: relative; z-index: 3; flex-direction: row; align-items: center; justify-content: space-around; padding: 16rpx 8rpx; background-color: #222222; flex-wrap: wrap; }
+	.tool-item { flex-direction: column; align-items: center; padding: 12rpx 16rpx; border-radius: 12rpx; min-width: 80rpx; }
+	.tool-item.active { background-color: #333333; }
+	.tool-icon { color: #cccccc; font-size: 32rpx; }
+	.tool-label { color: #999999; font-size: 20rpx; }
+	.tool-active { color: #22c55e; }
+	.sub-toolbar { position: relative; z-index: 3; flex-direction: row; align-items: center; justify-content: center; padding: 16rpx 32rpx 36rpx; background-color: #1a1a1a; }
+	.color-selector { flex-direction: row; }
+	.color-dot { width: 48rpx; height: 48rpx; margin: 0 8rpx; border-radius: 50%; border: 3rpx solid #555555; }
+	.color-dot.active { border-color: #ffffff; box-shadow: 0 0 0 3rpx #22c55e; }
+	.text-input-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 300; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.6); }
+	.text-input-box { width: 80%; padding: 32rpx; border-radius: 16rpx; background-color: #ffffff; }
+	.text-input { width: 100%; height: 80rpx; padding: 0 16rpx; border: 2rpx solid #e5e7eb; border-radius: 8rpx; font-size: 28rpx; }
+	.text-color-row { flex-direction: row; justify-content: center; margin-top: 20rpx; }
+	.text-input-actions { flex-direction: row; justify-content: flex-end; margin-top: 24rpx; }
+	.text-btn { padding: 12rpx 32rpx; border-radius: 8rpx; font-size: 26rpx; margin-left: 16rpx; }
+	.text-btn.cancel { background-color: #f3f4f6; color: #666666; }
+	.text-btn.confirm { background-color: #22c55e; color: #ffffff; }
+	.save-canvas { position: fixed; left: -10000px; top: -10000px; pointer-events: none; }
+</style>

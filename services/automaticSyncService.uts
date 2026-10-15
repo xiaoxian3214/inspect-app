@@ -59,8 +59,8 @@ export function createAutomaticSyncService(options) {
       publishState('uploading', planId)
       try {
         const uploadResult = await uploadPendingPhotos(planId)
-        uploadedPhotoCount += Number(uploadResult?.uploadedCount ?? 0)
-        failedPhotoCount += Number(uploadResult?.failedCount ?? 0)
+        uploadedPhotoCount += parseInt(String(uploadResult?.uploadedCount ?? 0))
+        failedPhotoCount += parseInt(String(uploadResult?.failedCount ?? 0))
         await refreshDraftPhotos(planId)
       } catch (_) {
         failedPhotoCount += 1
@@ -75,8 +75,8 @@ export function createAutomaticSyncService(options) {
       online: true,
       uploadedPhotoCount,
       failedPhotoCount,
-      syncedCount: Number(draftResult?.syncedCount ?? 0),
-      failedCount: Number(draftResult?.failedCount ?? 0)
+      syncedCount: parseInt(String(draftResult?.syncedCount ?? 0)),
+      failedCount: parseInt(String(draftResult?.failedCount ?? 0))
     }
   }
 

@@ -25,7 +25,7 @@ export function normalizeCameraResultPaths(payload) {
  * 将新拍摄或相册选择的路径追加到连拍列表，并按最大数量保持首次出现顺序。
  */
 export function appendCapturePaths(currentPaths, incomingPaths, maxCount = 9) {
-  const normalizedMaxCount = Math.max(1, Number(maxCount ?? 9))
+  const normalizedMaxCount = Math.max(1, parseInt(String(maxCount ?? 9)))
   return normalizeCameraResultPaths([
     ...(Array.isArray(currentPaths) ? currentPaths : []),
     ...(Array.isArray(incomingPaths) ? incomingPaths : [])

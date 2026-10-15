@@ -1,0 +1,46 @@
+/** 按稳定照片 ID 查找当前媒体，避免上传刷新后对象引用变化导致预览跳错。 */
+export function findMediaIndex(photos, photo) {
+  const photoId = String(photo?.photoId ?? '')
+  if (photoId !== '') return photos.findIndex((entry) => String(entry?.photoId ?? '') === photoId)
+  const fileId = String(photo?.fileId ?? '')
+  if (fileId !== '') return photos.findIndex((entry) => String(entry?.fileId ?? '') === fileId)
+  const localPath = String(photo?.localPath ?? '')
+  if (localPath !== '') return photos.findIndex((entry) => String(entry?.localPath ?? '') === localPath)
+  return photos.findIndex((entry) => entry === photo)
+}
+
+/** 在当前媒体分组内循环切换上一张或下一张；目标不存在时不跨组跳转。 */
+export function adjacentMedia(photos, photo, offset) {
+  const index = findMediaIndex(photos, photo)
+  if (index < 0 || photos.length === 0) return null
+  return photos[(index + offset + photos.length) % photos.length]
+}
+
+/** 用编辑后的本地记录原位替换图片，保留媒体库排序和其他媒体。 */
+export function replaceMedia(photos, oldPhoto, newPhoto) {
+  const index = findMediaIndex(photos, oldPhoto)
+  if (index < 0) return photos
+  return photos.map((photo, position) => position === index ? newPhoto : photo)
+}
+
+/** 复制业务归属元数据并清除旧图片的远程文件、上传及本地路径字段。 */
+export function editedMediaMetadata(photo) {
+  const {
+    photoId, id, reportId, localPath, fileId, filePath, thumbnailPath, previewUrl,
+    coverUrl, url, dataUrl, fileName, fileExt, fileSize, fileType, mimeType,
+    md5, uploadedAt, duration, durationSeconds, uploadStatus, uploadError,
+    retryCount, nextRetryAt, createdAt, ...metadata
+  } = photo ?? {}
+  return { ...metadata, mediaType: 'image' }
+}
+
+/** 使用图片信息接口返回的已解析本地路径供原生画布解码，缺失时回退原始来源。 */
+export function canvasImageSource(info, source) {
+  const path = String(info?.path ?? '').trim()
+  return path !== '' ? path : String(source ?? '').trim()
+}
+
+/** 在加载超时提示中保留失败阶段及原生错误，供设备端定位画布初始化问题。 */
+export function editorTimeoutMessage(stage, cause) {
+  return `${stage}超时，请重试${cause !== '' ? `：${cause}` : ''}`
+}

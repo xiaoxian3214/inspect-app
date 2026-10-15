@@ -1,0 +1,10 @@
+{
+	"deploymentTarget": "12.0",
+	"frameworks": [
+		"AVFoundation",
+		"Photos",
+		"UIKit",
+		"Foundation",
+		"AudioToolbox"
+	]
+}

@@ -1,0 +1,126 @@
+{
+	"id": "ima-camerax-view",
+	"displayName": "【新】原生Camera自定义相机拍照、视频录制",
+	"version": "1.0.6",
+	"description": "原生Camera相机开发的UTS插件，支持相机拍照、视频录制、可实现点击聚焦、手势缩放、自定义布局、自定义蒙版（用于人脸拍照，身份证拍照等），同时支持蓝牙自拍杆（可自定义）、手机快捷键（可自定义）",
+	"keywords": [
+        "原生Camera",
+        "相机拍照",
+        "视频录制",
+        "自定义布局相机",
+        "自定义蒙版相机"
+    ],
+	"repository": "",
+	"engines": {
+    "HBuilderX": "^4.8.1",
+    "uni-app": "^4.81",
+    "uni-app-x": "^4.81"
+	},
+	"dcloudext": {
+		"type": "component-uts",
+		"sale": {
+			"regular": {
+				"price": "29.99"
+			},
+			"sourcecode": {
+				"price": "399.99"
+			}
+		},
+		"contact": {
+			"qq": "488266488"
+		},
+    "declaration": {
+      "ads": "无",
+      "data": "插件不采集任何数据",
+      "permissions": "摄像头、音频、文件读取、文件写入\n <uses-permission android:name=\"android.permission.CAMERA\" />\n <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n <uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" />\n <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" />\n <uses-permission android:name=\"android.permission.VIBRATE\" />"
+    },
+		"npmurl": "",
+    "darkmode": "x",
+    "i18n": "x",
+    "widescreen": "√"
+	},
+	"uni_modules": {
+		"dependencies": [],
+		"encrypt": [],
+		"platforms": {
+			"cloud": {
+        "tcb": "x",
+        "aliyun": "x",
+        "alipay": "x"
+			},
+			"client": {
+				"uni-app": {
+					"vue": {
+						"vue2": {
+                            "extVersion": "1.0.0",
+                            "minVersion": ""
+                        },
+						"vue3": {
+                            "extVersion": "1.0.0",
+                            "minVersion": ""
+                        }
+					},
+					"web": {
+						"safari": "x",
+						"chrome": "x"
+					},
+					"app": {
+						"vue": {
+                            "extVersion": "1.0.0",
+                            "minVersion": ""
+                        },
+						"nvue": {
+                            "extVersion": "1.0.0",
+                            "minVersion": ""
+                        },
+						"android": {
+                            "extVersion": "1.0.0",
+                            "minVersion": "21"
+                        },
+						"ios": "-",
+						"harmony": {
+                            "extVersion": "1.0.0",
+                            "minVersion": "5.0以下(不包括5.0)"
+                        }
+					},
+					"mp": {
+						"weixin": "x",
+						"alipay": "x",
+						"toutiao": "x",
+						"baidu": "x",
+						"kuaishou": "x",
+						"jd": "x",
+						"harmony": "x",
+						"qq": "x",
+						"lark": "x",
+						"xhs": "x"
+					},
+					"quickapp": {
+						"huawei": "x",
+						"union": "x"
+					}
+				},
+				"uni-app-x": {
+					"web": {
+						"safari": "x",
+						"chrome": "x"
+					},
+					"app": {
+						"android": {
+                            "extVersion": "1.0.0",
+                            "minVersion": "21"
+                        },
+						"ios": "x",
+						"harmony": {
+                            "extVersion": "1.0.0",
+                            "minVersion": "5.0以下(不包括5.0)"
+                        }
+					},
+					"mp": {
+						"weixin": "x"
+					}
+				}
+			}
+		}
+	}
+}

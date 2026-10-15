@@ -72,10 +72,10 @@
 		resetDrag()
 	})
 
-	/** 记录按住照片的位置，短暂按住后开启拖动。 */
-	function onTouchStart(index: number, event: TouchEvent) { resetDrag(); touchStartIndex = index; touchStartX = event.touches[0]?.clientX ?? 0; touchStartY = event.touches[0]?.clientY ?? 0; pressTimer = setTimeout(() => beginDrag(index), 300) }
 	/** 长按计时完成后开启拖动，轻触或滚动不改变顺序。 */
 	function beginDrag(index: number) { pressTimer = null; if (touchStartIndex !== index) return; dragIndex.value = index; dragOverIndex.value = index }
+	/** 记录按住照片的位置，短暂按住后开启拖动。 */
+	function onTouchStart(index: number, event: TouchEvent) { resetDrag(); touchStartIndex = index; touchStartX = event.touches[0]?.clientX ?? 0; touchStartY = event.touches[0]?.clientY ?? 0; pressTimer = setTimeout(() => beginDrag(index), 300) }
 	/** 拖动时预览目标位置；未长按前明显移动手指则交还滚动。 */
 	function onTouchMove(event: TouchEvent) { if (touchStartIndex < 0) return; const deltaX = (event.touches[0]?.clientX ?? touchStartX) - touchStartX; const deltaY = (event.touches[0]?.clientY ?? touchStartY) - touchStartY; if (dragIndex.value < 0) { if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) { clearPressTimer(); touchStartIndex = -1 }; return }; dragDeltaX.value = deltaX; dragDeltaY.value = deltaY; dragOverIndex.value = resolveMediaDragTarget(dragIndex.value, deltaX, deltaY, parseFloat(sortCellHeight.value), sortedPhotos.value.length) }
 	/** 松手时将拖动照片插入目标格，再清理临时拖动状态。 */

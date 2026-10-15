@@ -49,7 +49,7 @@ export function createApiRequestQueue() {
     const queueTask = {
       key,
       lane: String(task.lane ?? 'write'),
-      priority: Number(task.priority ?? 0),
+      priority: parseInt(String(task.priority ?? 0)),
       sequence,
       execute: task.execute,
       resolve: resolveTask,

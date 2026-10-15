@@ -190,17 +190,27 @@
 	/** 创建一行与 H5 specAttributes 对齐的空字段对象。 */
 	function createEmptyAttributeRow(): UTSJSONObject { const row: UTSJSONObject = {}; specAttributes.value.forEach((attr: SpecAttribute) => { row[attr.attrId] = '' }); return row }
 	/** 判断当前类型数据是否满足 H5 的完成条件。 */
-	function isDraftCompleted(): boolean { const isMergedChild = (itemData.value['sonPlanId'] ?? '').toString() !== ''; if (!isMergedChild && Number(itemData.value['isPhotoRequired'] ?? 0) === 1 && mediaPhotos.value.length === 0) return false; if (itemType.value === 'Measurements') return draft.value.measurements.some((row) => hasFilledRow(row)); if (itemType.value === 'Text') return draft.value.textGroups.some((row) => hasFilledRow(row)); if (itemType.value === 'Barcodes') return draft.value.barcodeItems.some((row) => (row['code'] ?? '').toString().trim() !== ''); if (itemType.value === 'Standard') return draft.value.result !== ''; return true }
+	function isDraftCompleted(): boolean { const isMergedChild = (itemData.value['sonPlanId'] ?? '').toString() !== ''; if (!isMergedChild && parseInt((itemData.value['isPhotoRequired'] ?? 0).toString()) === 1 && mediaPhotos.value.length === 0) return false; if (itemType.value === 'Measurements') return draft.value.measurements.some((row) => hasFilledRow(row)); if (itemType.value === 'Text') return draft.value.textGroups.some((row) => hasFilledRow(row)); if (itemType.value === 'Barcodes') return draft.value.barcodeItems.some((row) => (row['code'] ?? '').toString().trim() !== ''); if (itemType.value === 'Standard') return draft.value.result !== ''; return true }
 	/** 生成供父页面持久化的完整检查项草稿。 */
 	function buildDraftData() { return { ...draft.value, completed: isDraftCompleted() } }
 	/** 自动保存字段、备注或分组变化，但保持弹框继续打开。 */
 	function autoSaveDraft() { emit('auto-save', { item: props.item, data: buildDraftData() }) }
-	/** 选择检查结果后立即保存并交由父页面关闭弹框或进入疵点录入。 */
-	function confirmResult(result: string) { saveNotesOnBlur(); const isMergedChild = (itemData.value['sonPlanId'] ?? '').toString() !== ''; if (!isMergedChild && Number(itemData.value['isPhotoRequired'] ?? 0) === 1 && result !== 'na' && mediaPhotos.value.length === 0) { uni.showToast({ title: t('请上传照片(必填项)'), icon: 'none' }); return }; draft.value = { ...draft.value, result }; emit('select-result', { item: props.item, result, data: buildDraftData() }) }
-	/** 更新临时备注，输入过程中不触发本地保存。 */
-	function updateComment(event: UniInputEvent) { noteDraft.value = event.detail.value }
 	/** 备注框失焦时提交有变化的输入；弹层关闭或选择结果时也调用，避免输入丢失。 */
 	function saveNotesOnBlur() { if (draft.value.comment === noteDraft.value) return; draft.value = { ...draft.value, comment: noteDraft.value }; autoSaveDraft() }
+	/** 选择检查结果后立即保存并交由父页面关闭弹框或进入疵点录入。 */
+	function confirmResult(result: string) {
+		saveNotesOnBlur()
+		const isMergedChild = (itemData.value['sonPlanId'] ?? '').toString() !== ''
+		const requiresPhoto = parseInt((itemData.value['isPhotoRequired'] ?? 0).toString()) === 1
+		if (!isMergedChild && requiresPhoto && result !== 'na' && mediaPhotos.value.length === 0) {
+			uni.showToast({ title: t('请上传照片(必填项)'), icon: 'none' })
+			return
+		}
+		draft.value = { ...draft.value, result }
+		emit('select-result', { item: props.item, result, data: buildDraftData() })
+	}
+	/** 更新临时备注，输入过程中不触发本地保存。 */
+	function updateComment(event: UniInputEvent) { noteDraft.value = event.detail.value }
 	/** 更新指定规格组中的属性值并触发自动保存。 */
 	function updateMeasurement(rowIndex: number, attrId: string, event: UniInputEvent) { const rows = [...draft.value.measurements]; rows[rowIndex] = { ...rows[rowIndex], [attrId]: event.detail.value }; draft.value = { ...draft.value, measurements: rows }; autoSaveDraft() }
 	/** 新增一组 H5 规格属性并触发自动保存。 */
@@ -248,7 +258,7 @@
 	/** 请求页面删除当前检查项中的指定图片。 */
 	function removePhoto(photo: UTSJSONObject) { emit('remove-photo', { item: props.item, photo }) }
 	/** 请求页面预览当前检查项图片。 */
-	function previewPhoto(photo: UTSJSONObject) { emit('preview-photo', { item: props.item, photo }) }
+	function previewPhoto(photo: UTSJSONObject) { emit('preview-photo', { item: props.item, photo, photos: photo?.bizType === 'checkPoint' ? checkPointPhotos.value : mediaPhotos.value }) }
 	/** 请求页面将上传失败的检查项图片重新加入上传队列。 */
 	function retryPhoto(photo: UTSJSONObject) { emit('retry-photo', { item: props.item, photo }) }
 	/** 打开当前检查项图片排序底部弹层。 */

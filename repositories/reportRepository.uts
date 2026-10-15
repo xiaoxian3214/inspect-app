@@ -36,7 +36,7 @@ function getSharedPlanId(record) {
   const ownId = getPlanKey(record)
   const parentId = String(plan?.parentPlanId ?? '').trim()
   const reportPlanId = String(record?.report?.planId ?? '').trim()
-  return Number(plan?.mergeType ?? 0) === 2
+  return parseInt(String(plan?.mergeType ?? 0)) === 2
     ? (parentId !== '' ? parentId : (reportPlanId !== '' ? reportPlanId : ownId))
     : ownId
 }
@@ -305,7 +305,7 @@ function writeRelationalReport(transaction, records) {
   const { shared } = splitRelationalRecord(first)
   const existing = transaction.read('report').find((row) => String(row?.reportId ?? '') === groupPlanId)
   const preserveDirty = readSharedState({ app_setting: transaction.read('app_setting') }, groupPlanId, existing)?.syncStatus === 'DIRTY' && first?.syncStatus !== 'DIRTY'
-  const status = Number(preserveDirty ? existing?.status : (first?.status ?? existing?.status ?? 0))
+  const status = parseInt(String(preserveDirty ? existing?.status : (first?.status ?? existing?.status ?? 0)))
   if (!preserveDirty) transaction.upsert('report', 'reportId', {
     reportId: groupPlanId, planId: groupPlanId,
     ...businessRow({ ...(first?.report ?? {}), planId: groupPlanId }, REPORT_FIELDS),
@@ -326,7 +326,7 @@ function writeRelationalReport(transaction, records) {
     })
   })
   transaction.read('inspection_plan').filter((row) => String(row?.groupPlanId ?? '') === groupPlanId).forEach((row) => {
-    if (Number(row?.status) !== status) transaction.upsert('inspection_plan', 'planId', { ...row, status })
+    if (parseInt(String(row?.status)) !== status) transaction.upsert('inspection_plan', 'planId', { ...row, status })
   })
   if (preserveDirty) return
   writeItemResults(transaction, groupPlanId, first)
@@ -369,7 +369,7 @@ function composeRelationalPlan(tables, memberRow) {
   const checklistData = {}
   const groupItems = tables.item_result.filter((row) => String(row?.planId ?? '') === groupPlanId)
   const checklistItems = groupItems.filter((row) => parseJson(row?.jsonData)?.checklistItem != null)
-    .sort((left, right) => Number(parseJson(left.jsonData).sortOrder ?? 0) - Number(parseJson(right.jsonData).sortOrder ?? 0))
+    .sort((left, right) => parseInt(String(parseJson(left.jsonData).sortOrder ?? 0)) - parseInt(String(parseJson(right.jsonData).sortOrder ?? 0)))
     .map((row) => parseJson(row.jsonData).checklistItem)
   const itemResults = groupItems.filter((row) => parseJson(row?.jsonData)?.checklistItem == null).map((row) => {
     const { localData, ...item } = parseJson(row.jsonData)
@@ -377,7 +377,7 @@ function composeRelationalPlan(tables, memberRow) {
     return item
   })
   const defects = tables.defect.filter((row) => String(row?.reportId ?? '') === groupPlanId)
-    .sort((left, right) => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+    .sort((left, right) => parseInt(String(left?.sortNo ?? 0)) - parseInt(String(right?.sortNo ?? 0)))
     .map((row) => ({ ...parseJson(row.jsonData), ...responseRow(row, DEFECT_FIELDS) }))
   const photos = tables.photo.filter((row) => String(row?.reportId ?? '') === groupPlanId).map(parsePhotoRecord)
   const planId = String(memberRow.planId)
@@ -385,17 +385,17 @@ function composeRelationalPlan(tables, memberRow) {
     ...shared, ...member, id: planId, planId,
     reportId: String(reportRow?.id ?? shared?.report?.id ?? groupPlanId),
     report: { ...parseJson(reportRow.jsonData), ...responseRow(reportRow, REPORT_FIELDS) },
-    plan: { ...(member?.plan ?? {}), ...responseRow(memberRow, PLAN_FIELDS), id: planId, status: Number(reportRow.status ?? 0) },
-    inspectionPlans: groupMembers.map((row) => ({ ...parseJson(row.jsonData)?.plan, ...responseRow(row, PLAN_FIELDS), id: row.planId, status: Number(reportRow.status ?? 0) })),
+    plan: { ...(member?.plan ?? {}), ...responseRow(memberRow, PLAN_FIELDS), id: planId, status: parseInt(String(reportRow.status ?? 0)) },
+    inspectionPlans: groupMembers.map((row) => ({ ...parseJson(row.jsonData)?.plan, ...responseRow(row, PLAN_FIELDS), id: row.planId, status: parseInt(String(reportRow.status ?? 0)) })),
     itemResults, checklistItems, checklistData, defects, defectRecords: defects, photos,
-    status: Number(reportRow.status ?? 0), syncStatus: shared?.syncStatus ?? 'SYNCED',
+    status: parseInt(String(reportRow.status ?? 0)), syncStatus: shared?.syncStatus ?? 'SYNCED',
     downloadedAt: reportRow.downloadAt ?? member?.downloadedAt ?? ''
   }
 }
 
 /** 从合并报告的远端实体标识提取共享主键，单计划继续使用旧表。 */
 function getMergedGroupId(plan) {
-  if (Number(plan?.plan?.mergeType ?? 0) !== 2) return ''
+  if (parseInt(String(plan?.plan?.mergeType ?? 0)) !== 2) return ''
   return String(plan?.report?.id ?? '').trim()
 }
 
@@ -419,8 +419,8 @@ function composeMergedPlan(groupRow, memberRow) {
     id: planId,
     planId,
     reportId: String(groupRow?.groupId ?? ''),
-    plan: { ...(member?.plan ?? {}), id: planId, status: Number(groupRow?.status ?? 0) },
-    status: Number(groupRow?.status ?? 0),
+    plan: { ...(member?.plan ?? {}), id: planId, status: parseInt(String(groupRow?.status ?? 0)) },
+    status: parseInt(String(groupRow?.status ?? 0)),
     syncStatus: groupRow?.syncStatus ?? shared?.syncStatus ?? 'SYNCED',
     downloadedAt: groupRow?.downloadAt ?? member?.downloadedAt ?? '',
     updatedAt: groupRow?.updatedAt ?? shared?.updatedAt ?? ''
@@ -509,7 +509,7 @@ function restorePhotoOwner(detail, photo) {
 /**
  * 从下载时的完整卡片快照构建离线摘要，保留所有列表字段并以本地详情和状态为准。
  */
-function summarizeReportRow(row, jsonData = parseJson(row?.jsonData)) {
+function summarizeReportRow(row: UTSJSONObject, jsonData: UTSJSONObject = parseJson(row?.jsonData)) {
   const sourceCard = jsonData?.listCard != null && typeof jsonData.listCard === 'object' ? jsonData.listCard : {}
   const sourcePlan = sourceCard?.plan != null && typeof sourceCard.plan === 'object' ? sourceCard.plan : sourceCard
   const storedPlan = jsonData?.plan != null && typeof jsonData.plan === 'object' ? jsonData.plan : {}
@@ -525,8 +525,8 @@ function summarizeReportRow(row, jsonData = parseJson(row?.jsonData)) {
     id: plan?.id || planId,
     planId,
     reportId: remoteReportId || planId,
-    status: Number.isFinite(Number(row?.status)) ? Number(row.status) : 0,
-    progress: Number(jsonData?.progress ?? 0),
+    status: Number.isFinite(parseInt(String(row?.status))) ? parseInt(String(row.status)) : 0,
+    progress: parseInt(String(jsonData?.progress ?? 0)),
     syncStatus: String(jsonData?.syncStatus ?? ''),
     pendingSyncPayload: jsonData?.pendingSyncPayload == null ? null : {
       status: jsonData.pendingSyncPayload.status,
@@ -672,7 +672,7 @@ export function createReportRepository(database) {
           jsonData: JSON.stringify(extraFields(stored, DEFECT_FIELDS))
         })
       })
-      if (!transaction.read('schema_migration').some((row) => Number(row.version) === 4)) {
+      if (!transaction.read('schema_migration').some((row) => parseInt(String(row.version)) === 4)) {
         transaction.upsert('schema_migration', 'version', { version: 4, appliedAt: new Date().toISOString() })
       }
     })
@@ -689,7 +689,7 @@ export function createReportRepository(database) {
         const shared = parseJson(group.jsonData)
         const records = oldMembers.map((row) => ({
           ...shared, ...parseJson(row.jsonData), planId: String(row.planId),
-          status: Number(group.status ?? 0), downloadedAt: group.downloadAt ?? ''
+          status: parseInt(String(group.status ?? 0)), downloadedAt: group.downloadAt ?? ''
         }))
         const groupPlanId = getSharedPlanId(records[0])
         if (groupPlanId === '') continue
@@ -718,13 +718,13 @@ export function createReportRepository(database) {
       const counts = new Map()
       oldReports.forEach((row) => {
         const groupId = getMergedGroupId(parseJson(row.jsonData))
-        if (groupId !== '') counts.set(groupId, Number(counts.get(groupId) ?? 0) + 1)
+        if (groupId !== '') counts.set(groupId, parseInt(String(counts.get(groupId) ?? 0)) + 1)
       })
       for (const row of oldReports) {
         const detail = parseJson(row.jsonData)
         const groupId = getMergedGroupId(detail)
-        if (groupId !== '' && Number(counts.get(groupId) ?? 0) > 1) continue
-        const record = { ...detail, planId: String(row.reportId), status: Number(row.status ?? 0), downloadedAt: row.downloadAt }
+        if (groupId !== '' && parseInt(String(counts.get(groupId) ?? 0)) > 1) continue
+        const record = { ...detail, planId: String(row.reportId), status: parseInt(String(row.status ?? 0)), downloadedAt: row.downloadAt }
         const groupPlanId = getSharedPlanId(record)
         if (groupPlanId === '') continue
         transaction.removeWhere('report', (current) => String(current?.reportId ?? '') === String(row.reportId))
@@ -742,7 +742,7 @@ export function createReportRepository(database) {
         }
         migrated += 1
       }
-      if (transaction.read('report_group').length === 0 && !transaction.read('schema_migration').some((row) => Number(row.version) === 3)) {
+      if (transaction.read('report_group').length === 0 && !transaction.read('schema_migration').some((row) => parseInt(String(row.version)) === 3)) {
         transaction.upsert('schema_migration', 'version', { version: 3, appliedAt: new Date().toISOString() })
       }
     })
@@ -771,7 +771,7 @@ export function createReportRepository(database) {
         }
         const selected = (dirty.length > 0 ? dirty : entries).sort((left, right) =>
           String(right.record?.updatedAt ?? right.row?.downloadAt ?? '').localeCompare(String(left.record?.updatedAt ?? left.row?.downloadAt ?? '')))[0]
-        const groupStatus = Number(selected.row?.status ?? selected.record?.status ?? 0)
+        const groupStatus = parseInt(String(selected.row?.status ?? selected.record?.status ?? 0))
         const records = entries.map(({ row, record }) => ({
           ...selected.record, plan: record.plan, planId: String(row.reportId),
           listCard: record.listCard, downloadedAt: row.downloadAt ?? record.downloadedAt,
@@ -800,7 +800,7 @@ export function createReportRepository(database) {
         writeRelationalReport(transaction, records)
         migrated += 1
       }
-      if (conflicts === 0 && !transaction.read('schema_migration').some((row) => Number(row.version) === 2)) {
+      if (conflicts === 0 && !transaction.read('schema_migration').some((row) => parseInt(String(row.version)) === 2)) {
         transaction.upsert('schema_migration', 'version', { version: 2, appliedAt: new Date().toISOString() })
       }
     })
@@ -831,7 +831,7 @@ export function createReportRepository(database) {
         lockStatus: row.lockStatus ?? '',
         lockerId: row.lockerId ?? '',
         lockExpireAt: row.lockExpireAt ?? '',
-        syncRetry: Number(row.syncRetry ?? 0)
+        syncRetry: parseInt(String(row.syncRetry ?? 0))
       }
     })
     const groups = new Map(tables.report_group.map((row) => [String(row.groupId), row]))
@@ -878,7 +878,7 @@ export function createReportRepository(database) {
       return {
         planId: String(row?.planId ?? ''),
         reportId: String(row?.groupPlanId ?? ''),
-        status: Number(row?.status ?? 0),
+        status: parseInt(String(row?.status ?? 0)),
         downloadAt: linkedDownloadAt ?? '',
         productName: row?.goods_name ?? '',
         orderNo: row?.client_order_no ?? '',
@@ -909,17 +909,17 @@ export function createReportRepository(database) {
   }
 
   /** 按计划只读取一条已落库的检查点结果，避免诊断页组装并渲染全部报告详情。 */
-  async function getStoredItemResultPage(planId, index = 0) {
+  async function getStoredItemResultPage(planId: string, index: number = 0) {
     const normalizedPlanId = String(planId ?? '').trim()
     if (normalizedPlanId === '') return { total: 0, itemResult: null }
-    const offset = Math.max(0, Math.floor(Number(index ?? 0)))
+    const offset = Math.max(0, Math.floor(parseInt(String(index ?? 0))))
     const literal = `'${normalizedPlanId.replace(/'/g, "''")}'`
     const members = await database.query(`SELECT groupPlanId FROM qcm_inspection_plan WHERE planId = ${literal} OR groupPlanId = ${literal} LIMIT 1`)
     const groupId = String(members[0]?.groupPlanId ?? normalizedPlanId)
     const groupLiteral = `'${groupId.replace(/'/g, "''")}'`
     const condition = `planId = ${groupLiteral} AND instr(itemResultId, '::checklist::') = 0`
     const counts = await database.query(`SELECT COUNT(*) AS total FROM qcm_inspection_item_result WHERE ${condition}`)
-    const total = Number(counts[0]?.total ?? 0)
+    const total = parseInt(String(counts[0]?.total ?? 0))
     if (total > 0) {
       const rows = await database.query(`SELECT jsonData FROM qcm_inspection_item_result WHERE ${condition} ORDER BY itemResultId LIMIT 1 OFFSET ${offset}`)
       return { total, itemResult: rows.length > 0 ? parseJson(rows[0].jsonData) : null }
@@ -1017,10 +1017,10 @@ export function createReportRepository(database) {
       jsonData: JSON.stringify(plan),
       downloadAt: plan?.downloadedAt || new Date().toISOString(),
       lockExpireAt: plan?.lockExpireAt ?? '',
-      status: Number.isFinite(Number(plan?.status)) ? Number(plan.status) : 0,
+      status: Number.isFinite(parseInt(String(plan?.status))) ? parseInt(String(plan.status)) : 0,
       lockStatus: plan?.lockStatus ?? '',
       lockerId: plan?.lockerId ?? '',
-      syncRetry: Number(plan?.syncRetry ?? 0)
+      syncRetry: parseInt(String(plan?.syncRetry ?? 0))
     }
     await database.transaction(async (transaction) => {
       transaction.upsert('report', 'reportId', row)
@@ -1178,7 +1178,7 @@ export function createReportRepository(database) {
         const reportRow = transaction.read('report').find((row) => String(row?.reportId ?? '') === storageId)
         if (reportRow == null) throw new Error('本地报告不存在，无法保存草稿')
         const { shared } = splitRelationalRecord(detail)
-        const status = Number.isFinite(Number(detail?.status)) ? Number(detail.status) : Number(reportRow.status ?? 0)
+        const status = Number.isFinite(parseInt(String(detail?.status))) ? parseInt(String(detail.status)) : parseInt(String(reportRow.status ?? 0))
         transaction.upsert('report', 'reportId', {
           ...reportRow, ...businessRow({ ...(detail?.report ?? {}), planId: storageId }, REPORT_FIELDS),
           jsonData: JSON.stringify(detail?.report ?? {}), status
@@ -1194,7 +1194,7 @@ export function createReportRepository(database) {
         const groupRow = transaction.read('report_group').find((row) => String(row?.groupId ?? '') === storageId)
         if (groupRow == null) throw new Error('合并报告组不存在，无法保存草稿')
         const { shared } = splitMergedRecord(detail)
-        const status = Number.isFinite(Number(detail?.status)) ? Number(detail.status) : 0
+        const status = Number.isFinite(parseInt(String(detail?.status))) ? parseInt(String(detail.status)) : 0
         transaction.upsert('report_group', 'groupId', {
           ...groupRow,
           jsonData: JSON.stringify(shared),
@@ -1213,14 +1213,14 @@ export function createReportRepository(database) {
         jsonData: JSON.stringify(detail),
         downloadAt: detail?.downloadedAt || new Date().toISOString(),
         lockExpireAt: detail?.lockExpireAt ?? '',
-        status: Number.isFinite(Number(detail?.status)) ? Number(detail.status) : 0,
+        status: Number.isFinite(parseInt(String(detail?.status))) ? parseInt(String(detail.status)) : 0,
         lockStatus: detail?.lockStatus ?? '',
         lockerId: detail?.lockerId ?? '',
-        syncRetry: Number(detail?.syncRetry ?? 0)
+        syncRetry: parseInt(String(detail?.syncRetry ?? 0))
       })
       const parentPlanId = String(detail?.plan?.parentPlanId ?? '').trim()
       const reportEntityId = String(detail?.report?.id ?? '').trim()
-      if (Number(detail?.plan?.mergeType ?? 0) === 2 && parentPlanId !== '' && reportEntityId !== '' && (detail?.inspectionPlans ?? []).length > 1) {
+      if (parseInt(String(detail?.plan?.mergeType ?? 0)) === 2 && parentPlanId !== '' && reportEntityId !== '' && (detail?.inspectionPlans ?? []).length > 1) {
         const groupPlanIds = new Set(detail.inspectionPlans.map((plan) => String(plan?.id ?? plan?.planId ?? '')))
         const sharedPhotoIds = new Set(detail.photos.map((photo) => String(photo?.photoId ?? photo?.id ?? '')))
         transaction.read('report').forEach((row) => {
@@ -1240,7 +1240,7 @@ export function createReportRepository(database) {
           }
           transaction.upsert('report', 'reportId', {
             ...row,
-            status: Number.isFinite(Number(detail?.status)) ? Number(detail.status) : row.status,
+            status: Number.isFinite(parseInt(String(detail?.status))) ? parseInt(String(detail.status)) : row.status,
             jsonData: JSON.stringify(shared)
           })
           transaction.removeWhere('photo', (photoRow) => String(photoRow?.reportId ?? '') === siblingPlanId && !sharedPhotoIds.has(String(photoRow?.sourcePhotoId ?? '')))
@@ -1307,7 +1307,7 @@ export function createReportRepository(database) {
   }
 
   /** 在一笔事务中只更新变动的检查结果或疵点，同时持久化普通草稿同步状态。旧报告仍走完整快照兼容路径。 */
-  async function saveDraftChanges(planId, detail, changes: any = {}) {
+  async function saveDraftChanges(planId: string, detail: UTSJSONObject, changes: any = {}) {
     const normalizedPlanId = String(planId ?? '').trim()
     const member = database.readTable('inspection_plan').find((row) => String(row?.planId ?? '') === normalizedPlanId)
     if (member == null) return saveDetailSnapshot(normalizedPlanId, detail)
@@ -1318,7 +1318,7 @@ export function createReportRepository(database) {
     await database.transaction(async (transaction) => {
       const reportRow = transaction.read('report').find((row) => String(row?.reportId ?? '') === storageId)
       if (reportRow == null) throw new Error('本地报告不存在，无法保存草稿')
-      const status = Number.isFinite(Number(detail?.status)) ? Number(detail.status) : Number(reportRow.status ?? 0)
+      const status = Number.isFinite(parseInt(String(detail?.status))) ? parseInt(String(detail.status)) : parseInt(String(reportRow.status ?? 0))
       transaction.upsert('report', 'reportId', { ...reportRow, status })
       const { shared } = splitRelationalRecord(detail)
       writeSharedState(transaction, storageId, shared)

@@ -19,6 +19,7 @@
 						<view v-for="code in locales" :key="code" class="user-lang-option" :class="{ active: code === locale }" @click="changeLanguage(code)"><text class="user-lang-code" :class="{ active: code === locale }">{{ code }}</text></view>
 					</view>
 				</view>
+				<view class="user-action camera-entry" @click="openCustomCamera"><text class="user-action-label camera-entry">{{ t('自定义拍照') }}</text></view>
 				<view class="user-action invite" :class="{ disabled: inviteGenerating }" @click="inviteVendor"><text class="user-action-label invite">{{ inviteGenerating ? t('生成中...') : t('邀请供应商') }}</text></view>
 				<view class="user-action debug" @click="viewLocalData"><text class="user-action-label debug">{{ t('查看本地数据') }}</text></view>
 				<view class="user-action warning" :class="{ disabled: clearingLocalCache }" @click="clearCache"><text class="user-action-label warning">{{ clearingLocalCache ? t('清理中...') : t('清除本地缓存') }}</text></view>
@@ -44,13 +45,15 @@
 		inviteGenerating: { type: Boolean, default: false },
 		clearingLocalCache: { type: Boolean, default: false }
 	})
-	const emit = defineEmits(['close', 'change-language', 'invite-vendor', 'view-local-data', 'clear-cache', 'check-for-updates', 'logout'])
+	const emit = defineEmits(['close', 'change-language', 'invite-vendor', 'view-local-data', 'clear-cache', 'check-for-updates', 'logout', 'open-custom-camera'])
 	const footerBottomPadding = safeBottomPaddingPx(28)
 
 	/** 点击抽屉外遮罩时通知列表关闭用户信息。 */
 	function closeDrawer() { emit('close') }
 	/** 把 H5 同源语言代码交给列表持久化并立即刷新翻译。 */
 	function changeLanguage(code: string) { emit('change-language', code) }
+	/** 进入自定义拍照页面，供离线验货现场拍摄独立使用。 */
+	function openCustomCamera() { emit('open-custom-camera') }
 	/** 邀请链接生成中阻止重复请求。 */
 	function inviteVendor() { if (props.inviteGenerating) return; emit('invite-vendor') }
 	/** 打开本地数据查看页面。 */
@@ -83,12 +86,14 @@
 	.user-lang-code.active { color: #16a34a; }
 	.user-action { width: 100%; height: 84rpx; margin-bottom: 20rpx; align-items: center; justify-content: center; border-width: 2rpx; border-style: solid; border-radius: 20rpx; }
 	.user-action.disabled { opacity: 0.7; }
+	.user-action.camera-entry { border-color: #8b5cf6; background-color: #f5f3ff; }
 	.user-action.invite { border-color: #22c55e; background-color: #f0fdf4; }
 	.user-action.debug { border-color: #6366f1; background-color: #eef2ff; }
 	.user-action.warning { border-color: #f59e0b; background-color: #fffbeb; }
 	.user-action.update { border-color: #38bdf8; background-color: #f0f9ff; }
 	.user-action.danger { height: 88rpx; margin-bottom: 0; border-color: #ef4444; background-color: #ef4444; }
 	.user-action-label { font-size: 28rpx; font-weight: 600; }
+	.user-action-label.camera-entry { color: #7c3aed; }
 	.user-action-label.invite { color: #16a34a; }
 	.user-action-label.debug { color: #4338ca; }
 	.user-action-label.warning { color: #b45309; }

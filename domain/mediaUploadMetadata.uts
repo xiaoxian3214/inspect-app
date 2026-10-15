@@ -36,7 +36,7 @@ export function buildChecklistMediaMetadata(detail, item, sonPlanId = '', sortNo
     bizId: resolveChecklistMediaBizId(detail, item, sonPlanId),
     bizType: 'checkResult',
     subGoodsNo: getMediaSubGoodsNo(detail),
-    sortNo: Math.max(1, Number(sortNo ?? 1))
+    sortNo: Math.max(1, parseInt(String(sortNo ?? 1)))
   }
 }
 
@@ -48,6 +48,6 @@ export function buildDefectMediaMetadata(detail, defectId, sortNo = 1) {
     bizId: String(defectId ?? '').trim(),
     bizType: 'defect',
     subGoodsNo: getMediaSubGoodsNo(detail),
-    sortNo: Math.max(1, Number(sortNo ?? 1))
+    sortNo: Math.max(1, parseInt(String(sortNo ?? 1)))
   }
 }

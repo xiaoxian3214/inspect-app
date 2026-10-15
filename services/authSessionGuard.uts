@@ -22,7 +22,7 @@ export function createAuthSessionGuard(options) {
   const userRepository = options?.userRepository
   const redirectToLoginPage = typeof options?.redirectToLoginPage === 'function' ? options.redirectToLoginPage : () => {}
   const now = typeof options?.now === 'function' ? options.now : () => Date.now()
-  const redirectCooldownMs = Number(options?.redirectCooldownMs ?? 800)
+  const redirectCooldownMs = parseInt(String(options?.redirectCooldownMs ?? 800))
   let lastRedirectAt = 0
 
   /**

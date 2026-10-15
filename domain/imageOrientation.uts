@@ -2,8 +2,8 @@
  * 根据加速度计重力方向返回缩略图需要施加的反向旋转角度；姿态不明确时保持上一次角度。
  */
 export function resolveMediaPreviewRotation(x, y, currentRotation = 0) {
-  const horizontalGravity = Number(x ?? 0)
-  const verticalGravity = Number(y ?? 0)
+  const horizontalGravity = parseInt(String(x ?? 0))
+  const verticalGravity = parseInt(String(y ?? 0))
   const horizontalStrength = Math.abs(horizontalGravity)
   const verticalStrength = Math.abs(verticalGravity)
   if (horizontalStrength < 0.55 && verticalStrength < 0.55) return currentRotation
@@ -16,7 +16,7 @@ export function resolveMediaPreviewRotation(x, y, currentRotation = 0) {
  * 返回手机当前姿态相对照片拍摄姿态的最短旋转差值，避免横拍照片初次显示时被再次旋转。
  */
 export function resolveMediaPreviewRotationDelta(currentRotation, captureRotation) {
-  let rotationDelta = (Number(currentRotation ?? 0) - Number(captureRotation ?? 0)) % 360
+  let rotationDelta = (parseInt(String(currentRotation ?? 0)) - parseInt(String(captureRotation ?? 0))) % 360
   if (rotationDelta > 180) rotationDelta -= 360
   if (rotationDelta < -180) rotationDelta += 360
   return rotationDelta

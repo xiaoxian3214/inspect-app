@@ -59,7 +59,7 @@ function buildOperationQueueItem(task) {
   const fileId = String(task?.payload?.fileId ?? '').trim()
   const syncType = taskType === 'FILE_DELETE' ? '删除' : '操作'
   const content = taskType === 'FILE_DELETE' ? `删除文件 ${(fileId || task?.id) ?? ''}` : `执行离线操作 ${(taskType || task?.id) ?? ''}`
-  const retryCount = Number(task?.retryCount ?? 0)
+  const retryCount = parseInt(String(task?.retryCount ?? 0))
   const error = String(task?.lastError ?? '').trim()
   return {
     id: `operation:${task?.id || task?.dedupeKey || content}`,

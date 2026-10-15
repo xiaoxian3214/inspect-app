@@ -56,7 +56,7 @@
 	const displayPlans = computed((): CopyPlan[] => (props.plans as UTSJSONObject[]).map((plan: UTSJSONObject): CopyPlan => {
 		const subGoodsNo = (plan['subGoodsNo'] ?? '').toString().trim()
 		const batchNo = (plan['batchNo'] ?? '').toString().trim()
-		const extra = Number(plan['goodsFlag'] ?? 0) === 1 ? (plan['domeNo'] ?? '').toString() : [(plan['produceNo'] ?? '').toString(), (plan['modelNo'] ?? '').toString()].filter((value: string): boolean => value !== '').join(' ')
+		const extra = parseInt((plan['goodsFlag'] ?? 0).toString()) === 1 ? (plan['domeNo'] ?? '').toString() : [(plan['produceNo'] ?? '').toString(), (plan['modelNo'] ?? '').toString()].filter((value: string): boolean => value !== '').join(' ')
 		return { id: firstNonEmptyText([plan['id'], plan['planId']], ''), orderNo: (plan['clientOrderNo'] ?? '').toString(), extra, goodsNo: [subGoodsNo, batchNo].filter((value: string): boolean => value !== '').join('#'), goodsName: firstNonEmptyText([plan['goodsName'], plan['clientName']], '') }
 	}))
 	/** 以当前检查项作为 H5 复制弹层的源检查项。 */

@@ -209,7 +209,7 @@
 	}
 
 	/** 执行指定页搜索并让本地计划完整覆盖同 ID 远程计划。 */
-	async function performSearch(page, paging = false) {
+	async function performSearch(page: number, paging: boolean = false) {
 		if (keyword.value.trim() === '') return
 		errorMessage.value = ''
 		if (paging) loadingMoreResults.value = true
@@ -220,7 +220,7 @@
 			const response = await planApi.searchPlans(buildSearchParams(keyword.value, activeFilters.value), page, searchPageSize)
 			results.value = mergeRemoteWithLocal(response?.records ?? [], localPlans.value)
 			searchPage.value = page
-			searchTotal.value = Number(response?.total ?? results.value.length)
+			searchTotal.value = parseInt(String(response?.total ?? results.value.length))
 			searched.value = true
 		} catch (error) {
 			errorMessage.value = error?.message ?? t('查询失败，请检查网络')

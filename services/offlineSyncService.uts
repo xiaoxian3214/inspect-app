@@ -15,7 +15,7 @@ function normalizePlanStatus(plan) {
  */
 function isMergedChildPlan(plan) {
   const source = plan?.plan != null && typeof plan.plan === 'object' ? plan.plan : plan
-  if (Number(source?.mergeType ?? 0) !== 2) return false
+  if (parseInt(String(source?.mergeType ?? 0)) !== 2) return false
   const parentPlanId = String(source?.parentPlanId ?? plan?.parentPlanId ?? '').trim()
   const ownId = String(source?.id ?? source?.planId ?? plan?.planId ?? plan?.id ?? '').trim()
   return parentPlanId !== '' && parentPlanId !== ownId

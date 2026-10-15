@@ -79,7 +79,7 @@
 	/** 请求页面删除当前疵点图片。 */
 	function removePhoto(photo: UTSJSONObject) { emit('remove-photo', { defect: draft.value, photo }) }
 	/** 请求页面预览当前疵点图片。 */
-	function previewPhoto(photo: UTSJSONObject) { emit('preview-photo', { defect: draft.value, photo }) }
+	function previewPhoto(photo: UTSJSONObject) { emit('preview-photo', { defect: draft.value, photo, photos: draft.value.photos }) }
 	/** 请求页面重新上传失败的疵点图片。 */
 	function retryPhoto(photo: UTSJSONObject) { emit('retry-photo', { defect: draft.value, photo }) }
 	/** 校验类别和有效数量，保存数值型数量或普遍性 null。 */

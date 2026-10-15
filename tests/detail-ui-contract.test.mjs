@@ -39,6 +39,18 @@ test('checklist camera dispatches one capture event', async () => {
   assert.ok(!source.includes("emit('add-photo', item, sonPlanId)"))
 })
 
+/** 已上传检查项媒体须先确认；未上传媒体沿用直接删除，预览删除也经过同一入口。 */
+test('checklist uploaded media removal waits for confirmation', async () => {
+  const source = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.match(source, /@remove-photo="requestChecklistPhotoRemoval"/)
+  assert.match(source, /:visible="showDeleteChecklistPhotoConfirm"[^>]*@close="closeDeleteChecklistPhotoConfirm"[^>]*@confirm="confirmDeleteChecklistPhoto"/)
+  assert.match(source, /if \(isPhotoUploaded\(photo\)\)[\s\S]*?showDeleteChecklistPhotoConfirm\.value = true/)
+  assert.match(source, /async function confirmDeleteChecklistPhoto\(\)[\s\S]*?await removeChecklistPhoto\(payload\)/)
+  assert.match(source, /async function deletePreviewPhoto\(\)[\s\S]*?requestChecklistPhotoRemoval\(\{ item: previewItem\.value, photo: previewPhoto\.value \}, true\)/)
+  assert.match(source, /function closeDeleteChecklistPhotoConfirm\(\)[\s\S]*?pendingChecklistPhoto\.value = \{\}/)
+  assert.doesNotMatch(source.split('function closeDeleteChecklistPhotoConfirm()')[1].split('/** 用户确认后删除已上传媒体')[0], /removeChecklistPhoto/)
+})
+
 /** 输入仅登记受影响的本地业务行，保存完成不以 SQLite 回读覆盖页面内存。 */
 test('detail edits use coalesced row-level writes without rereading the page', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
@@ -53,7 +65,7 @@ test('detail edits use coalesced row-level writes without rereading the page', a
 /** H5 的必传照片标志兼容服务端布尔值和数值 1。 */
 test('required photo badge accepts numeric flags and stays above the camera', async () => {
   const source = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
-  assert.ok(source.includes("Number(raw['isPhotoRequired'] ?? 0) === 1"))
+  assert.ok(source.includes("raw['isPhotoRequired'] === true || parseInt((raw['isPhotoRequired'] ?? 0).toString()) === 1"))
   assert.ok(source.includes('.required-star { position: absolute;'))
 })
 
@@ -922,7 +934,7 @@ test('check item notes save on blur without separate close or confirm actions', 
   assert.match(sheet, /function updateComment\([^)]*\) \{ noteDraft\.value = event\.detail\.value \}/)
   assert.match(sheet, /function saveNotesOnBlur\([^)]*\)[^\n]*autoSaveDraft\(\)/)
   assert.match(sheet, /function closeSheet\([^)]*\) \{ saveNotesOnBlur\(\); emit\('close'\) \}/)
-  assert.match(sheet, /function confirmResult\([^)]*\)[^\n]*saveNotesOnBlur\(\)/)
+  assert.match(sheet, /function confirmResult\([^)]*\)\s*\{\s*saveNotesOnBlur\(\)/)
   assert.doesNotMatch(sheet, /function updateComment\([^)]*\)[^\n]*autoSaveDraft\(\)/)
 })
 

@@ -106,9 +106,9 @@ export function getItemGoodsClass(item) {
  * 判断计划是否满足 H5 合并流程的基础资格。
  */
 export function isBaseMergeEligible(item, inspectType) {
-  const lockFlag = Number(item?.plan?.lockFlag ?? item?.lockFlag ?? item?.raw?.lockFlag ?? 0)
+  const lockFlag = parseInt(String(item?.plan?.lockFlag ?? item?.lockFlag ?? item?.raw?.lockFlag ?? 0))
   const status = normalizeSearchStatus(item?.status ?? item?.plan?.status ?? item?.raw?.status)
-  const mergeType = Number(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0)
+  const mergeType = parseInt(String(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0))
   const targetInspectType = String(inspectType ?? '').trim()
   return lockFlag === 0
     && status === 0
@@ -195,8 +195,8 @@ export function markMergedSourcePlans(items, sourcePlanIds, mergedPlanId) {
 
 /** 仅允许未锁定、已定计划且已合并的成员执行拆分。 */
 export function isSplitAvailable(item) {
-  const lockFlag = Number(item?.plan?.lockFlag ?? item?.lockFlag ?? item?.raw?.lockFlag ?? 0)
-  const mergeType = Number(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0)
+  const lockFlag = parseInt(String(item?.plan?.lockFlag ?? item?.lockFlag ?? item?.raw?.lockFlag ?? 0))
+  const mergeType = parseInt(String(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0))
   const status = normalizeSearchStatus(item?.status ?? item?.plan?.status ?? item?.raw?.status)
   return mergeType === 2 && lockFlag === 0 && status === 0
 }

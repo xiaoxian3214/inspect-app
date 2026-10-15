@@ -12,7 +12,7 @@ export function resolveApiStatusByTab(tabKey) {
  */
 function isMergedChildPlan(plan) {
   const source = plan?.plan != null && typeof plan.plan === 'object' ? plan.plan : plan
-  if (Number(source?.mergeType ?? 0) !== 2) return false
+  if (parseInt(String(source?.mergeType ?? 0)) !== 2) return false
   const parentPlanId = String(source?.parentPlanId ?? plan?.parentPlanId ?? '').trim()
   const ownId = String(source?.id ?? source?.planId ?? plan?.planId ?? plan?.id ?? '').trim()
   return parentPlanId !== '' && parentPlanId !== ownId
@@ -23,7 +23,7 @@ function isMergedChildPlan(plan) {
  */
 function isPlanPendingSync(plan) {
   if (plan == null || typeof plan !== 'object') return false
-  if (Number(plan?.status ?? plan?.plan?.status ?? 0) === 3) return false
+  if (parseInt(String(plan?.status ?? plan?.plan?.status ?? 0)) === 3) return false
   if (isMergedChildPlan(plan)) return false
   if (plan?.pendingSyncPayload == null) return false
 
@@ -96,7 +96,7 @@ export function createPlanListService(options) {
     return {
       items,
       groups: planViewModel.groupPlans(items),
-      total: Math.max(items.length, Number(remoteResult?.total ?? 0)),
+      total: Math.max(items.length, parseInt(String(remoteResult?.total ?? 0))),
       localCount: localPlans.filter((item) => planViewModel.isPlanInTab(item, tabKey)).length
     }
   }

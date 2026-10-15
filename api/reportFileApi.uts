@@ -23,7 +23,7 @@ function buildUploadFormData(params) {
  */
 function createUploadError(message, statusCode) {
   const error = new Error(message)
-  const normalizedStatus = Number(statusCode)
+  const normalizedStatus = parseInt(String(statusCode))
   error.httpStatus = Number.isFinite(normalizedStatus) ? normalizedStatus : 0
   return error
 }
@@ -33,7 +33,7 @@ function createUploadError(message, statusCode) {
  */
 function isMissingTokenUploadBody(body) {
   if (body == null || typeof body !== 'object') return false
-  const code = Number(body.code)
+  const code = parseInt(String(body.code))
   if (code === 401) return true
   if (code !== 400) return false
   const message = String(body.message ?? '')
@@ -45,7 +45,7 @@ function isMissingTokenUploadBody(body) {
  * HTTP 401 优先提示“登录已过期”，业务码缺失令牌提示“登录已失效”，与 apiClient 保持一致。
  */
 function resolveUploadAuthFailure(response) {
-  const statusCode = Number(response?.statusCode ?? 0)
+  const statusCode = parseInt(String(response?.statusCode ?? 0))
   if (statusCode === 401) return { fallbackMessage: '登录已过期，请重新登录' }
   let body = response?.data
   if (typeof body === 'string') {
@@ -63,7 +63,7 @@ function resolveUploadAuthFailure(response) {
  * 解析 uni.uploadFile 返回值并统一抛出服务端或 HTTP 错误。
  */
 function unwrapUploadResponse(response) {
-  const statusCode = Number(response?.statusCode ?? 0)
+  const statusCode = parseInt(String(response?.statusCode ?? 0))
   let body = response?.data
   if (typeof body === 'string') {
     try {
@@ -74,7 +74,8 @@ function unwrapUploadResponse(response) {
   }
   if (statusCode < 200 || statusCode >= 300) throw createUploadError(body?.message ?? `上传失败: ${statusCode}`, statusCode)
   if (body != null && typeof body === 'object') {
-    const success = body?.success !== false && (body?.code === undefined || Number(body.code) === 200 || Number(body.code) === 0)
+    const code = parseInt(String(body.code))
+    const success = body?.success !== false && (body?.code === undefined || code === 200 || code === 0)
     if (!success) throw createUploadError(body?.message ?? '图片上传失败', statusCode)
     return body?.data ?? body
   }
@@ -136,14 +137,14 @@ export function createReportFileApi(options) {
    * params.uploadTimeoutMs 覆盖默认 120000 兜底超时（视频由服务层传 15 分钟）。
    * 会话过期（HTTP 401 或业务缺失令牌）时交由统一鉴权守卫清除会话并跳转登录页。
    */
-  async function uploadInspectFile(localPath, params: any = {}) {
+  async function uploadInspectFile(localPath: string, params: any = {}) {
     const normalizedPath = String(localPath ?? '').trim()
     if (normalizedPath === '') throw new Error('本地文件路径不能为空')
     const session = getSession()
     const header = {}
     if (String(session?.token ?? '').trim() !== '') header.Authorization = `Bearer ${session.token}`
     const fileType = String(params?.fileType ?? '').trim().toLowerCase() === 'video' ? 'video' : 'image'
-    const uploadTimeoutMs = Number(params?.uploadTimeoutMs) > 0 ? Number(params.uploadTimeoutMs) : 120000
+    const uploadTimeoutMs = parseInt(String(params?.uploadTimeoutMs)) > 0 ? parseInt(String(params.uploadTimeoutMs)) : 120000
     const response = await uploadTransport({
       url: `${baseUrl}/api/inspect/file/upload`,
       filePath: normalizedPath,
@@ -203,7 +204,7 @@ export function createReportFileApi(options) {
   }
 
   /** 按 H5 的 fileId 预览接口鉴权下载图片，返回原生 image 可读取的临时路径。 */
-  async function downloadInspectFile(fileId, mode: string = 'thumbnail') {
+  async function downloadInspectFile(fileId: string, mode: string = 'thumbnail') {
     const normalizedFileId = String(fileId ?? '').trim()
     if (normalizedFileId === '') throw new Error('文件ID不能为空')
     const endpoint = `/api/inspect/file/${encodeURIComponent(normalizedFileId)}/${mode === 'preview' ? 'preview' : 'thumbnail'}`
@@ -213,7 +214,7 @@ export function createReportFileApi(options) {
     const response = await downloadTransport({ url: `${baseUrl}${endpoint}`, header, timeout: 30000 })
     const authFailure = resolveUploadAuthFailure(response)
     if (authFailure != null && onAuthFailure != null) return onAuthFailure({ url: endpoint, fallbackMessage: authFailure.fallbackMessage })
-    const statusCode = Number(response?.statusCode ?? 0)
+    const statusCode = parseInt(String(response?.statusCode ?? 0))
     const tempFilePath = String(response?.tempFilePath ?? '').trim()
     if (statusCode < 200 || statusCode >= 300 || tempFilePath === '') throw createUploadError(`加载图片失败: ${statusCode}`, statusCode)
     return tempFilePath
@@ -225,7 +226,7 @@ export function createReportFileApi(options) {
    * 会话过期（HTTP 401 或业务缺失令牌）时交由统一鉴权守卫清除会话并跳转登录页；
    * 非 2xx 或缺失临时文件时抛出携带 httpStatus 的错误供上层提示。
    */
-  async function downloadReportPdf(reportId, params: any = {}) {
+  async function downloadReportPdf(reportId: string, params: any = {}) {
     const normalizedReportId = String(reportId ?? '').trim()
     if (normalizedReportId === '') throw new Error('报告ID不能为空')
     const pdfEndpoint = `/api/reports/${encodeURIComponent(normalizedReportId)}/pdf`
@@ -235,13 +236,13 @@ export function createReportFileApi(options) {
     const response = await downloadTransport({
       url: `${baseUrl}${pdfEndpoint}`,
       header,
-      timeout: Number(params?.timeout) > 0 ? Number(params.timeout) : 120000
+      timeout: parseInt(String(params?.timeout)) > 0 ? parseInt(String(params.timeout)) : 120000
     })
     const authFailure = resolveUploadAuthFailure(response)
     if (authFailure != null && onAuthFailure != null) {
       return onAuthFailure({ url: pdfEndpoint, fallbackMessage: authFailure.fallbackMessage })
     }
-    const statusCode = Number(response?.statusCode ?? 0)
+    const statusCode = parseInt(String(response?.statusCode ?? 0))
     const tempFilePath = String(response?.tempFilePath ?? '').trim()
     if (statusCode < 200 || statusCode >= 300 || tempFilePath === '') {
       throw createUploadError(`下载报告失败: ${statusCode}`, statusCode)

@@ -47,7 +47,7 @@ const OWNER_TYPE_TO_BIZ_TYPE = {
  * 返回第 attempt 次重试前需要等待的毫秒数，超出退避表后固定为 5 分钟封顶。
  */
 export function getPhotoUploadRetryDelay(attempt) {
-  const normalizedAttempt = Math.max(1, Number(attempt) ?? 1)
+  const normalizedAttempt = Math.max(1, parseInt(String(attempt)) ?? 1)
   return PHOTO_UPLOAD_RETRY_DELAYS[normalizedAttempt - 1] ?? PHOTO_UPLOAD_MAX_RETRY_DELAY
 }
 
@@ -58,7 +58,7 @@ export function getPhotoUploadRetryDelay(attempt) {
  */
 export function isRetryableUploadError(error) {
   if (error != null && error?.retryable === false) return false
-  const httpStatus = Number(error?.httpStatus ?? error?.statusCode ?? error?.status ?? 0)
+  const httpStatus = parseInt(String(error?.httpStatus ?? error?.statusCode ?? error?.status ?? 0))
   if (httpStatus === 408 || httpStatus === 425 || httpStatus === 429 || httpStatus >= 500) return true
   if (httpStatus >= 400 && httpStatus < 500) return false
   return true
@@ -70,8 +70,8 @@ export function isRetryableUploadError(error) {
  * delayMs 与 nextRetryAt 描述第 retryCount+1 次重试的等待时长与触发时间。
  */
 export function classifyUploadFailure(error, retryCount, nowMs) {
-  const normalizedRetryCount = Math.max(0, Number(retryCount) ?? 0)
-  const timestamp = Number(nowMs)
+  const normalizedRetryCount = Math.max(0, parseInt(String(retryCount)) ?? 0)
+  const timestamp = parseInt(String(nowMs))
   const normalizedNow = Number.isFinite(timestamp) && timestamp !== 0 ? timestamp : Date.now()
   const message = String(error?.message ?? '图片上传失败')
   const retryable = isRetryableUploadError(error)
@@ -103,7 +103,7 @@ export function classifyUploadFailure(error, retryCount, nowMs) {
 export function isPhotoUploadRetryReady(photo, nowMs) {
   if (String(photo?.uploadStatus ?? '').toLowerCase() !== 'retry_wait') return true
   const nextRetryAt = Date.parse(String(photo?.nextRetryAt ?? ''))
-  const timestamp = Number(nowMs)
+  const timestamp = parseInt(String(nowMs))
   const normalizedNow = Number.isFinite(timestamp) && timestamp !== 0 ? timestamp : Date.now()
   return !(nextRetryAt > 0) || nextRetryAt <= normalizedNow
 }
@@ -158,7 +158,7 @@ function pathHasVideoExtension(path) {
  * @returns valid 表示是否通过，message 为超限时的用户可读原因
  */
 export function validateVideoDuration(durationSeconds) {
-  const duration = Number(durationSeconds)
+  const duration = parseInt(String(durationSeconds))
   if (!(duration > 0)) return { valid: true, message: '' }
   if (duration > MAX_VIDEO_DURATION_SECONDS) {
     return { valid: false, message: `视频时长不能超过 ${MAX_VIDEO_DURATION_SECONDS} 秒` }
@@ -172,7 +172,7 @@ export function validateVideoDuration(durationSeconds) {
  * @returns valid 表示是否通过，message 为超限时的用户可读原因
  */
 export function validateVideoSize(sizeMb) {
-  const size = Number(sizeMb)
+  const size = parseInt(String(sizeMb))
   if (!(size > 0)) return { valid: true, message: '' }
   if (size > MAX_VIDEO_SIZE_MB) {
     return { valid: false, message: `视频大小不能超过 ${MAX_VIDEO_SIZE_MB}MB` }

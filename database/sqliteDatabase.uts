@@ -106,7 +106,7 @@ function diffTable(tableName, previous, next) {
 }
 
 /** 提供与现有 Repository 一致的同步读取和串行事务接口，持久层只使用 SQLite。 */
-export function createSqliteDatabase(driver, schemaSqlList, legacyStorage: any | null = null) {
+export function createSqliteDatabase(driver: any, schemaSqlList: string[], legacyStorage: any | null = null) {
   registerSchemaColumns(schemaSqlList)
   let state = null
   let opening = null
@@ -228,7 +228,7 @@ export function createSqliteDatabase(driver, schemaSqlList, legacyStorage: any |
         let checklistItem = {}
         try { checklistItem = JSON.parse(row.jsonData ?? '{}') }
         catch (_) { checklistItem = { rawJson: row.jsonData } }
-        const marker = { checklistItem, sortOrder: Number(row.sortNo ?? 0) }
+        const marker = { checklistItem, sortOrder: parseInt(String(row.sortNo ?? 0)) }
         return upsertSql('item_result', {
           itemResultId: storageKey, planId: storageId,
           jsonData: JSON.stringify(marker)

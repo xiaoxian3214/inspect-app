@@ -62,7 +62,7 @@ export function createDefectRepository(database) {
     const normalizedReportId = String(reportId ?? '').trim()
     return database.readTable('defect')
       .filter((row) => String(row?.reportId ?? '') === normalizedReportId)
-      .sort((left, right) => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+      .sort((left, right) => parseInt(String(left?.sortNo ?? 0)) - parseInt(String(right?.sortNo ?? 0)))
       .map(parseDefectRow)
   }
 

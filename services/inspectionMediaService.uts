@@ -58,7 +58,7 @@ export function createInspectionMediaService(options) {
     const isVideo = photoUploadPolicy.isVideoMedia(photo)
     uploadParams.fileType = isVideo ? 'video' : 'image'
     uploadParams.uploadTimeoutMs = photoUploadPolicy.resolveUploadTimeoutMs(photo)
-    const previousRetryCount = Math.max(0, Number(photo?.retryCount ?? 0))
+    const previousRetryCount = Math.max(0, parseInt(String(photo?.retryCount ?? 0)))
     try {
       await photoRepository.save(normalizedPlanId, { ...photo, uploadStatus: 'uploading', uploadError: '', nextRetryAt: '' })
       const remote = await reportFileApi.uploadInspectFile(photo.localPath, uploadParams)
@@ -114,7 +114,7 @@ export function createInspectionMediaService(options) {
         await Promise.all(workers)
       }
       const imageConcurrency = Math.max(1, photoUploadPolicy.resolveUploadConcurrency({ networkType }))
-      const videoConcurrency = Math.max(1, Number(photoUploadPolicy.VIDEO_UPLOAD_CONCURRENCY) ?? 1)
+      const videoConcurrency = Math.max(1, parseInt(String(photoUploadPolicy.VIDEO_UPLOAD_CONCURRENCY)) ?? 1)
       await Promise.all([runUploadPool(imagePhotos, imageConcurrency), runUploadPool(videoPhotos, videoConcurrency)])
     }
     return { pendingCount: duePhotos.length, uploadedCount, failedCount }

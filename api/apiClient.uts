@@ -18,7 +18,7 @@ function buildQueryString(query) {
  */
 function isMissingTokenResponse(body) {
   if (body == null || typeof body !== 'object') return false
-  const code = Number(body.code)
+  const code = parseInt(String(body.code))
   if (code === 401) return true
   if (code !== 400) return false
   const message = String(body.message ?? '')
@@ -30,7 +30,7 @@ function isMissingTokenResponse(body) {
  * HTTP 401 优先提示“登录已过期”，业务码缺失令牌提示“登录已失效”，与 H5 request.js 保持一致。
  */
 function resolveAuthFailure(response) {
-  const statusCode = Number(response?.statusCode ?? 0)
+  const statusCode = parseInt(String(response?.statusCode ?? 0))
   if (statusCode === 401) return { fallbackMessage: '登录已过期，请重新登录' }
   const body = response?.data
   if (body != null && typeof body === 'object' && ('code' in body ?? 'success' in body) && isMissingTokenResponse(body)) {
@@ -43,13 +43,13 @@ function resolveAuthFailure(response) {
  * 解包传输层响应：HTTP 非 2xx 与业务失败统一抛错，成功时返回 data 字段。
  */
 function unwrapResponse(response) {
-  const statusCode = Number(response?.statusCode ?? 0)
+  const statusCode = parseInt(String(response?.statusCode ?? 0))
   const body = response?.data
   if (statusCode < 200 || statusCode >= 300) {
     throw new Error(body?.message || `HTTP ${statusCode}`)
   }
   if (body != null && typeof body === 'object' && ('code' in body ?? 'success' in body)) {
-    const success = body.success !== false && (body.code === undefined || Number(body.code) === 200 || Number(body.code) === 0)
+    const success = body.success !== false && (body.code === undefined || parseInt(String(body.code)) === 200 || parseInt(String(body.code)) === 0)
     if (!success) throw new Error(body.message ?? '接口调用失败')
     return body.data
   }
@@ -134,7 +134,7 @@ export function createApiClient(options) {
 
     return queue.enqueue({
       key: taskKey,
-      priority: Number(requestOptions?.priority ?? 0),
+      priority: parseInt(String(requestOptions?.priority ?? 0)),
       lane: requestOptions?.lane ?? (String(requestOptions?.method ?? 'GET').toUpperCase() === 'GET' ? 'read' : 'write'),
       execute: async () => {
         const response = await transport({
@@ -142,7 +142,7 @@ export function createApiClient(options) {
           method: requestOptions?.method ?? 'GET',
           data: requestOptions?.data ?? {},
           headers,
-          timeout: Number(requestOptions?.timeout ?? 30000)
+          timeout: parseInt(String(requestOptions?.timeout ?? 30000))
         })
         const authFailure = resolveAuthFailure(response)
         if (authFailure != null && onAuthFailure != null) {
