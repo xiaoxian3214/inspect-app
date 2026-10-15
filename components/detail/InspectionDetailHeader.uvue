@@ -10,6 +10,7 @@
 			<view v-for="tab in tabs" :key="tab.key" class="tab" :class="{ active: activeTab === tab.key }" @click="changeTab(tab.key)">
 				<text class="tab-icon">{{ tab.icon }}</text>
 				<text class="tab-text">{{ translateText(tab.label) }}</text>
+				<view v-if="activeTab === tab.key" class="tab-indicator"></view>
 			</view>
 		</view>
 	</view>
@@ -60,10 +61,10 @@
 	.nav-button { width: 68rpx; height: 68rpx; align-items: center; justify-content: center; }
 	.nav-title { flex: 1; color: #ffffff; font-size: 32rpx; font-weight: 600; text-align: center; }
 	.sync-entry { width: 68rpx; align-items: center; justify-content: center; }
-	.tabs { height: 102rpx; flex-direction: row; }
-	.tab { flex: 1; align-items: center; justify-content: center; opacity: 0.85; border-bottom-width: 6rpx; border-bottom-color: transparent; }
-	.tab-icon { color: #ffffff; font-size: 32rpx; }
-	.tab-text { margin-top: 5rpx; color: #ffffff; font-size: 24rpx; }
-	.tab.active { opacity: 1; border-bottom-color: #ffffff; }
-	.tab-text { font-weight: 700; }
+	.tabs { flex-direction: row; margin-top: 8px; }
+	.tab { position: relative; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding: 10px 0 11px; opacity: 0.9; }
+	.tab.active { opacity: 1; }
+	.tab-indicator { position: absolute; left: 0; right: 0; bottom: 0; height: 6rpx; background-color: #ffffff; }
+	.tab-icon { color: #ffffff; font-size: 18px; line-height: 20px; }
+	.tab-text { margin-top: 4px; color: #ffffff; font-size: 13px; line-height: 16px; }
 </style>

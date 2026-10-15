@@ -132,10 +132,17 @@ test('uses H5 endpoints for delete sort and move', async () => {
   })
 
   await api.deleteInspectFile('file 1')
-  await api.sortInspectFiles([{ fileId: 'file-1', sortNo: 1 }])
+  const sorted = [
+    { fileId: '2108766832914706433', sortNo: 1 },
+    { fileId: '2108766832725962754', sortNo: 2 },
+    { fileId: '2108766832939872258', sortNo: 3 },
+    { fileId: '2108766834466598914', sortNo: 4 }
+  ]
+  await api.sortInspectFiles(sorted)
   await api.moveInspectFile({ fileId: 'file-1', targetBizId: 'item-2' })
 
   assert.equal(requests[0].url, '/api/inspect/file/delete/file%201')
-  assert.deepEqual(requests[1].data, { items: [{ fileId: 'file-1', sortNo: 1 }] })
+  assert.equal(requests[1].url, '/api/inspect/file/sort')
+  assert.deepEqual(requests[1].data, { items: sorted })
   assert.equal(requests[2].url, '/api/inspect/file/move')
 })

@@ -4,6 +4,7 @@
 export function createPersistentOperationService(options) {
   const requestQueueRepository = options.requestQueueRepository
   const reportFileApi = options.reportFileApi
+  const planApi = options.planApi
   const isOnline = options.isOnline
   const createId = typeof options.createId === 'function' ? options.createId : () => `task-${Date.now()}-${Math.random().toString(16).slice(2)}`
   let activeProcess = null
@@ -17,11 +18,23 @@ export function createPersistentOperationService(options) {
     return requestQueueRepository.enqueue({ id: createId(), taskType: 'FILE_DELETE', dedupeKey: `file-delete:${normalizedFileId}`, payload: { fileId: normalizedFileId }, priority: 60 })
   }
 
+  /** 将已上传文件复制到其他检查结果的操作持久化，联网后按 H5 专用接口执行。 */
+  async function enqueuePhotoCopy(payload) {
+    const sourcePlanId = String(payload?.sourcePlanId ?? '').trim()
+    const sourceItemId = String(payload?.sourceItemId ?? '').trim()
+    const targetItemIds = Array.isArray(payload?.targetItemIds) ? payload.targetItemIds : []
+    const fileIds = Array.isArray(payload?.fileIds) ? payload.fileIds : []
+    if (sourcePlanId === '' || sourceItemId === '' || targetItemIds.length === 0 || fileIds.length === 0) throw new Error('图片复制缺少来源或目标检查结果')
+    const dedupeKey = `photo-copy:${sourcePlanId}:${sourceItemId}:${targetItemIds.join(',')}:${fileIds.join(',')}`
+    return requestQueueRepository.enqueue({ id: createId(), taskType: 'PHOTO_COPY', dedupeKey, payload, priority: 50 })
+  }
+
   /**
    * 按任务类型执行单个持久操作。
    */
   async function executeTask(task) {
     if (task?.taskType === 'FILE_DELETE') return reportFileApi.deleteInspectFile(task?.payload?.fileId)
+    if (task?.taskType === 'PHOTO_COPY') return planApi.copyPhotosToItems(task?.payload)
     throw new Error(`不支持的持久任务类型: ${task?.taskType ?? ''}`)
   }
 
@@ -50,5 +63,5 @@ export function createPersistentOperationService(options) {
     return activeProcess
   }
 
-  return { enqueueFileDelete, processPending }
+  return { enqueueFileDelete, enqueuePhotoCopy, processPending }
 }

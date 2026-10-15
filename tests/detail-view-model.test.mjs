@@ -4,6 +4,38 @@ import { loadUtsModule } from './load-uts-module.mjs'
 
 const viewModel = await loadUtsModule('domain/detailViewModel.uts')
 
+/** 复制目标仅保留可用的普通验货，排除当前合并组及它的子计划。 */
+test('filters copy target plans by merge group and H5 eligibility', () => {
+  const current = { planId: 'member-1', plan: { id: 'member-1', parentPlanId: 'group-1', mergeType: 2 }, inspectionPlans: [{ id: 'member-1' }, { id: 'member-2' }] }
+  const plans = [
+    { id: 'member-1', status: 0, mergeType: 0 },
+    { id: 'member-2', status: 0, mergeType: 0 },
+    { id: 'group-1', status: 0, mergeType: 0 },
+    { id: 'child', status: 0, mergeType: 2, parentPlanId: 'other-group' },
+    { id: 'merged-parent', status: 0, mergeType: 1 },
+    { id: 'same-group-child', status: 0, parentPlanId: 'group-1' },
+    { id: 'unlocked', status: 0, lockFlag: 0 },
+    { id: 'finished', status: 3 },
+    { id: 'eligible', status: 1, mergeType: 0, lockFlag: 1 }
+  ]
+  assert.deepEqual(viewModel.filterCopyTargetPlans(plans, current).map((plan) => plan.id), ['eligible'])
+})
+
+/** 联网原样使用接口返回顺序和每条记录，离线才验证本地缓存资格。 */
+test('selects remote copy plans authoritatively and filters offline cache', () => {
+  const current = { planId: 'current', plan: { id: 'current' } }
+  const remote = [{ id: 'current', status: 1 }, { id: 'remote-b', status: 1, mergeType: 0, lockFlag: 1 }, { id: 'remote-a', status: 3 }, { id: 'remote-b', status: 1 }]
+  const cached = [
+    { plan: { id: 'stale', status: 0, mergeType: 0, lockFlag: 1, inspectorId: 'other' } },
+    { plan: { id: 'unverified', status: 0, mergeType: 0, inspectorId: 'mine' } },
+    { plan: { id: 'offline', status: 1, mergeType: 0, lockFlag: 1, inspectorId: 'mine' } },
+    { plan: { id: 'offline', status: 1, mergeType: 0, lockFlag: 1, inspectorId: 'mine' } }
+  ]
+  assert.deepEqual(viewModel.selectCopyTargetPlans(remote, cached, current, 'mine', true), remote)
+  assert.deepEqual(viewModel.selectCopyTargetPlans([], cached, current, 'mine', true), [])
+  assert.deepEqual(viewModel.selectCopyTargetPlans(remote, cached, current, 'mine', false).map((plan) => plan.id), ['offline'])
+})
+
 /** 服务端清单模板 ID 不等于结果 ID 时，列表和弹层必须用结果主键读取状态与备注。 */
 test('binds template checklist nodes to their persisted item result ids', () => {
   const detail = viewModel.normalizeInspectionDetail({
@@ -26,6 +58,20 @@ test('normalizes barcode values from a remote item result for the checklist shee
   assert.equal(detail.checklistData.barcode.result, 'pass')
   assert.equal(detail.checklistData.barcode.comment, '扫码正常')
   assert.deepEqual(detail.checklistData.barcode.barcodeItems, [{ name: 'EAN', code: '12345', format: 'EAN13' }])
+})
+
+/** H5 只提交有名称、码值或格式的条码项，空占位项不能生成服务端 barcodeValue。 */
+test('omits blank barcode placeholders from report item results', () => {
+  const detail = viewModel.normalizeInspectionDetail({ plan: { id: 'plan' }, standardItems: [{ children: [{ id: 'barcode', itemType: 'Barcodes' }] }], checklistData: { barcode: { barcodeItems: [{ name: '', code: '', format: '' }], barcodeList: [], barcode: '' } } }, 'plan')
+  const payload = viewModel.buildGeneratePayload(detail)
+  assert.equal(payload.itemResults.find((item) => item.id === 'barcode')?.barcodeValue ?? null, null)
+})
+
+/** 已命名但尚未扫码的项目仍按 H5 保存名称，纯空行不会混入结果。 */
+test('keeps named barcode items but omits empty rows', () => {
+  const detail = viewModel.normalizeInspectionDetail({ plan: { id: 'plan' }, standardItems: [{ children: [{ id: 'barcode', itemType: 'Barcodes' }] }], checklistData: { barcode: { barcodeItems: [{ name: '', code: '', format: '' }, { name: '外箱码', code: '', format: '' }] } } }, 'plan')
+  const payload = viewModel.buildGeneratePayload(detail)
+  assert.equal(payload.itemResults.find((item) => item.id === 'barcode').barcodeValue, '[{"name":"外箱码","code":"","format":""}]')
 })
 
 test('normalizes H5 standard items and item results into editable checklist data', () => {
@@ -183,6 +229,21 @@ test('keeps check point photo business type in the offline draft payload', () =>
   const files = viewModel.buildGeneratePayload(detail).itemResults[0].fileList
   assert.equal(files[1].bizType, 'checkPoint')
   assert.equal(files[0].bizType, undefined)
+})
+
+/** 普通报告保存保留在线排序后的文件顺序和 sortNo，不把旧服务端顺序写回。 */
+test('report draft preserves sorted uploaded file numbers', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'plan-1' },
+    standardItems: [{ children: [{ id: 'item-1', itemType: 'Standard' }] }],
+    checklistData: { 'item-1': { photos: [
+      { fileId: 'second', filePath: '/second.jpg', sortNo: 1 },
+      { fileId: 'first', filePath: '/first.jpg', sortNo: 2 }
+    ] } }
+  }, 'plan-1')
+  assert.deepEqual(viewModel.buildGeneratePayload(detail).itemResults[0].fileList.map(({ fileId, sortNo }) => ({ fileId, sortNo })), [
+    { fileId: 'second', sortNo: 1 }, { fileId: 'first', sortNo: 2 }
+  ])
 })
 
 test('check point photos do not satisfy required inspection result photos', () => {
@@ -607,6 +668,158 @@ test('copies an uploaded photo locally and prevents duplicate target file record
   assert.equal(copiedAgain.checklistData['item-2'].photos[0].photoId, 'photo-copy-2')
   assert.equal(copiedAgain.checklistData['item-2'].photos[0].fileId, 'file-1')
   assert.equal(copiedAgain.checklistData['item-2'].photos[0].ownerId, 'item-2')
+})
+
+/** 批量媒体复制应仅处理已选文件和目标，并保持每个目标的文件 ID 去重。 */
+test('copies selected media to multiple check points in one detail update', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'plan-1' },
+    standardItems: [{ id: 'section', children: [
+      { id: 'source', standardItemId: 'source-std', itemName: '源' },
+      { id: 'target-a', standardItemId: 'a-std', itemName: '目标A' },
+      { id: 'target-b', standardItemId: 'b-std', itemName: '目标B' }
+    ] }],
+    checklistData: {
+      source: { photos: [
+        { photoId: 'photo-1', fileId: 'file-1', ownerType: 'checklist', ownerId: 'source', uploadStatus: 'done' },
+        { photoId: 'photo-2', fileId: 'file-2', ownerType: 'checklist', ownerId: 'source', uploadStatus: 'done' },
+        { photoId: 'photo-pending', localPath: '/saved/pending.jpg', ownerType: 'checklist', ownerId: 'source', uploadStatus: 'pending' }
+      ] },
+      'target-a': { photos: [] }, 'target-b': { photos: [] }
+    }
+  }, 'plan-1')
+  const targets = detail.checklistItems.filter((item) => item.itemId.startsWith('target-'))
+  const copied = viewModel.copyChecklistPhotosToItems(detail, ['file-1', 'file-2'], targets)
+  const repeated = viewModel.copyChecklistPhotosToItems(copied, ['file-1', 'file-2'], targets)
+  for (const id of ['target-a', 'target-b']) {
+    assert.deepEqual(repeated.checklistData[id].photos.map((photo) => photo.fileId), ['file-1', 'file-2'])
+    assert.ok(repeated.checklistData[id].photos.every((photo) => photo.ownerId === id))
+  }
+  assert.equal(repeated.checklistData.source.photos.length, 3)
+})
+
+/** 合并验货选择子计划目标时，媒体写入对应数据键而不覆盖主检查项。 */
+test('copies media into a merged child check point separately', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'parent' },
+    standardItems: [{ id: 'section', children: [{ id: 'source', itemName: '源' }, { id: 'target', standardItemId: 'target-std', itemName: '目标' }] }],
+    checklistData: { source: { photos: [{ fileId: 'file-1', ownerType: 'checklist', ownerId: 'source', uploadStatus: 'done' }] }, target: { photos: [] } }
+  }, 'parent')
+  const copied = viewModel.copyChecklistPhotosToItems(detail, ['file-1'], [{ itemId: 'target__child', standardItemId: 'target-std', sonPlanId: 'child' }])
+  assert.deepEqual(copied.checklistData.target.photos, [])
+  assert.equal(copied.checklistData['target__child'].photos[0].ownerId, 'target__child')
+})
+
+/** H5 仅允许选择已有业务结果行的子检查点，并排除当前主/子来源。 */
+test('builds batch media targets with existing merged child result ids', () => {
+  const detail = {
+    checklistItems: [
+      { itemId: 'source', standardItemId: 'source-std', itemName: '源', sonPlanId: '' },
+      { itemId: 'target', standardItemId: 'target-std', itemName: '目标', sonPlanId: '' },
+      { itemId: 'target__child-a', baseItemId: 'target', sonPlanId: 'child-a' }
+    ],
+    inspectionPlans: [
+      { id: 'child-a', clientOrderNo: 'A', subGoodsNo: '001', batchNo: '2' },
+      { id: 'child-b', clientOrderNo: 'B' }
+    ],
+    itemResults: [
+      { id: 'source', standardItemId: 'source-std' },
+      { id: 'target', standardItemId: 'target-std' },
+      { id: 'source_child-a', baseItemResultId: 'source', sonPlanId: 'child-a' },
+      { id: 'target_child-a', standardItemId: 'target-std', sonPlanId: 'child-a' }
+    ]
+  }
+  const targets = viewModel.buildBatchMoveTargets(detail, 'source')
+  assert.deepEqual(targets.map((item) => item.bizId), ['target', 'source_child-a', 'target_child-a'])
+  assert.equal(targets.find((item) => item.bizId === 'target_child-a').itemId, 'target__child-a')
+  assert.equal(targets.find((item) => item.bizId === 'target_child-a').subLabel, 'A（001#2）')
+  assert.ok(!targets.some((item) => item.sonPlanId === 'child-b'))
+  const childSourceTargets = viewModel.buildBatchMoveTargets(detail, 'source__child-a')
+  assert.ok(childSourceTargets.some((item) => item.bizId === 'source'))
+  assert.ok(!childSourceTargets.some((item) => item.bizId === 'source_child-a'))
+  assert.deepEqual(viewModel.buildBatchMoveTargets({ ...detail, inspectionPlans: [{ id: 'child-a' }] }).map((item) => item.bizId), ['source', 'target'])
+})
+
+/** 通过弹框所选的子行业务 ID，照片写入该子行且保留业务 ID 供草稿同步。 */
+test('selected child target receives copied media under its own business id', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'parent' },
+    inspectionPlans: [{ id: 'child-a' }, { id: 'child-b' }],
+    standardItems: [{ id: 'section', children: [
+      { id: 'source', standardItemId: 'source-std', itemName: '源' },
+      { id: 'target', standardItemId: 'target-std', itemName: '目标' }
+    ] }],
+    itemResults: [{ id: 'target_child-a', baseItemResultId: 'target', standardItemId: 'target-std', sonPlanId: 'child-a' }],
+    checklistData: { source: { photos: [{ fileId: 'file-1', ownerType: 'checklist', ownerId: 'source', uploadStatus: 'done' }] } }
+  }, 'parent')
+  const chosen = viewModel.buildBatchMoveTargets(detail, 'source').find((item) => item.bizId === 'target_child-a')
+  assert.ok(chosen)
+  const copied = viewModel.copyChecklistPhotosToItems(detail, ['file-1'], [chosen])
+  assert.equal(copied.checklistData['target__child-a'].photos[0].bizId, 'target_child-a')
+  assert.equal(copied.checklistData['target__child-a'].photos[0].ownerId, 'target__child-a')
+  assert.equal(copied.checklistData.target?.photos?.length ?? 0, 0)
+})
+
+/** 跨单复制按模板匹配目标计划自己的结果主键，不能把源单结果主键写入目标单。 */
+test('maps source checklist selections to target result ids', () => {
+  const source = viewModel.normalizeInspectionDetail({ plan: { id: 'source' }, itemResults: [
+    { id: 'source-result-1', standardItemId: 'standard-1', itemName: '外观', parentItemId: 'source-section' },
+    { id: 'source-result-2', standardItemId: 'standard-2', itemName: '标签', parentItemId: 'source-section' },
+    { id: 'source-section', standardItemId: 'section', itemName: '检查' }
+  ] }, 'source')
+  const target = viewModel.normalizeInspectionDetail({ plan: { id: 'target' }, itemResults: [
+    { id: 'target-result-1', standardItemId: 'standard-1', itemName: '外观', parentItemId: 'target-section' },
+    { id: 'target-result-2', standardItemId: 'standard-2', itemName: '标签', parentItemId: 'target-section' },
+    { id: 'target-section', standardItemId: 'section', itemName: '检查' }
+  ] }, 'target')
+  assert.deepEqual(viewModel.resolveCopyTargetItemIds(source, target, ['source-result-1', 'source-result-2']), ['target-result-1', 'target-result-2'])
+  assert.throws(() => viewModel.resolveCopyTargetItemIds(source, { ...target, itemResults: [] }, ['source-result-1']), /目标.*检查结果/)
+  assert.throws(() => viewModel.resolveCopyTargetItemIds(source, target, ['missing-source']), /源.*检查项/)
+})
+
+/** 普通报告草稿中的目标结果行保持自身主键，不会提交源计划的检查结果 ID。 */
+test('generates copied checklist rows with target result ids', () => {
+  const source = viewModel.normalizeInspectionDetail({ plan: { id: 'source' }, itemResults: [
+    { id: 'source-result', standardItemId: 'std', itemName: '外观', resultStatus: 'APPROVED' }
+  ] }, 'source')
+  const target = viewModel.normalizeInspectionDetail({ plan: { id: 'target' }, itemResults: [
+    { id: 'target-result', standardItemId: 'std', itemName: '外观' }
+  ] }, 'target')
+  const targetItemIds = viewModel.resolveCopyTargetItemIds(source, target, ['source-result'])
+  const copied = viewModel.copyChecklistItemToDetail(source, target, { sourceItemId: 'source-result', targetItemIds, copyStatus: true })
+  const payload = viewModel.buildGeneratePayload(copied)
+  assert.equal(payload.itemResults.find((row) => row.standardItemId === 'std').id, 'target-result')
+  assert.equal(payload.itemResults.find((row) => row.standardItemId === 'std').resultStatus, 'APPROVED')
+})
+
+/** 批量照片按来源检查结果分组，服务端目标使用业务 ID 而非本地合并子行键。 */
+test('builds server photo copy operations for each source result', () => {
+  const detail = viewModel.normalizeInspectionDetail({
+    plan: { id: 'plan-1' },
+    inspectionPlans: [{ id: 'child-a' }, { id: 'child-b' }],
+    itemResults: [{ id: 'target_child-a', standardItemId: 'target-std', sonPlanId: 'child-a', baseItemResultId: 'target' }],
+    standardItems: [{ id: 'section', children: [
+      { id: 'source', standardItemId: 'source-std', itemName: '源' },
+      { id: 'other', standardItemId: 'other-std', itemName: '另一来源' },
+      { id: 'target', standardItemId: 'target-std', itemName: '目标' }
+    ] }],
+    checklistData: {
+      source: { photos: [{ fileId: 'file-1', ownerType: 'checklist', ownerId: 'source', uploadStatus: 'done' }] },
+      other: { photos: [{ fileId: 'file-2', ownerType: 'checklist', ownerId: 'other', uploadStatus: 'done' }] }
+    }
+  }, 'plan-1')
+  const targets = viewModel.buildBatchMoveTargets(detail).filter((row) => row.bizId === 'target_child-a')
+  assert.deepEqual(viewModel.buildBatchPhotoCopyRequests(detail, ['file-1', 'file-2'], targets), [
+    { sourcePlanId: 'plan-1', sourceItemId: 'source', targetPlanIds: ['plan-1'], targetItemIds: ['target_child-a'], fileIds: ['file-1'] },
+    { sourcePlanId: 'plan-1', sourceItemId: 'other', targetPlanIds: ['plan-1'], targetItemIds: ['target_child-a'], fileIds: ['file-2'] }
+  ])
+})
+
+/** 模板节点即使使用源主键，也只能向接口传目标计划中真实存在的结果主键。 */
+test('batch media targets reject template-only ids and select persisted result ids', () => {
+  const detail = { planId: 'plan', checklistItems: [{ itemId: 'template-target', standardItemId: 'std', itemName: '目标', sonPlanId: '' }], itemResults: [] }
+  assert.deepEqual(viewModel.buildBatchMoveTargets(detail), [])
+  assert.deepEqual(viewModel.buildBatchMoveTargets({ ...detail, itemResults: [{ id: 'result-target', standardItemId: 'std' }] }).map((item) => item.bizId), ['result-target'])
 })
 
 test('updates local plan quantities without requiring a direct network request', () => {

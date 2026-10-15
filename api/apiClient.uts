@@ -56,17 +56,55 @@ function unwrapResponse(response) {
   return body
 }
 
+/** 递归遮盖请求参数和响应数据中的凭据字段，避免开发日志泄露密码或令牌。 */
+function redactDebugData(value) {
+  if (Array.isArray(value)) return value.map((item) => redactDebugData(item))
+  if (value == null || typeof value !== 'object') return value
+  const redacted = {}
+  Object.keys(value).forEach((key) => {
+    redacted[key] = /password|passwd|pwd|token|secret|authorization|cookie/i.test(key)
+      ? '[REDACTED]'
+      : redactDebugData(value[key])
+  })
+  return redacted
+}
+
+/** 保留 URL 中可排查的查询参数，但遮盖查询字符串内的凭据值。 */
+function redactDebugUrl(url) {
+  return String(url ?? '').replace(/([?&][^=&]*(?:password|passwd|pwd|token|secret|authorization|cookie)[^=&]*=)[^&]*/gi, '$1[REDACTED]')
+}
+
+/** 仅在开发构建中记录请求方法、URL 和脱敏后的请求参数。 */
+function logDebugRequest(request) {
+  if (process.env.NODE_ENV !== 'development') return
+  console.log('【请求入参】', request.method ?? 'GET', redactDebugUrl(request.url), JSON.stringify(redactDebugData(request.data ?? {})))
+}
+
+/** 仅在开发构建中记录对应请求 URL、响应状态和脱敏后的返回数据。 */
+function logDebugResponse(request, response) {
+  if (process.env.NODE_ENV !== 'development') return
+  console.log('【返回结果】', redactDebugUrl(request.url), response.statusCode, JSON.stringify(redactDebugData(response.data)))
+}
+
+/** 仅在开发构建中记录网络层失败，不改变原有错误传递。 */
+function logDebugFailure(error) {
+  if (process.env.NODE_ENV !== 'development') return
+  console.error('【请求失败】', JSON.stringify(redactDebugData(error)))
+}
+
+/** 将 uni.request 包装成 Promise，开发构建同时输出脱敏的请求和响应日志。 */
 export function createUniTransport() {
   return function transport(request) {
     return new Promise((resolve, reject) => {
+      logDebugRequest(request)
       uni.request({
         url: request.url,
         method: request.method,
         data: request.data,
         header: request.headers,
         timeout: request.timeout,
-        success: resolve,
-        fail: reject
+        success: (response) => { logDebugResponse(request, response); resolve(response) },
+        fail: (error) => { logDebugFailure(error); reject(error) }
       })
     })
   }

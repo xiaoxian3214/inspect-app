@@ -64,6 +64,30 @@ test('deduplicates simultaneous network recovery and page synchronization reques
   assert.equal(syncCount, 1)
 })
 
+/** 最终提交只等待已在运行的普通同步，不额外触发新一轮草稿同步。 */
+test('waits for an active ordinary sync without starting another one', async () => {
+  let releaseSync
+  let syncCount = 0
+  const gate = new Promise((resolve) => { releaseSync = resolve })
+  const service = automaticSyncModule.createAutomaticSyncService({
+    getSession: () => ({ token: 'token' }), isOnline: async () => true,
+    processPendingOperations: async () => {}, listPendingPhotoPlanIds: async () => [],
+    uploadPendingPhotos: async () => {}, refreshDraftPhotos: async () => {},
+    syncPendingPlans: async () => { syncCount += 1; await gate; return { syncedCount: 1, failedCount: 0 } }
+  })
+  await service.waitForIdle()
+  assert.equal(syncCount, 0)
+  const syncing = service.syncWhenOnline()
+  let settled = false
+  const waiting = service.waitForIdle().then(() => { settled = true })
+  await Promise.resolve()
+  assert.equal(settled, false)
+  releaseSync()
+  await Promise.all([syncing, waiting])
+  assert.equal(syncCount, 1)
+  assert.equal(service.getState().phase, 'idle')
+})
+
 /** 上传请求进行时向页面实时推送状态，上传结束和同步结束后更新并清理订阅。 */
 test('notifies subscribers while photos upload and when the queue settles', async () => {
   let finishUpload
@@ -129,7 +153,7 @@ test('app lifecycle list resume and network recovery own automatic synchronizati
   assert.match(app, /requestAutomaticSync/)
   assert.match(app, /onAppShow/)
   assert.match(runtime, /createAutomaticSyncService/)
-  assert.match(detail, /if \(markDirty\) processSyncQueueAfterChange\(\)/)
+  assert.match(detail, /if \(markDirty && options\?\.deferSync !== true\) processSyncQueueAfterChange\(\)/)
   assert.match(detail, /function processSyncQueueAfterChange\(\)/)
   assert.equal((detail.match(/syncOfflineDataAutomatically\(\)/g) || []).length, 2)
   assert.match(detail, /await syncOfflineDataAutomatically\(\)/)

@@ -1,0 +1,7 @@
+<template>
+	<image class="merge-plan-icon" src="/static/icons/merge-plan.png" mode="aspectFit" />
+</template>
+
+<style>
+	.merge-plan-icon { width: 32rpx; height: 32rpx; }
+</style>

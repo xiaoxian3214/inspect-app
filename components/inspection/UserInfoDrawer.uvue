@@ -1,0 +1,97 @@
+<template>
+	<view v-if="visible" class="user-drawer-overlay" @click="closeDrawer">
+		<view class="user-drawer" @click.stop>
+			<TopSafeArea background-color="#ffffff" />
+			<view class="user-drawer-header">
+				<text class="user-drawer-title">{{ t('用户信息') }}</text>
+			</view>
+			<scroll-view class="user-drawer-content" :scroll-y="true">
+				<view class="user-info-list">
+					<view class="user-info-row"><text class="user-info-label">{{ t('用户名称') }}</text><text class="user-info-value">{{ userName }}</text></view>
+					<view class="user-info-row"><text class="user-info-label">{{ t('用户ID') }}</text><text class="user-info-value">{{ userId }}</text></view>
+					<view class="user-info-row"><text class="user-info-label">{{ t('邮箱') }}</text><text class="user-info-value">{{ email }}</text></view>
+				</view>
+			</scroll-view>
+			<view class="user-drawer-footer" :style="{ paddingBottom: footerBottomPadding }">
+				<view class="user-lang-row">
+					<text class="user-lang-label">{{ t('切换语言') }}</text>
+					<view class="user-lang-options">
+						<view v-for="code in locales" :key="code" class="user-lang-option" :class="{ active: code === locale }" @click="changeLanguage(code)"><text class="user-lang-code" :class="{ active: code === locale }">{{ code }}</text></view>
+					</view>
+				</view>
+				<view class="user-action invite" :class="{ disabled: inviteGenerating }" @click="inviteVendor"><text class="user-action-label invite">{{ inviteGenerating ? t('生成中...') : t('邀请供应商') }}</text></view>
+				<view class="user-action debug" @click="viewLocalData"><text class="user-action-label debug">{{ t('查看本地数据') }}</text></view>
+				<view class="user-action warning" :class="{ disabled: clearingLocalCache }" @click="clearCache"><text class="user-action-label warning">{{ clearingLocalCache ? t('清理中...') : t('清除本地缓存') }}</text></view>
+				<view class="user-action update" @click="checkForUpdates"><text class="user-action-label update">{{ t('检查更新') }}</text></view>
+				<view class="user-action danger" @click="logout"><text class="user-action-label danger">{{ t('退出登录') }}</text></view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import TopSafeArea from '../common/TopSafeArea.uvue'
+	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
+	import { t } from '../../i18n/index.uts'
+
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		userName: { type: String, default: '-' },
+		userId: { type: String, default: '-' },
+		email: { type: String, default: '-' },
+		locale: { type: String, default: 'zh' },
+		locales: { type: Array, default: () => ['zh', 'en', 'vi'] },
+		inviteGenerating: { type: Boolean, default: false },
+		clearingLocalCache: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['close', 'change-language', 'invite-vendor', 'view-local-data', 'clear-cache', 'check-for-updates', 'logout'])
+	const footerBottomPadding = safeBottomPaddingPx(28)
+
+	/** 点击抽屉外遮罩时通知列表关闭用户信息。 */
+	function closeDrawer() { emit('close') }
+	/** 把 H5 同源语言代码交给列表持久化并立即刷新翻译。 */
+	function changeLanguage(code: string) { emit('change-language', code) }
+	/** 邀请链接生成中阻止重复请求。 */
+	function inviteVendor() { if (props.inviteGenerating) return; emit('invite-vendor') }
+	/** 打开本地数据查看页面。 */
+	function viewLocalData() { emit('view-local-data') }
+	/** 清理中阻止重复清空离线报告。 */
+	function clearCache() { if (props.clearingLocalCache) return; emit('clear-cache') }
+	/** 通知列表页响应用户主动发起的检查更新操作。 */
+	function checkForUpdates() { emit('check-for-updates') }
+	/** 请求列表执行原有退出登录流程。 */
+	function logout() { emit('logout') }
+</script>
+
+<style>
+	.user-drawer-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2100; flex-direction: row; background-color: rgba(0, 0, 0, 0.42); }
+	.user-drawer { width: 82%; max-width: 640rpx; height: 100%; flex-direction: column; background-color: #ffffff; box-shadow: 12rpx 0 48rpx rgba(15, 23, 42, 0.16); }
+	.user-drawer-header { padding: 40rpx 32rpx 28rpx; border-bottom-width: 2rpx; border-bottom-color: #e5e7eb; }
+	.user-drawer-title { color: #111827; font-size: 36rpx; font-weight: 700; }
+	.user-drawer-content { flex: 1; min-height: 0; }
+	.user-info-list { padding: 20rpx 32rpx; }
+	.user-info-row { min-height: 88rpx; padding: 20rpx 0; flex-direction: row; align-items: center; justify-content: space-between; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.user-info-label { color: #64748b; font-size: 26rpx; }
+	.user-info-value { flex: 1; margin-left: 20rpx; color: #111827; font-size: 28rpx; font-weight: 500; text-align: right; }
+	.user-drawer-footer { margin-top: auto; padding: 28rpx 32rpx; border-top-width: 2rpx; border-top-color: #e5e7eb; }
+	.user-lang-row { margin-bottom: 20rpx; }
+	.user-lang-label { margin-bottom: 14rpx; color: #64748b; font-size: 26rpx; }
+	.user-lang-options { flex-direction: row; }
+	.user-lang-option { flex: 1; height: 64rpx; margin-right: 12rpx; align-items: center; justify-content: center; border-width: 2rpx; border-style: solid; border-color: #e2e8f0; border-radius: 16rpx; background-color: #f8fafc; }
+	.user-lang-option.active { border-color: #22c55e; background-color: #ecfdf5; }
+	.user-lang-code { color: #334155; font-size: 26rpx; font-weight: 700; }
+	.user-lang-code.active { color: #16a34a; }
+	.user-action { width: 100%; height: 84rpx; margin-bottom: 20rpx; align-items: center; justify-content: center; border-width: 2rpx; border-style: solid; border-radius: 20rpx; }
+	.user-action.disabled { opacity: 0.7; }
+	.user-action.invite { border-color: #22c55e; background-color: #f0fdf4; }
+	.user-action.debug { border-color: #6366f1; background-color: #eef2ff; }
+	.user-action.warning { border-color: #f59e0b; background-color: #fffbeb; }
+	.user-action.update { border-color: #38bdf8; background-color: #f0f9ff; }
+	.user-action.danger { height: 88rpx; margin-bottom: 0; border-color: #ef4444; background-color: #ef4444; }
+	.user-action-label { font-size: 28rpx; font-weight: 600; }
+	.user-action-label.invite { color: #16a34a; }
+	.user-action-label.debug { color: #4338ca; }
+	.user-action-label.warning { color: #b45309; }
+	.user-action-label.update { color: #0369a1; }
+	.user-action-label.danger { color: #ffffff; font-size: 30rpx; }
+</style>

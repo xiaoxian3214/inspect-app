@@ -24,3 +24,14 @@ export function moveMediaItem(items, fromIndex, toIndex) {
   reordered.splice(targetIndex, 0, movedItems[0])
   return normalizeMediaOrder(reordered)
 }
+
+/** 用三列原生网格的格宽和触摸位移求拖放目标，末行不足三格时收敛到最后一张。 */
+export function resolveMediaDragTarget(fromIndex, deltaX, deltaY, cellSize, itemCount) {
+  const source = Number(fromIndex)
+  const size = Number(cellSize)
+  const count = Number(itemCount)
+  if (!Number.isInteger(source) || source < 0 || source >= count || size <= 0 || !Number.isFinite(size)) return source
+  const column = Math.max(0, Math.min(2, Math.round(source % 3 + Number(deltaX) / size)))
+  const row = Math.max(0, Math.min(Math.floor((count - 1) / 3), Math.round(Math.floor(source / 3) + Number(deltaY) / size)))
+  return Math.min(count - 1, row * 3 + column)
+}

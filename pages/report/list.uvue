@@ -125,33 +125,23 @@
 			<AppIcon :type="activeTab === 'report' ? 'search' : 'plus'" :size="32" color="#ffffff" />
 		</view>
 
-		<view v-if="showUserDrawer" class="drawer-overlay" @click="closeUserDrawer">
-			<view class="user-drawer" @click.stop>
-				<view class="user-drawer-title">{{ t('用户信息') }}</view>
-				<view class="user-info-row">
-					<text class="user-info-label">{{ t('用户名称') }}</text>
-					<text class="user-info-value">{{ displayName }}</text>
-				</view>
-				<view class="user-info-row">
-					<text class="user-info-label">{{ t('用户ID') }}</text>
-					<text class="user-info-value">{{ currentUserId ?? '-' }}</text>
-				</view>
-				<view class="user-info-row">
-					<text class="user-info-label">{{ t('邮箱') }}</text>
-					<text class="user-info-value">{{ userEmail ?? '-' }}</text>
-				</view>
-				<view class="language-row">
-					<text class="language-label">{{ t('切换语言') }}</text>
-					<view class="language-options">
-						<view v-for="code in supportedLocales" :key="code" class="language-option" :class="{ active: currentLanguage === code }" @click="setLanguage(code)">{{ t(code === 'zh' ? '中文' : code === 'en' ? '英文' : '越南语') }}</view>
-					</view>
-				</view>
-				<button class="drawer-btn invite" :disabled="inviteGenerating" @click="handleInviteVendor">{{ t(inviteGenerating ? '生成中...' : '邀请供应商') }}</button>
-				<button class="drawer-btn debug" @click="handleViewLocalData">{{ t('查看本地数据') }}</button>
-				<button class="drawer-btn warning" :disabled="isClearingLocalCache" @click="handleClearLocalCache">{{ t(isClearingLocalCache ? '清理中...' : '清除本地缓存') }}</button>
-				<button class="drawer-btn danger" @click="handleLogout">{{ t('退出登录') }}</button>
-			</view>
-		</view>
+		<UserInfoDrawer
+			:visible="showUserDrawer"
+			:user-name="displayName"
+			:user-id="currentUserId !== '' ? currentUserId : '-'"
+			:email="userEmail !== '' ? userEmail : '-'"
+			:locale="currentLanguage"
+			:locales="supportedLocales"
+			:invite-generating="inviteGenerating"
+			:clearing-local-cache="isClearingLocalCache"
+			@close="closeUserDrawer"
+			@change-language="setLanguage"
+			@invite-vendor="handleInviteVendor"
+			@view-local-data="handleViewLocalData"
+			@clear-cache="handleClearLocalCache"
+			@check-for-updates="handleCheckForUpdates"
+			@logout="handleLogout"
+		/>
 
 		<BottomActionSheet
 			:visible="showMenu"
@@ -198,6 +188,7 @@
 	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
 	import InspectionPlanCard from '../../components/inspection/InspectionPlanCard.uvue'
 	import LocalReportRecord from '../../components/inspection/LocalReportRecord.uvue'
+	import UserInfoDrawer from '../../components/inspection/UserInfoDrawer.uvue'
 	import AppIcon from '../../components/icons/AppIcon.uvue'
 	import OfflineSyncStatus from '../../components/sync/OfflineSyncStatus.uvue'
 	import { applyLocale, t } from '../../i18n/index.uts'
@@ -942,6 +933,11 @@
 		uni.showToast({ title: t('创建快速验货功能待接入'), icon: 'none' })
 	}
 
+	/** 更新服务未接入前明确告知用户，避免误以为已经完成检查。 */
+	function handleCheckForUpdates() {
+		uni.showToast({ title: t('检查更新功能待接入'), icon: 'none' })
+	}
+
 	/**
 	 * 清理本地会话并返回登录页。
 	 */
@@ -1003,20 +999,4 @@
 	.page-nav-btn { flex: 1; height: 40px; margin: 0 4px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
 	.content-space { height: 100px; }
 	.fab { position: fixed; right: 20px; bottom: 40px; width: 60px; height: 60px; border-radius: 30px; align-items: center; justify-content: center; background-color: #05b552; box-shadow: 0 8px 16px rgba(5, 181, 82, 0.32); z-index: 1200; }
-	.drawer-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2100; background-color: rgba(0, 0, 0, 0.42); }
-	.user-drawer { width: 82%; max-width: 320px; height: 100%; padding: 80px 18px 24px; background-color: #ffffff; box-shadow: 6px 0 24px rgba(15, 23, 42, 0.16); }
-	.user-drawer-title { color: #0f172a; font-size: 20px; font-weight: 700; margin-bottom: 18px; }
-	.user-info-row { min-height: 46px; flex-direction: row; justify-content: space-between; align-items: center; border-bottom-width: 1px; border-bottom-color: #f1f5f9; }
-	.user-info-label { color: #64748b; font-size: 13px; }
-	.user-info-value { max-width: 170px; color: #0f172a; font-size: 13px; text-align: right; }
-	.drawer-btn { height: 44px; margin-top: 14px; border-radius: 12px; color: #334155; background-color: #f1f5f9; font-size: 14px; }
-	.language-row { margin-top: 24px; }
-	.language-label { color: #334155; font-size: 14px; font-weight: 600; }
-	.language-options { flex-direction: row; margin-top: 12px; }
-	.language-option { flex: 1; margin-right: 8px; padding: 9px 0; border-width: 1px; border-color: #d1d5db; border-radius: 10px; color: #64748b; text-align: center; font-size: 13px; }
-	.language-option.active { color: #166534; border-color: #22c55e; background-color: #f0fdf4; font-weight: 600; }
-	.drawer-btn.invite { color: #166534; border-width: 1px; border-color: #22c55e; background-color: #f0fdf4; }
-	.drawer-btn.debug { color: #4338ca; border-width: 1px; border-color: #a5b4fc; background-color: #eef2ff; }
-	.drawer-btn.warning { color: #b45309; border-width: 1px; border-color: #f59e0b; background-color: #fffbeb; }
-	.drawer-btn.danger { color: #ffffff; background-color: #ef4444; }
 </style>

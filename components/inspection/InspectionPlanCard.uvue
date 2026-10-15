@@ -45,10 +45,10 @@
 							</label>
 						</checkbox-group>
 						<view v-else-if="isMerged" class="merge-flag">
-							<AppIcon type="merge" :size="18" color="#059669" />
+							<MergePlanIcon />
 						</view>
 						<view v-if="!selectionMode" class="card-more-btn" @click.stop="openActionSheet">
-						<AppIcon type="more" :size="20" color="#64748b" />
+						<MoreDotsIcon />
 					</view>
 				</view>
 			</view>
@@ -150,7 +150,9 @@
 		import OptionSelectSheet from '../search/OptionSelectSheet.uvue'
 		import PlanDownloadDetails from './PlanDownloadDetails.uvue'
 		import ReadyQuantitySheet from './ReadyQuantitySheet.uvue'
-		import AppIcon from '../icons/AppIcon.uvue'
+	import AppIcon from '../icons/AppIcon.uvue'
+	import MergePlanIcon from '../icons/MergePlanIcon.uvue'
+	import MoreDotsIcon from '../icons/MoreDotsIcon.uvue'
 		import { buildCardActions, resolveCardClickAction, resolveDownloadState } from '../../domain/listActionViewModel.uts'
 		import { normalizePlanStatus } from '../../domain/planViewModel.uts'
 	import { extractCopiedPlanId, firstNonEmptyText, getItemInspectType, getItemParentPlanId, getMergePreviewRow, getPlanInspectTypeLabel, getPlanOperationId } from '../../domain/searchViewModel.uts'
@@ -266,7 +268,8 @@
 	const isDownloaded = computed(() => resolvedDownloadState.value === 'downloaded')
 	const isLockedByOther = computed(() => resolvedDownloadState.value === 'locked')
 	const downloadStateClass = computed(() => resolvedDownloadState.value)
-	const statusText = computed(() => status.value === 3 ? '已完成' : (status.value === 1 ? '进行中' : '已定计划'))
+	/** 将已报告计划的卡片状态显示为“报告”，其他计划沿用原状态文案。 */
+	const statusText = computed(() => status.value === 3 ? '报告' : (status.value === 1 ? '进行中' : '已定计划'))
 	const statusClass = computed(() => status.value === 3 ? 'completed' : (status.value === 1 ? 'in-progress' : 'planned'))
 	const canDownload = computed(() => props.showDownload && !isLockedByOther.value && !isDownloaded.value)
 	/** 将下载清单转换为复制验货选择弹层使用的选项。 */

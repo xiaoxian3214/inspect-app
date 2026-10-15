@@ -35,6 +35,38 @@ test('plan card uses the filled download icon instead of the outline glyph', asy
   assert.match(cardSource, /\.download-icon-wrapper\s*\{[^}]*left:\s*0/s)
 })
 
+/** 合并标识使用 H5 轮廓生成的透明 PNG，避免原生线段拼接走形。 */
+test('merged plan badge uses a native raster asset matching the H5 arrow', async () => {
+  const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
+  const icon = await readFile('components/icons/MergePlanIcon.uvue', 'utf8')
+  const image = await readFile('static/icons/merge-plan.png')
+  assert.match(card, /<MergePlanIcon\s*\/>/)
+  assert.match(icon, /<image[^>]*src="\/static\/icons\/merge-plan\.png"/)
+  assert.equal(image.subarray(0, 8).toString('hex'), '89504e470d0a1a0a')
+  assert.equal(image.readUInt32BE(16), 128)
+  assert.equal(image.readUInt32BE(20), 128)
+  assert.doesNotMatch(icon, /merge-segment/)
+  assert.doesNotMatch(icon, /<svg|<path|document\.|window\./)
+})
+
+/** 卡片标识内的合并箭头放大，更多按钮改为三个原生实心圆点。 */
+test('plan card uses enlarged merge glyph and solid more dots', async () => {
+  const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
+  const mergeIcon = await readFile('components/icons/MergePlanIcon.uvue', 'utf8')
+  const moreIcon = await readFile('components/icons/MoreDotsIcon.uvue', 'utf8')
+  assert.match(mergeIcon, /\.merge-plan-icon\s*\{[^}]*width:\s*32rpx;\s*height:\s*32rpx/s)
+  assert.match(card, /class="card-more-btn"[^>]*>[\s\S]*?<MoreDotsIcon\s*\/>/)
+  assert.equal((moreIcon.match(/class="more-dot"/g) ?? []).length, 3)
+  assert.match(moreIcon, /\.more-dot\s*\{[^}]*background-color:\s*#64748b/s)
+  assert.doesNotMatch(moreIcon, /<svg|<path|document\.|window\./)
+})
+
+/** 已报告计划的卡片状态直接展示“报告”，不改变其状态分组。 */
+test('plan card labels status three as report', async () => {
+  const source = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
+  assert.match(source, /status\.value === 3 \? '报告'/)
+})
+
 /** 确认弹层不应受下载弹层的显示状态控制。 */
 test('unlock and reset confirmation overlays are independent of the download overlay', async () => {
   const source = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')

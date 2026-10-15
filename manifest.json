@@ -1,5 +1,5 @@
 {
-	"name": "qcm-inspection-android",
+	"name": "中艺验货",
 	"appid": "__UNI__1FFA0B1",
 	"description": "支持 Android 与 iOS 的离线验货应用",
 	"versionName": "1.0.0",
@@ -44,12 +44,14 @@
 	},
 	"app-android": {
 		"distribute": {
-			"modules": {},
+			"modules": {
+				"uni-barcode-scanning": {}
+			},
 			"icons": {
-				"hdpi": "",
-				"xhdpi": "",
-				"xxhdpi": "",
-				"xxxhdpi": ""
+				"hdpi": "/Users/cengxianwei/Downloads/验货app图标生成.png",
+				"xhdpi": "/Users/cengxianwei/Downloads/验货app图标生成.png",
+				"xxhdpi": "/Users/cengxianwei/Downloads/验货app图标生成.png",
+				"xxxhdpi": "/Users/cengxianwei/Downloads/验货app图标生成.png"
 			},
 			"splashScreens": {
 				"default": {}
@@ -58,11 +60,15 @@
 	},
 	"app-ios": {
 		"distribute": {
-			"modules": {},
-			"icons": {},
+			"modules": {
+				"uni-barcode-scanning": {}
+			},
+			"icons": {
+				"appstore": "/Users/cengxianwei/Downloads/验货app图标生成.png"
+			},
 			"splashScreens": {},
 			"privacyDescription": {
-				"NSCameraUsageDescription": "用于离线验货时拍摄现场检查图片",
+				"NSCameraUsageDescription": "用于离线验货时拍摄现场检查图片和扫描条码",
 				"NSPhotoLibraryUsageDescription": "用于离线验货时从系统相册选择现场检查图片",
 				"NSPhotoLibraryAddUsageDescription": "用于将验货拍摄图片保存到应用本地目录"
 			}

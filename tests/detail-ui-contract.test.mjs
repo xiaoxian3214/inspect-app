@@ -76,7 +76,7 @@ test('upload completion refreshes the visible report across merged members', asy
 test('merged final submission targets the parent and does not save members one by one', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
   assert.match(source, /submitFinalReport\(\{ planId: payload\.planId, payload, photoPlanId: planId\.value \}\)/)
-  assert.match(source, /getPlanDetail\(payload\.planId\)/)
+  assert.match(source, /waitForCurrentPlanReported\(\(currentPlanId\) => planApi\.getPlanDetail\(currentPlanId\), payload\.planId\)/)
   assert.doesNotMatch(source, /markMergedPlansReported/)
   assert.match(source, /photoPlanId: planId\.value/)
 })
@@ -94,6 +94,130 @@ test('detail page defines the finish summary used by the submit sheet', async ()
   assert.match(source, /const finishSummary\s*=\s*computed\(\(\)\s*=>\s*buildFinishSummary\(detail\.value/)
   for (const field of ['defectStats', 'exceedsAql', 'failedCheckpoints']) {
     assert.match(source, new RegExp(`finishSummary\\.${field}`))
+  }
+})
+
+/** H5 规格卡先新增，再在卡片顶部翻组，删除和字段输入在导航之后。 */
+test('measurement editor follows the H5 card action order', async () => {
+  const source = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const section = source.split('v-if="itemType === \'Measurements\'"')[1].split('v-else-if="itemType === \'Text\'"')[0]
+  for (const label of ['规格测量', '新增一组规格', '上一组', '下一组', '删除当前组', '规格汇总']) assert.ok(section.includes(label), `${label} missing`)
+  assert.ok(section.indexOf('新增一组规格') < section.indexOf('上一组'))
+  assert.ok(section.indexOf('上一组') < section.indexOf('删除当前组'))
+  assert.ok(section.indexOf('删除当前组') < section.indexOf('v-for="attr in specAttributes"'))
+  assert.match(section, /measurementIndex \+ 1/)
+})
+
+/** 翻动规格或文本组时输入节点随组切换，避免原生输入框保留前一组内容。 */
+test('attribute inputs have group-specific keys like the H5 editor', async () => {
+  const source = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const measurements = source.split('v-if="itemType === \'Measurements\'"')[1].split('v-else-if="itemType === \'Text\'"')[0]
+  const textGroups = source.split('v-else-if="itemType === \'Text\'"')[1].split('v-else-if="itemType === \'Barcodes\'"')[0]
+  assert.match(measurements, /:key="`\$\{measurementIndex\}_\$\{attr\.attrId\}`"/)
+  assert.match(textGroups, /:key="`\$\{textGroupIndex\}_\$\{attr\.attrId\}`"/)
+})
+
+/** H5 复制流程按字段、目标计划、匹配检查项三步多选，媒体操作按媒体和目标两步多选。 */
+test('copy and batch media sheets use fixed-height H5 selection flows', async () => {
+  const copy = await readFile('components/detail/CopyCheckItemsSheet.uvue', 'utf8')
+  const move = await readFile('components/detail/BatchMoveMediaSheet.uvue', 'utf8')
+  for (const label of ['选择需要复制的信息', '选择目标单据', '选择要复制的检查项', '全选', 'copySpecs', 'copyText', 'copyBarcode', 'targetPlanIds', 'targetItemIds', 'currentStep']) assert.ok(copy.includes(label), `copy: ${label}`)
+  for (const label of ['批量移动照片/视频', '选择目标检查点', '全选', 'fileIds', 'targetBizIds', 'currentStep', 'InspectionMediaImage']) assert.ok(move.includes(label), `move: ${label}`)
+  assert.match(copy, /height:\s*dialogHeight/)
+  assert.match(move, /height:\s*dialogHeight/)
+  assert.match(copy, /windowHeightPx\(0\.9\)/)
+  assert.match(move, /windowHeightPx\(0\.9\)/)
+  assert.doesNotMatch(copy, /<picker\b/)
+  assert.doesNotMatch(move, /<picker\b/)
+})
+
+/** 复制目标不含子行，媒体目标则按 H5 展示已有结果的子行。 */
+test('copy filters merged children while batch media retains eligible child targets', async () => {
+  const page = await readFile('pages/report/detail.uvue', 'utf8')
+  const copy = await readFile('components/detail/CopyCheckItemsSheet.uvue', 'utf8')
+  const move = await readFile('components/detail/BatchMoveMediaSheet.uvue', 'utf8')
+  assert.match(page, /<CopyCheckItemsSheet[^>]*:items="baseChecklistItems"/)
+  assert.match(page, /selectCopyTargetPlans\(/)
+  assert.match(page, /buildBatchMoveTargets\(detail\.value, moveSourceItemId\.value\)/)
+  assert.match(page, /targetBizIds\.includes\(String\(item\?\.bizId/)
+  assert.match(copy, /filter\(\(item: UTSJSONObject\): boolean => \(item\['sonPlanId'\]/)
+  assert.match(copy, /id: firstNonEmptyText\(\[item\['baseItemId'\], item\['itemId'\], item\['id'\], item\['standardItemId'\]\]/)
+  assert.match(move, /item\['bizId'\]/)
+  assert.doesNotMatch(move, /filter\(\(item: UTSJSONObject\): boolean => \(item\['sonPlanId'\]/)
+})
+
+/** 目标单据联网以 H5 搜索接口为准，不叠加 SQLite 旧记录；离线再使用缓存。 */
+test('copy target plans use current remote results and H5 order details', async () => {
+  const page = await readFile('pages/report/detail.uvue', 'utf8')
+  const sheet = await readFile('components/detail/CopyCheckItemsSheet.uvue', 'utf8')
+  assert.match(page, /selectCopyTargetPlans\(result\?\.records \?\? \[\], \[\], detail\.value, userId, true\)/)
+  assert.match(page, /planApi\.searchPlans\(\{ inspectorId: userId !== '' \? userId : undefined, status: '0,1', lockFlag: 1, mergeType: 0 \}, 1, 200\)/)
+  assert.doesNotMatch(page, /selectCopyTargetPlans\(\[\], localPlans, detail\.value, userId, false\)/)
+  assert.doesNotMatch(page.split('async function loadCopyTargetPlans()')[1].split('async function openCopySheet()')[0], /const byId = new Map\(/)
+  assert.match(sheet, /plan\.extra/)
+  assert.match(sheet, /subGoodsNo.*batchNo/)
+  assert.match(sheet, /plan\['goodsFlag'\]/)
+  assert.doesNotMatch(sheet.split('const displayPlans = computed')[1].split('const sourceItem = computed')[0], /\.filter\(\(plan: CopyPlan\)/)
+})
+
+/** 目标单据标题旁展示当前实际可选条数，加载时不显示误导性的零。 */
+test('copy target step shows the available plan count beside its title', async () => {
+  const sheet = await readFile('components/detail/CopyCheckItemsSheet.uvue', 'utf8')
+  const step = sheet.split('v-if="currentStep === 2"')[1].split('v-if="currentStep === 3"')[0]
+  assert.match(step, /class="plan-step-heading"[\s\S]*?选择目标单据[\s\S]*?v-if="!loadingPlans"[^>]*class="plan-count"[^>]*>\{\{ displayPlans\.length \}\}/)
+})
+
+/** 原生端未选中的复制和批量媒体复选框也应有可见实线轮廓。 */
+test('copy and batch media checkboxes show an unchecked border', async () => {
+  for (const file of ['components/detail/CopyCheckItemsSheet.uvue', 'components/detail/BatchMoveMediaSheet.uvue']) {
+    const source = await readFile(file, 'utf8')
+    const unchecked = source.match(/\.checkbox\s*\{([^}]*)\}/)?.[1] ?? ''
+    assert.match(unchecked, /border-width:\s*2rpx/)
+    assert.match(unchecked, /border-style:\s*solid/)
+    assert.match(unchecked, /border-color:\s*#94a3b8/)
+    assert.match(unchecked, /background-color:\s*#ffffff/)
+    assert.match(source, /\.checkbox\.checked\s*\{[^}]*background-color:\s*#1a5f3f/)
+  }
+})
+
+/** 批量操作逐个目标复用本地复制模型，重置提示使用 H5 的初始状态说明。 */
+test('detail page applies selected media to all targets and describes reset accurately', async () => {
+  const source = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.match(source, /targetBizIds/)
+  assert.match(source, /fileIds/)
+  assert.match(source, /onlineMediaService\.copyPhotos\(detail\.value, requests\)/)
+  assert.match(source, /下载\/初始创建的状态/)
+  assert.match(source, /planApi\.searchPlans\(/)
+  assert.doesNotMatch(source, /reportRepository\.listPlanSummaries\(/)
+  assert.match(source, /getCurrentSession\(/)
+  assert.match(source, /const batchMoveTargets\s*=\s*computed/)
+  assert.match(source, /makeChecklistDataKey\(baseId, sonPlanId\)/)
+  assert.match(source, /:items="batchMoveTargets"/)
+  assert.match(source, /const requestId = \+\+copyPlanLoadRequest/)
+  assert.match(source, /if \(requestId === copyPlanLoadRequest && showCopySheet\.value\) copyTargetPlans\.value/)
+})
+
+/** 原生 text 不依赖父容器继承文字颜色，详情页选中条对齐列表页样式。 */
+test('checklist finish label is white and detail tabs use the list indicator', async () => {
+  const checklist = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  const header = await readFile('components/detail/InspectionDetailHeader.uvue', 'utf8')
+  assert.match(checklist, /class="finish-button"[^>]*><text class="finish-button-label">/)
+  assert.match(checklist, /\.finish-button-label\s*\{[^}]*color:\s*#ffffff;/)
+  assert.match(header, /<view v-if="activeTab === tab\.key" class="tab-indicator"><\/view>/)
+  assert.match(header, /\.tab-indicator\s*\{[^}]*position:\s*absolute;[^}]*bottom:\s*0;[^}]*height:\s*6rpx;[^}]*background-color:\s*#ffffff;/)
+  assert.doesNotMatch(header, /\.tab\.active\s*\{[^}]*border-bottom-color/)
+})
+
+/** 详情 Tab 不仅有白色选中条，尺寸、透明度、图文间距也应与验货列表一致。 */
+test('detail tab layout matches the inspection list selected style', async () => {
+  const source = await readFile('components/detail/InspectionDetailHeader.uvue', 'utf8')
+  const list = await readFile('pages/report/list.uvue', 'utf8')
+  const cssRule = (text, selector) => text.match(new RegExp(`\\.${selector}\\s*\\{([^}]*)\\}`))?.[1]?.replace(/\s+/g, ' ').trim()
+  for (const [detailSelector, listSelector] of [['tabs', 'status-tabs'], ['tab', 'status-tab'], ['tab.active', 'status-tab.active'], ['tab-icon', 'tab-icon'], ['tab-text', 'tab-text'], ['tab-indicator', 'tab-indicator']]) {
+    const detailRule = cssRule(source, detailSelector.replace('.', '\\.'))
+    const listRule = cssRule(list, listSelector.replace('.', '\\.'))
+    assert.ok(detailRule, `${detailSelector} must exist`)
+    assert.equal(detailRule, listRule, `${detailSelector} should match ${listSelector}`)
   }
 })
 
@@ -165,6 +289,9 @@ test('detail page is componentized and wires the offline inspection workflow', a
   assert.match(source, /inspectionMediaService\.addLocalPhoto/)
   assert.match(source, /inspectionMediaService\.uploadPendingPhotos/)
   assert.match(source, /inspectionSubmissionService\.submitFinalReport/)
+  const finalSubmission = source.split('async function submitFinalReport()')[1].split('/** 打开详情更多操作菜单')[0]
+  assert.match(finalSubmission, /await waitForAutomaticSyncIdle\(\)/)
+  assert.equal((finalSubmission.match(/await persistDraft\(\{ markDirty: true, deferSync: true \}\)/g) || []).length, 2)
   assert.match(source, /提交成功，但报告状态尚未更新/)
   assert.match(source, /draftTouched/)
   assert.match(source, /onHide/)
@@ -176,7 +303,7 @@ test('detail page is componentized and wires the offline inspection workflow', a
   assert.match(source, /async function goBack\(\) \{ await flushTouchedDraft\(\); uni\.navigateBack\(\) \}/)
   assert.doesNotMatch(source, /persistDraft\(\{ markDirty: draftTouched\.value \}\)/)
   assert.match(source, /function processSyncQueueAfterChange\(\)/)
-  assert.match(source, /if \(markDirty\) processSyncQueueAfterChange\(\)/)
+  assert.match(source, /if \(markDirty && options\?\.deferSync !== true\) processSyncQueueAfterChange\(\)/)
   assert.equal((source.match(/syncOfflineDataAutomatically\(\)/g) || []).length, 2, 'detail page should process the queue after content changes and from the explicit manual action')
   assert.doesNotMatch(source, /saveDraft\(planId\.value, detail\.value, \{ markDirty: false \}\)/)
   assert.doesNotMatch(source, /resumePendingUploads/)
@@ -212,6 +339,65 @@ test('check item sheet exposes native barcode and media actions through the deta
   assert.match(sheet, /summaryRow\[attr\.attrId\]/)
   assert.match(sheet, /检查点图片/)
   assert.doesNotMatch(sheet, /document\.|window\.|navigator\./)
+})
+
+/** 条码检查项沿用 H5 的卡片、名称底部弹层和扫码操作，不直接编辑码值。 */
+test('barcode check item follows the H5 card and name editor flow', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const barcode = sheet.split('v-else-if="itemType === \'Barcodes\'"')[1].split('class="notes-section"')[0]
+  assert.match(barcode, /条码扫描/)
+  assert.match(barcode, /barcode\.code \|\| '-'/)
+  assert.match(barcode, /barcode\.format \|\| '-'/)
+  assert.match(barcode, /scanBarcode\(index\)/)
+  assert.match(barcode, /openBarcodeEditor\(-1\)/)
+  assert.doesNotMatch(barcode, /@input="updateBarcode\(/)
+  assert.match(sheet, /编辑条形码/)
+  assert.match(sheet, /新增条码测试项/)
+  assert.match(sheet, /editingBarcodeIndex >= 0 \? translateText\('保存'\) : translateText\('确认'\)/)
+  assert.match(sheet, /item\['itemType'\] === 'Barcodes'[^\n]*barcodeItems\.length === 0[^\n]*name: '', code: '', format: ''/)
+  assert.match(sheet, /scanType: \['qrCode', 'barCode'\]/)
+  assert.match(sheet, /onlyFromCamera: false/)
+})
+
+/** 每个条码项卡片都绘制可见实线边框，与 H5 的卡片分隔一致。 */
+test('each barcode item has a visible native card outline', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  assert.match(sheet, /v-for="\(barcode, index\) in draft\.barcodeItems"[^>]*class="barcode-card"/)
+  assert.match(sheet, /\.barcode-card \{[^}]*border-width: 2rpx;[^}]*border-style: solid;[^}]*border-color: #cbd5e1;/)
+})
+
+/** 长条码和右侧扫码按钮不能把卡片撑出带内边距的滚动区域。 */
+test('barcode cards stay within the padded sheet on narrow screens', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const button = await readFile('components/common/AppButton.uvue', 'utf8')
+  assert.match(sheet, /v-else-if="itemType === 'Barcodes'" class="type-section barcode-section"/)
+  assert.match(sheet, /\.barcode-section \{[^}]*width: 100%;[^}]*min-width: 0;[^}]*box-sizing: border-box;/)
+  assert.match(sheet, /\.barcode-card \{[^}]*width: 100%;[^}]*box-sizing: border-box;/)
+  assert.match(sheet, /\.barcode-row-value \{[^}]*flex: 1;[^}]*min-width: 0;[^}]*overflow: hidden;/)
+  assert.match(button, /\.app-button\.block \{[^}]*width: 100%;[^}]*box-sizing: border-box;/)
+})
+
+/** 原生扫码包含一维条形码，并在双平台打包启用扫码模块。 */
+test('Android and iOS package the native barcode scanner', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const manifest = await readFile('manifest.json', 'utf8')
+  const android = manifest.split('"app-android":')[1].split('"app-ios":')[0]
+  const ios = manifest.split('"app-ios":')[1].split('"web":')[0]
+  assert.match(sheet, /scanType: \[[^\]]*'barCode'/)
+  for (const platform of [android, ios]) assert.match(platform, /"uni-barcode-scanning"\s*:\s*\{\}/)
+  assert.match(ios, /NSCameraUsageDescription[^\n]*扫描条码/)
+})
+
+/** 条码名称弹层使用加大的通用按钮，并让输入区域有清晰边框。 */
+test('barcode name editor has large actions and a visible input outline', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const button = await readFile('components/common/AppButton.uvue', 'utf8')
+  assert.match(sheet, /<AppButton large variant="outline" @press="closeBarcodeEditor">/)
+  assert.match(sheet, /<AppButton large variant="primary" @press="saveBarcodeName">/)
+  assert.match(button, /large: \{ type: Boolean, default: false \}/)
+  assert.match(button, /\.app-button\.large \{[^}]*min-height: 88rpx;[^}]*flex: 1;/)
+  assert.match(button, /\.button-label\.large \{[^}]*font-size: 28rpx;/)
+  assert.match(sheet, /\.barcode-name-input \{[^}]*border-width: 2rpx;[^}]*border-style: solid;[^}]*border-color: #94a3b8;/)
 })
 
 test('check item actions use padded reusable native buttons', async () => {
@@ -270,17 +456,49 @@ test('detail media views use the shared H5-compatible display resolver', async (
   }
 })
 
-test('detail offline operations update local data instead of calling copy and quantity APIs directly', async () => {
+test('quantity operations stay offline while copy and media actions require online APIs', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
 
-  assert.match(source, /copyChecklistItemToDetail/)
-  assert.match(source, /copyChecklistPhotoToItem/)
+  assert.match(source, /checklistCopyService\.copyOnline/)
+  assert.match(source, /onlineMediaService\.copyPhotos/)
+  assert.match(source, /onlineMediaService\.sortPhotos/)
   assert.match(source, /applyFinishQuantityRows/)
   assert.match(source, /applySampleQuantity/)
   assert.doesNotMatch(source, /planApi\.copyCheckItems/)
   assert.doesNotMatch(source, /planApi\.copyPhotosToItems/)
   assert.doesNotMatch(source, /planApi\.updateFinishQuantity/)
   assert.doesNotMatch(source, /planApi\.updateSampleQuantity/)
+})
+
+/** 跨单复制及批量媒体使用在线接口，不再将专用操作延后入队。 */
+test('copy and batch media call online services without queuing file operations', async () => {
+  const source = await readFile('pages/report/detail.uvue', 'utf8')
+  const copyFlow = source.split('async function submitCopyItems(payload)')[1].split('async function openBatchMoveSheet()')[0]
+  assert.match(copyFlow, /if \(!\(await isNetworkOnline\(\)\)\) throw new Error\('复制到其他验货需要联网'\)/)
+  assert.match(copyFlow, /checklistCopyService\.copyOnline\(detail\.value, \{ \.\.\.payload, targetPlanIds \}\)/)
+  assert.match(copyFlow, /await flushTouchedDraft\(\)/)
+  assert.doesNotMatch(source, /persistentOperationService\.enqueuePhotoCopy\(/)
+  assert.match(source, /buildBatchPhotoCopyRequests\(detail\.value, fileIds, targets\)/)
+  assert.match(source, /onlineMediaService\.copyPhotos\(detail\.value, requests\)/)
+})
+
+/** 批量复制和批量移动的目标失败时，沿用底部弹层显示汇总和具体原因。 */
+test('detail copy and media move display business failures in the original bottom sheet', async () => {
+  const source = await readFile('pages/report/detail.uvue', 'utf8')
+  const copyFlow = source.split('async function submitCopyItems(payload)')[1].split('async function openBatchMoveSheet()')[0]
+  const moveFlow = source.split('async function submitBatchMove(payload)')[1].split('function openReadyQuantity()')[0]
+  assert.match(source, /<ConfirmActionSheet :visible="showBatchResult" :title="batchResultTitle"/)
+  for (const flow of [copyFlow, moveFlow]) {
+    assert.match(flow, /if \(result\.failCount > 0\)/)
+    assert.match(flow, /batchResultMessage\.value = \[summary, \.\.\.result\.errorMessages\]\.join\('\\n'\)/)
+    assert.match(flow, /showBatchResult\.value = true/)
+  }
+  assert.match(copyFlow, /if \(result\.successCount > 0\) showCopySheet\.value = false/)
+  assert.match(moveFlow, /if \(result\.successCount > 0\) showBatchMoveSheet\.value = false/)
+  assert.match(copyFlow, /catch \(error\) \{ showBatchFailure\('复制检查项失败',/)
+  assert.match(moveFlow, /catch \(error\) \{ showBatchFailure\('批量移动失败',/)
+  assert.match(copyFlow, /: '复制成功'\)/)
+  assert.match(moveFlow, /: '移动成功'\)/)
 })
 
 test('shared cloud icon only expands queue state and never starts synchronization itself', async () => {
@@ -341,10 +559,21 @@ test('check item editor sorts photos through a reusable native bottom sheet', as
   assert.match(editor, /emit\('photos-sorted'/)
   assert.match(sheet, /import \{[^}]*moveMediaItem/)
   assert.match(sheet, /emit\('sorted'/)
-  assert.match(sheet, /先选择图片，再点击目标位置/)
+  assert.match(sheet, /按住照片拖拽可调整顺序/)
+  assert.match(sheet, /height:\s*sheetHeight/)
+  assert.match(sheet, /windowHeightPx\(0\.9\)/)
+  for (const event of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+    assert.match(sheet, new RegExp(`@${event}=`))
+  }
+  assert.match(sheet, /pressTimer = setTimeout\(/)
+  assert.match(sheet, /clearTimeout\(timer\)/)
+  assert.match(sheet, /Math\.abs\(deltaX\) > 12 \|\| Math\.abs\(deltaY\) > 12/)
+  assert.match(sheet, /resolveMediaDragTarget/)
+  assert.doesNotMatch(sheet, /selectPosition\(/)
+  assert.doesNotMatch(sheet, /document\.|window\.|getBoundingClientRect/)
   assert.match(page, /@photos-sorted="sortChecklistPhotos"/)
   assert.match(page, /function sortChecklistPhotos/)
-  assert.match(page, /scheduleDraftSave\(\)/)
+  assert.match(page, /onlineMediaService\.sortPhotos\(detail\.value, itemId, payload\?\.photos\)/)
 })
 
 /** 照片重排入口与 H5 一样位于底部操作区的批量移动入口上方。 */
@@ -367,10 +596,15 @@ test('checklist tab keeps the H5 section hierarchy and direct photo action', asy
   assert.match(page, /@retry-detail="loadDetail"/)
 })
 
+/** 原生总结弹层保留联网说明，页面仍负责最终提交的联网阻断。 */
 test('finish sheet clearly explains online and photo upload requirements', async () => {
   const source = await readFile('components/detail/FinishInspectionSheet.uvue', 'utf8')
-  assert.match(source, /需要联网/)
-  assert.match(source, /图片上传/)
+  const page = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.match(source, /最终提交需要联网/)
+  assert.match(source, /pendingUploadCount > 0/)
+  assert.match(source, /图片等待上传/)
+  assert.match(page, /isNetworkOnline\(\)/)
+  assert.match(page, /最终提交需要联网/)
   assert.match(source, /overallResult/)
   assert.match(source, /overallRemarks/)
 })
@@ -692,6 +926,18 @@ test('check item notes save on blur without separate close or confirm actions', 
   assert.doesNotMatch(sheet, /function updateComment\([^)]*\)[^\n]*autoSaveDraft\(\)/)
 })
 
+/** 检查项滚动内容用外边距留白，避免 100% 宽度叠加内边距后右侧边框被裁切。 */
+test('check item sheet gives every bordered control symmetric scroll gutters', async () => {
+  const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  assert.match(sheet, /<scroll-view class="sheet-body"[^>]*>\s*<view class="sheet-body-content">/)
+  assert.match(sheet, /\.sheet-body \{[^}]*width: 100%;[^}]*box-sizing: border-box;/)
+  assert.match(sheet, /\.sheet-body-content \{[^}]*margin-left: 28rpx;[^}]*margin-right: 28rpx;[^}]*padding-top: 24rpx;/)
+  assert.doesNotMatch(sheet, /\.sheet-body-content \{[^}]*width: 100%;/)
+  assert.doesNotMatch(sheet, /\.sheet-body \{[^}]*padding: 24rpx 28rpx;/)
+  assert.match(sheet, /<textarea class="remarks"[^>]*>/)
+  assert.match(sheet, /<AppButton[^>]*block @press="requestCopyItems"/)
+})
+
 /** 四态结果按钮不显示外框，其他复用操作按钮仍有原生描边。 */
 test('check item result choices are borderless while other actions keep borders', async () => {
   const sheet = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
@@ -703,6 +949,7 @@ test('check item result choices are borderless while other actions keep borders'
   assert.doesNotMatch(button, /\.app-button\.result\.selected\s*\{\s*border-width:\s*0/)
 })
 
+/** 所有详情业务弹层使用原生底部弹层，最终确认另在总结弹层内居中展示。 */
 test('every detail business popup is implemented as a bottom sheet', async () => {
   const page = await readFile('pages/report/detail.uvue', 'utf8')
   const sheetContracts = [

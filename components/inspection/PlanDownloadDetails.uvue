@@ -44,9 +44,9 @@
 
 <style>
 	.download-info-scroll { flex: 1; }
-	.merged-info-card { margin-bottom: 20rpx; padding: 20rpx 24rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; background-color: #ffffff; }
+	.merged-info-card { margin-bottom: 20rpx; padding: 20rpx 8rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; background-color: #ffffff; }
 	.merged-title { margin-bottom: 14rpx; color: #334155; font-size: 26rpx; font-weight: 600; }
-	.copy-info-card { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; border-radius: 24rpx; padding: 16rpx 24rpx; }
+	.copy-info-card { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; border-radius: 24rpx; padding: 16rpx 8rpx; }
 	.copy-info-row { flex-direction: row; justify-content: space-between; align-items: flex-start; padding: 20rpx 0; border-bottom: 2rpx solid #f5f5f5; }
 	.copy-label { color: #64748b; font-size: 28rpx; }
 	.copy-value { max-width: 420rpx; color: #111827; font-size: 28rpx; text-align: right; }

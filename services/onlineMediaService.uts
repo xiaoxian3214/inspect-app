@@ -1,0 +1,82 @@
+/** 将文件排序和批量复制限定为在线事务，避免普通草稿代替专用文件接口。 */
+export function createOnlineMediaService(options) {
+  const isOnline = options.isOnline
+  const syncPending = options.syncPending
+  const reportRepository = options.reportRepository
+  const reportFileApi = options.reportFileApi
+  const planApi = options.planApi
+  const updateChecklistItem = options.updateChecklistItem
+  const buildGeneratePayload = options.buildGeneratePayload
+  const normalizeDetail = options.normalizeDetail
+
+  /** 先同步已有草稿并核实当前计划已清洁，防止后续旧草稿覆盖文件操作。 */
+  async function requireCleanOnlinePlan(planId) {
+    if (!(await isOnline())) throw new Error('此操作需要联网，请连接网络后重试')
+    await syncPending()
+    const stored = await reportRepository.getPlanById(planId)
+    if (stored == null || stored?.syncStatus === 'DIRTY' || stored?.pendingSyncPayload != null) throw new Error('当前报告尚未同步成功，请重试')
+    return stored
+  }
+
+  /** 在线按已上传文件顺序保存，随后以 finishFlag=0 生成检查项草稿并更新本地快照。 */
+  async function sortPhotos(detail, itemId, photos) {
+    const planId = String(detail?.planId ?? detail?.plan?.id ?? '').trim()
+    const ordered = Array.isArray(photos) ? photos : []
+    if (planId === '' || String(itemId ?? '').trim() === '') throw new Error('检查项信息缺失')
+    if (ordered.length === 0 || ordered.some((photo) => String(photo?.fileId ?? '').trim() === '')) throw new Error('照片尚未全部上传成功，请先同步后重试')
+    const stored = await requireCleanOnlinePlan(planId)
+    const source = normalizeDetail(stored, planId)
+    const sourcePhotos = (source?.checklistData?.[itemId]?.photos ?? []).filter((photo) => photo?.bizType !== 'checkPoint')
+    const sourceIds = sourcePhotos.map((photo) => String(photo?.fileId ?? '').trim()).sort()
+    const orderedIds = ordered.map((photo) => String(photo.fileId).trim()).sort()
+    if (sourceIds.length !== orderedIds.length || sourceIds.some((id, index) => id === '' || id !== orderedIds[index])) throw new Error('照片已变化，请刷新详情后重新排序')
+    const items = ordered.map((photo, index) => ({ fileId: String(photo.fileId), sortNo: index + 1 }))
+    const sourceData = source?.checklistData?.[itemId] ?? {}
+    const reordered = ordered.map((photo, index) => ({ ...photo, sortNo: index + 1 }))
+    let photoIndex = 0
+    const photosWithCheckpoints = (sourceData?.photos ?? []).map((photo) => photo?.bizType === 'checkPoint' ? photo : reordered[photoIndex++])
+    const updated = updateChecklistItem(source, itemId, { ...sourceData, photos: photosWithCheckpoints })
+    await reportFileApi.sortInspectFiles(items)
+    await planApi.generateReport(buildGeneratePayload(updated))
+    await reportRepository.saveDetailSnapshot(planId, updated)
+    return updated
+  }
+
+  /** 在线复制已上传媒体，汇总业务失败，仅在至少一项成功时刷新服务端检查项关联。 */
+  async function copyPhotos(detail, requests) {
+    const planId = String(detail?.planId ?? detail?.plan?.id ?? '').trim()
+    if (planId === '' || !Array.isArray(requests) || requests.length === 0) throw new Error('请选择已上传照片和目标检查点')
+    await requireCleanOnlinePlan(planId)
+    let successCount = 0
+    let failCount = 0
+    const errorMessages = []
+    let message = ''
+    for (const request of requests) {
+      const response = await planApi.copyPhotosToItems(request)
+      const results = Array.isArray(response?.results) ? response.results : []
+      const failures = results.filter((result) => result?.success === false)
+      const targetCount = Array.isArray(request?.targetItemIds) ? request.targetItemIds.length : 1
+      const failed = Number(response?.failCount ?? failures.length)
+      successCount += Number(response?.successCount ?? Math.max(0, targetCount - failed))
+      failCount += failed
+      for (const result of failures) {
+        const reason = String(result?.errorMessage ?? result?.message ?? '').trim()
+        if (reason !== '' && !errorMessages.includes(reason)) errorMessages.push(reason)
+      }
+      if (requests.length === 1) message = String(response?.message ?? '').trim()
+    }
+    const outcome = { successCount, failCount, message, errorMessages }
+    if (successCount === 0 && failCount > 0) return { detail: null, stale: false, ...outcome }
+    try {
+      const remote = await planApi.getPlanDetail(planId)
+      if (!Array.isArray(remote?.itemResults)) throw new Error('服务端检查项尚未刷新')
+      const updated = normalizeDetail(remote, planId)
+      await reportRepository.saveDetailSnapshot(planId, updated)
+      return { detail: updated, stale: false, ...outcome }
+    } catch (_) {
+      return { detail: null, stale: true, ...outcome }
+    }
+  }
+
+  return { sortPhotos, copyPhotos }
+}

@@ -35,3 +35,26 @@ test('keeps delete task offline and removes it after a successful retry', async 
   assert.deepEqual(deleted, ['file-1'])
   assert.equal((await repository.listPending()).length, 0)
 })
+
+/** 移图先持久化操作，恢复网络时使用 H5 专用接口，不依赖普通报告草稿重新关联图片。 */
+test('persists photo copies and sends them after reconnecting', async () => {
+  const repository = repositoryModule.createRequestQueueRepository(memoryModule.createMemoryDatabase())
+  let online = false
+  const copied = []
+  const service = serviceModule.createPersistentOperationService({
+    requestQueueRepository: repository,
+    reportFileApi: { deleteInspectFile: async () => {} },
+    planApi: { copyPhotosToItems: async (payload) => copied.push(payload) },
+    isOnline: async () => online
+  })
+  const payload = { sourcePlanId: 'plan', sourceItemId: 'source', targetPlanIds: ['plan'], targetItemIds: ['target'], fileIds: ['file'] }
+  await service.enqueuePhotoCopy(payload)
+  await service.enqueuePhotoCopy(payload)
+  assert.equal((await repository.listUnfinished()).length, 1)
+  await service.processPending()
+  assert.deepEqual(copied, [])
+  online = true
+  await service.processPending()
+  assert.deepEqual(copied, [payload])
+  assert.equal((await repository.listUnfinished()).length, 0)
+})

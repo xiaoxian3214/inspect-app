@@ -1,0 +1,86 @@
+/** 注入计划接口、本地仓库和同步器，创建可测试的在线跨计划检查点复制服务。 */
+export function createChecklistCopyService(options) {
+  const planApi = options.planApi
+  const reportRepository = options.reportRepository
+  const syncPending = options.syncPending
+  const normalizeDetail = options.normalizeDetail
+
+  /** 判断普通草稿是否仍待同步，避免远程复制读取源或目标的旧数据。 */
+  function hasPendingDraft(plan) {
+    return plan?.syncStatus === 'DIRTY' || plan?.pendingSyncPayload != null
+  }
+
+  /** 取得本次要复制的源检查项照片；未勾选照片时返回空列表。 */
+  function getSourcePhotos(sourceDetail, payload) {
+    if (payload?.copyPhotos !== true) return []
+    const sourceItemId = String(payload?.sourceItemId ?? '').trim()
+    const photos = sourceDetail?.checklistData?.[sourceItemId]?.photos ?? []
+    return Array.isArray(photos) ? photos : []
+  }
+
+  /** 判断本次复制的源照片中是否还有缺少服务端文件 ID 的记录。 */
+  function hasPendingSourcePhotos(sourceDetail, payload) {
+    return getSourcePhotos(sourceDetail, payload).some((photo) => String(photo?.fileId ?? '').trim() === '')
+  }
+
+  /** 核对内存中的待上传照片在同步后确实回填了同一张照片的服务端文件 ID。 */
+  function hasUnconfirmedSourcePhotos(sourceDetail, storedSource, payload) {
+    const uploadedPhotos = getSourcePhotos(storedSource, payload)
+    return getSourcePhotos(sourceDetail, payload).filter((photo) => String(photo?.fileId ?? '').trim() === '').some((photo) => {
+      const photoId = String(photo?.photoId ?? photo?.id ?? '').trim()
+      const localPath = String(photo?.localPath ?? '').trim()
+      return !uploadedPhotos.some((uploaded) => String(uploaded?.fileId ?? '').trim() !== ''
+        && ((photoId !== '' && String(uploaded?.photoId ?? uploaded?.id ?? '').trim() === photoId)
+          || (localPath !== '' && String(uploaded?.localPath ?? '').trim() === localPath)))
+    })
+  }
+
+  /** 同步草稿后执行服务端复制，只刷新成功目标，并返回批量结果及去重后的失败原因供页面提示。 */
+  async function copyOnline(sourceDetail, payload) {
+    const sourcePlanId = String(sourceDetail?.planId ?? sourceDetail?.plan?.id ?? '').trim()
+    const targetPlanIds = Array.isArray(payload?.targetPlanIds) ? payload.targetPlanIds : []
+    if (sourcePlanId === '' || targetPlanIds.length === 0) throw new Error('请选择源计划和目标计划')
+    let storedSource = await reportRepository.getPlanById(sourcePlanId)
+    if (hasPendingDraft(sourceDetail) || hasPendingDraft(storedSource)
+      || hasPendingSourcePhotos(sourceDetail, payload) || hasPendingSourcePhotos(storedSource, payload)) {
+      await syncPending()
+      storedSource = await reportRepository.getPlanById(sourcePlanId)
+      if (storedSource == null || hasPendingDraft(storedSource)) throw new Error('源计划草稿尚未同步，请先同步后重试')
+      if (hasPendingSourcePhotos(storedSource, payload) || hasUnconfirmedSourcePhotos(sourceDetail, storedSource, payload)) throw new Error('源检查项照片尚未上传成功，请先同步后重试')
+    }
+    for (const targetPlanId of targetPlanIds) {
+      let storedTarget = await reportRepository.getPlanById(targetPlanId)
+      if (hasPendingDraft(storedTarget)) {
+        await syncPending()
+        storedTarget = await reportRepository.getPlanById(targetPlanId)
+        if (storedTarget == null || hasPendingDraft(storedTarget)) throw new Error(`目标计划 ${targetPlanId} 草稿尚未同步，请先同步后重试`)
+      }
+    }
+    const response = await planApi.copyCheckItems({ sourcePlanId, ...payload, targetPlanIds })
+    const results = Array.isArray(response?.results) ? response.results : []
+    const failedResults = results.filter((result) => result?.success === false)
+    const failCount = Number(response?.failCount ?? failedResults.length)
+    const successCount = Number(response?.successCount ?? (targetPlanIds.length - failCount))
+    const errorMessages = [...new Set(failedResults.map((result) => String(result?.errorMessage ?? result?.message ?? '').trim()).filter((message) => message !== ''))]
+    const successfulPlanIds = results.length > 0
+      ? targetPlanIds.filter((id) => results.some((result) => String(result?.targetPlanId ?? '') === String(id) && result?.success === true))
+      : (failCount === 0 ? targetPlanIds : [])
+    const staleLocalPlanIds = []
+    for (const targetPlanId of successfulPlanIds) {
+      try {
+        const localTarget = await reportRepository.getPlanById(targetPlanId)
+        if (localTarget == null) continue
+        if (hasPendingDraft(localTarget)) { staleLocalPlanIds.push(targetPlanId); continue }
+        const remoteTarget = await planApi.getPlanDetail(targetPlanId)
+        if (!Array.isArray(remoteTarget?.itemResults) || remoteTarget.itemResults.length === 0) {
+          staleLocalPlanIds.push(targetPlanId)
+          continue
+        }
+        await reportRepository.saveDetailSnapshot(targetPlanId, normalizeDetail(remoteTarget, targetPlanId))
+      } catch (_) { staleLocalPlanIds.push(targetPlanId) }
+    }
+    return { staleLocalPlanIds, successCount, failCount, message: String(response?.message ?? '').trim(), errorMessages }
+  }
+
+  return { copyOnline }
+}

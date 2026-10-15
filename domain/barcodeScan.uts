@@ -1,0 +1,14 @@
+/** 将原生扫一扫返回的格式名称归一化为 H5 写入条码结果的格式。 */
+export function normalizeScanFormat(format: string): string {
+  const normalized = String(format ?? '').trim().replace(/[\s-]+/g, '_').toUpperCase()
+  if (normalized === 'CODE128' || normalized === 'CODE_128') return 'CODE_128'
+  if (normalized === 'CODE39' || normalized === 'CODE_39') return 'CODE_39'
+  if (normalized === 'CODE93' || normalized === 'CODE_93') return 'CODE_93'
+  if (normalized === 'QRCODE' || normalized === 'QR_CODE' || normalized === 'QR') return 'QR_CODE'
+  if (normalized === 'BARCODE' || normalized === 'BAR_CODE' || normalized === 'BAR') return 'BAR_CODE'
+  if (normalized === 'EAN13' || normalized === 'EAN_13') return 'EAN_13'
+  if (normalized === 'EAN8' || normalized === 'EAN_8') return 'EAN_8'
+  if (normalized === 'PDF417' || normalized === 'PDF_417') return 'PDF_417'
+  if (normalized === 'DATAMATRIX' || normalized === 'DATA_MATRIX') return 'DATA_MATRIX'
+  return normalized
+}

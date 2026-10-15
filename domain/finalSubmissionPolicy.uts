@@ -47,3 +47,28 @@ export function evaluateFinalSubmissionPhotos(photos) {
       : ''
   }
 }
+
+/** 按 H5 规则确认本次提交的计划已经成为报告；合并组其他成员由本地共享报告一并更新。 */
+export function isCurrentPlanReported(detail, currentPlanId) {
+  const reported = (status) => {
+    const raw = String(status ?? '').trim()
+    if (raw === '3') return true
+    const text = raw.toUpperCase()
+    return text === 'COMPLETED' || text === 'DONE' || text === 'SUBMITTED' || text === 'REPORTED'
+  }
+  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : []
+  const planId = String(currentPlanId ?? '').trim()
+  const current = plans.find((plan) => String(plan?.id ?? plan?.planId ?? plan?.reportId ?? '').trim() === planId)
+    ?? plans[0] ?? detail?.plan ?? detail?.report
+  return reported(current?.status) || reported(detail?.plan?.status)
+}
+
+/** 最终生成后有限次重查当前计划状态，允许服务端短暂延迟但绝不重复调用报告生成接口。 */
+export async function waitForCurrentPlanReported(loadDetail, currentPlanId, attempts: number = 3, delayMs: number = 500) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const detail = await loadDetail(currentPlanId)
+    if (isCurrentPlanReported(detail, currentPlanId)) return true
+    if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, delayMs))
+  }
+  return false
+}

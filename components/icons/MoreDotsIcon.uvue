@@ -1,0 +1,12 @@
+<template>
+	<view class="more-dots-icon">
+		<view class="more-dot"></view>
+		<view class="more-dot"></view>
+		<view class="more-dot"></view>
+	</view>
+</template>
+
+<style>
+	.more-dots-icon { width: 26rpx; height: 26rpx; flex-direction: row; align-items: center; justify-content: center; }
+	.more-dot { width: 6rpx; height: 6rpx; margin-right: 2rpx; border-radius: 3rpx; background-color: #64748b; }
+</style>

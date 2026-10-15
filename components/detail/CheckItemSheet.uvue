@@ -9,6 +9,7 @@
 			</view>
 
 			<scroll-view class="sheet-body" :scroll-y="true" :show-scrollbar="false">
+				<view class="sheet-body-content">
 				<view v-if="draft.result" class="current-result-banner" :class="`banner-${draft.result}`">
 					<view class="banner-left"><view class="result-status-dot"></view><text class="result-status-label">{{ currentResultLabel }}</text></view>
 					<text class="banner-right">{{ translateText('检查 - {label}', { label: translateText(currentResultLabel) }) }}</text>
@@ -17,30 +18,34 @@
 				<view v-if="itemDescription !== ''" class="item-description"><text>{{ itemDescription }}</text></view>
 
 				<view v-if="itemType === 'Measurements'" class="type-section">
-					<text class="section-title">{{ translateText('测量数据') }}</text>
-					<view class="group-card">
-						<view class="group-head"><text>{{ translateText('规格组 {current} / {total}', { current: measurementIndex + 1, total: draft.measurements.length }) }}</text><AppButton v-if="draft.measurements.length > 1" variant="remove" @press="removeMeasurement(measurementIndex)">{{ translateText('删除当前组') }}</AppButton></view>
-						<view v-for="attr in specAttributes" :key="attr.attrId" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.measurements[measurementIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateMeasurement(measurementIndex, attr.attrId, $event)" /></view>
-					</view>
-					<view class="group-navigation"><AppButton variant="nav" :disabled="measurementIndex === 0" @press="previousMeasurement">{{ translateText('上一组') }}</AppButton><AppButton variant="nav" :disabled="measurementIndex >= draft.measurements.length - 1" @press="nextMeasurement">{{ translateText('下一组') }}</AppButton></view>
+					<text class="section-title">{{ translateText('规格测量') }}</text>
 					<AppButton variant="soft" block @press="addMeasurement">{{ translateText('＋ 新增一组规格') }}</AppButton>
+					<view class="group-card">
+						<view class="group-navigation"><AppButton variant="nav" :disabled="measurementIndex === 0" @press="previousMeasurement">{{ translateText('上一组') }}</AppButton><text class="group-index">{{ measurementIndex + 1 }}/{{ draft.measurements.length }}</text><AppButton variant="nav" :disabled="measurementIndex >= draft.measurements.length - 1" @press="nextMeasurement">{{ translateText('下一组') }}</AppButton></view>
+						<view v-if="draft.measurements.length > 1" class="group-delete"><AppButton variant="remove" @press="removeMeasurement(measurementIndex)">{{ translateText('删除当前组') }}</AppButton></view>
+						<view v-for="attr in specAttributes" :key="`${measurementIndex}_${attr.attrId}`" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.measurements[measurementIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateMeasurement(measurementIndex, attr.attrId, $event)" /></view>
+					</view>
 					<view v-if="draft.measurements.length > 1" class="group-summary"><text>{{ translateText('规格汇总') }}</text><scroll-view :scroll-x="true" class="summary-scroll"><view class="summary-row"><text class="summary-label">{{ translateText('规格') }}</text><text v-for="(_, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell">{{ summaryIndex + 1 }}</text></view><view v-for="attr in specAttributes" :key="attr.attrId" class="summary-row"><text class="summary-label">{{ attr.attrName }}</text><text v-for="(summaryRow, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell" :class="{ 'summary-current': summaryIndex === measurementIndex }">{{ summaryRow[attr.attrId] || '-' }}</text></view></scroll-view></view>
 				</view>
 
 				<view v-else-if="itemType === 'Text'" class="type-section">
-					<text class="section-title">{{ translateText('文本检查内容') }}</text>
-					<view class="group-card">
-						<view class="group-head"><text>{{ translateText('文本组 {current} / {total}', { current: textGroupIndex + 1, total: draft.textGroups.length }) }}</text><AppButton v-if="draft.textGroups.length > 1" variant="remove" @press="removeTextGroup(textGroupIndex)">{{ translateText('删除当前组') }}</AppButton></view>
-						<view v-for="attr in specAttributes" :key="attr.attrId" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.textGroups[textGroupIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateTextField(textGroupIndex, attr.attrId, $event)" /></view>
-					</view>
-					<view class="group-navigation"><AppButton variant="nav" :disabled="textGroupIndex === 0" @press="previousTextGroup">{{ translateText('上一组') }}</AppButton><AppButton variant="nav" :disabled="textGroupIndex >= draft.textGroups.length - 1" @press="nextTextGroup">{{ translateText('下一组') }}</AppButton></view>
+					<text class="section-title">{{ translateText('检查结果') }}</text>
 					<AppButton variant="soft" block @press="addTextGroup">{{ translateText('＋ 新增一组文本') }}</AppButton>
+					<view class="group-card">
+						<view class="group-navigation"><AppButton variant="nav" :disabled="textGroupIndex === 0" @press="previousTextGroup">{{ translateText('上一组') }}</AppButton><text class="group-index">{{ textGroupIndex + 1 }}/{{ draft.textGroups.length }}</text><AppButton variant="nav" :disabled="textGroupIndex >= draft.textGroups.length - 1" @press="nextTextGroup">{{ translateText('下一组') }}</AppButton></view>
+						<view v-if="draft.textGroups.length > 1" class="group-delete"><AppButton variant="remove" @press="removeTextGroup(textGroupIndex)">{{ translateText('删除当前组') }}</AppButton></view>
+						<view v-for="attr in specAttributes" :key="`${textGroupIndex}_${attr.attrId}`" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.textGroups[textGroupIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateTextField(textGroupIndex, attr.attrId, $event)" /></view>
+					</view>
 				</view>
 
-				<view v-else-if="itemType === 'Barcodes'" class="type-section">
-					<text class="section-title">{{ translateText('条码数据') }}</text>
-					<view v-for="(barcode, index) in draft.barcodeItems" :key="index" class="group-card"><view class="group-head"><text>{{ barcode.name || translateText('条码 {index}', { index: index + 1 }) }}</text><AppButton variant="small" @press="openBarcodeEditor(index)">{{ translateText('编辑') }}</AppButton></view><view class="value-row"><text class="value-label">{{ translateText('条码信息') }}</text><input class="value-input" :value="barcode.code" :placeholder="translateText('输入或扫描条码')" @input="updateBarcode(index, $event)" /><AppButton variant="primary" @press="scanBarcode(index)">{{ translateText('扫描条码') }}</AppButton></view><view class="value-row"><text class="value-label">{{ translateText('扫码格式') }}</text><text>{{ barcode.format || '-' }}</text></view></view>
-					<AppButton block @press="openBarcodeEditor(-1)">{{ translateText('＋ 增加条码') }}</AppButton>
+				<view v-else-if="itemType === 'Barcodes'" class="type-section barcode-section">
+					<text class="section-title">{{ translateText('条码扫描') }}</text>
+					<view v-for="(barcode, index) in draft.barcodeItems" :key="index" class="barcode-card">
+						<view class="barcode-card-header"><text class="barcode-card-title">{{ barcode.name }}</text><AppButton variant="small" @press="openBarcodeEditor(index)">{{ translateText('编辑') }}</AppButton></view>
+						<view class="barcode-row"><text class="barcode-row-label">{{ translateText('条码信息') }}</text><text class="barcode-row-value">{{ barcode.code || '-' }}</text><AppButton variant="primary" @press="scanBarcode(index)">{{ translateText('扫描条码') }}</AppButton></view>
+						<view class="barcode-row"><text class="barcode-row-label">{{ translateText('扫码格式') }}</text><text class="barcode-row-value">{{ barcode.format || '-' }}</text></view>
+					</view>
+					<AppButton variant="soft" block @press="openBarcodeEditor(-1)">{{ translateText('+ 增加条码') }}</AppButton>
 				</view>
 
 				<view class="notes-section">
@@ -71,6 +76,7 @@
 						<AppIcon type="arrowRight" :size="16" color="#94a3b8" />
 					</view>
 				</view>
+				</view>
 			</scroll-view>
 
 			<view class="modal-footer-fixed" :style="{ paddingBottom: footerPadding }">
@@ -82,8 +88,8 @@
 				</view>
 			</view>
 			</view>
-		<PhotoSortSheet :visible="showPhotoSort" :photos="mediaPhotos" @close="closePhotoSort" @sorted="confirmPhotoSort" />
-		<view v-if="showBarcodeEditor" class="barcode-overlay" @click.stop="closeBarcodeEditor"><view class="barcode-dialog" :style="{ paddingBottom: barcodeDialogPadding }" @click.stop="stopEvent"><text class="section-title">{{ translateText('条码名称') }}</text><input class="value-input" :value="barcodeName" :placeholder="translateText('请输入条码名称')" @input="updateBarcodeName" /><view class="group-navigation"><AppButton v-if="editingBarcodeIndex >= 0" variant="small" @press="deleteBarcode">{{ translateText('删除') }}</AppButton><AppButton variant="small" @press="closeBarcodeEditor">{{ translateText('取消') }}</AppButton><AppButton variant="primary" @press="saveBarcodeName">{{ translateText('保存') }}</AppButton></view></view></view>
+		<PhotoSortSheet :visible="showPhotoSort" :photos="mediaPhotos" :saving="sorting" @close="closePhotoSort" @sorted="confirmPhotoSort" />
+		<view v-if="showBarcodeEditor" class="barcode-overlay" @click.stop="closeBarcodeEditor"><view class="barcode-dialog" :style="{ paddingBottom: barcodeDialogPadding }" @click.stop="stopEvent"><view class="barcode-editor-header"><text class="section-title">{{ editingBarcodeIndex >= 0 ? translateText('编辑条形码') : translateText('新增条码测试项') }}</text><AppButton v-if="editingBarcodeIndex >= 0" variant="remove" @press="deleteBarcode">{{ translateText('删除') }}</AppButton></view><input class="barcode-name-input" :value="barcodeName" :placeholder="translateText('请输入条码名称')" @input="updateBarcodeName" /><view class="barcode-editor-actions"><AppButton large variant="outline" @press="closeBarcodeEditor">{{ translateText('取消') }}</AppButton><AppButton large variant="primary" @press="saveBarcodeName">{{ editingBarcodeIndex >= 0 ? translateText('保存') : translateText('确认') }}</AppButton></view></view></view>
 	</view>
 </template>
 
@@ -95,6 +101,7 @@
 	import AppButton from '../common/AppButton.uvue'
 	import InspectionMediaGrid from './InspectionMediaGrid.uvue'
 	import PhotoSortSheet from './PhotoSortSheet.uvue'
+	import { normalizeScanFormat } from '../../domain/barcodeScan.uts'
 	import { firstNonEmptyText } from '../../domain/searchViewModel.uts'
 	/** 为 uvue 模板提供明确的可调用翻译方法，避免直接导入函数被当作 ref 解包。 */
 	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
@@ -109,7 +116,10 @@
 		visible: { type: Boolean, default: false },
 		item: { type: Object, default: () => ({}) },
 		defects: { type: Array, default: () => [] },
-		goodsFlag: { type: Number, default: 0 }
+		goodsFlag: { type: Number, default: 0 },
+		isOnline: { type: Boolean, default: true },
+		sorting: { type: Boolean, default: false },
+		sortSavedRevision: { type: Number, default: 0 }
 	})
 	const emit = defineEmits(['close', 'select-result', 'auto-save', 'add-photo', 'remove-photo', 'preview-photo', 'retry-photo', 'open-defect', 'photos-sorted', 'copy-items', 'batch-move', 'reset-item', 'add-checkpoint-photo'])
 	const itemData = computed((): UTSJSONObject => props.item as UTSJSONObject)
@@ -169,6 +179,7 @@
 		const measurements = Array.isArray(storedMeasurements) && storedMeasurements.length > 0 ? (storedMeasurements as UTSJSONObject[]).map((row: UTSJSONObject) => ({ ...emptyRow, ...row })) : [{ ...emptyRow }]
 		const textGroups = Array.isArray(storedTextGroups) && storedTextGroups.length > 0 ? (storedTextGroups as UTSJSONObject[]).map((row: UTSJSONObject) => ({ ...emptyRow, ...row })) : [{ ...emptyRow }]
 		const barcodeItems = Array.isArray(storedBarcodes) && storedBarcodes.length > 0 ? storedBarcodes as UTSJSONObject[] : (Array.isArray(storedBarcodeList) ? (storedBarcodeList as string[]).map((code: string, index: number) => ({ name: `条码项${index + 1}`, code, format: '' })) : [])
+		if (item['itemType'] === 'Barcodes' && barcodeItems.length === 0) barcodeItems.push({ name: '', code: '', format: '' })
 		const storedPhotos = data['photos']
 		draft.value = { ...data, result: (data['result'] ?? '').toString(), comment: (data['comment'] ?? '').toString(), photos: Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : [], measurements, textGroups, barcodeItems }
 		noteDraft.value = draft.value.comment
@@ -212,8 +223,6 @@
 	function nextTextGroup() { textGroupIndex.value = Math.min(draft.value.textGroups.length - 1, textGroupIndex.value + 1) }
 	/** 同步条码对象及旧版条码列表到离线草稿。 */
 	function syncBarcodes() { const barcodeList = draft.value.barcodeItems.map((row) => (row['code'] ?? '').toString().trim()).filter((code) => code !== ''); draft.value = { ...draft.value, barcodeList, barcode: barcodeList[0] ?? '' }; autoSaveDraft() }
-	/** 更新指定条码记录并触发自动保存。 */
-	function updateBarcode(index: number, event: UniInputEvent) { const rows = [...draft.value.barcodeItems]; rows[index] = { ...rows[index], code: event.detail.value }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }
 	/** 打开新建或编辑条码名称的原生弹层。 */
 	function openBarcodeEditor(index: number) { editingBarcodeIndex.value = index; barcodeName.value = index >= 0 ? (draft.value.barcodeItems[index]?.['name'] ?? '').toString() : ''; showBarcodeEditor.value = true }
 	/** 更新条码名称输入。 */
@@ -224,8 +233,8 @@
 	function saveBarcodeName() { const name = barcodeName.value.trim(); if (!name) { uni.showToast({ title: t('请输入条码名称'), icon: 'none' }); return }; const rows = [...draft.value.barcodeItems]; if (editingBarcodeIndex.value >= 0) rows[editingBarcodeIndex.value] = { ...rows[editingBarcodeIndex.value], name }; else rows.push({ name, code: '', format: '' }); draft.value = { ...draft.value, barcodeItems: rows }; closeBarcodeEditor(); syncBarcodes() }
 	/** 删除当前条码项并同步旧版条码字段。 */
 	function deleteBarcode() { const rows = draft.value.barcodeItems.filter((_, index) => index !== editingBarcodeIndex.value); draft.value = { ...draft.value, barcodeItems: rows }; closeBarcodeEditor(); syncBarcodes() }
-	/** 使用 App 原生扫码，保存扫描值及格式；取消扫码不改草稿。 */
-	function scanBarcode(index: number) { uni.scanCode({ scanType: ['barCode', 'qrCode'], success: (result: ScanCodeSuccess) => { const rows = [...draft.value.barcodeItems]; if (rows[index] == null) return; rows[index] = { ...rows[index], code: result.result.trim(), format: result.scanType }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }, fail: (error: ScanCodeFail) => { if (!(JSON.stringify(error) ?? '').toLowerCase().includes('cancel')) uni.showToast({ title: t('扫码失败，请重试'), icon: 'none' }) } }) }
+	/** 使用 App 原生扫码保存 H5 格式的码值与类型；取消或空结果不改草稿。 */
+	function scanBarcode(index: number) { uni.scanCode({ scanType: ['qrCode', 'barCode'], onlyFromCamera: false, success: (result: ScanCodeSuccess) => { const code = result.result.trim(); if (code === '') return; const rows = [...draft.value.barcodeItems]; if (rows[index] == null) return; rows[index] = { ...rows[index], code, format: normalizeScanFormat(result.scanType) }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }, fail: (error: ScanCodeFail) => { if (!(JSON.stringify(error) ?? '').toLowerCase().includes('cancel')) uni.showModal({ title: t('扫码提示'), content: t('未能调起扫一扫或扫码失败'), showCancel: false }) } }) }
 	/** 请求复制当前检查项到其他验货计划。 */
 	function requestCopyItems() { emit('copy-items', props.item) }
 	/** 请求批量移动当前检查项已上传的照片或视频。 */
@@ -243,11 +252,13 @@
 	/** 请求页面将上传失败的检查项图片重新加入上传队列。 */
 	function retryPhoto(photo: UTSJSONObject) { emit('retry-photo', { item: props.item, photo }) }
 	/** 打开当前检查项图片排序底部弹层。 */
-	function openPhotoSort() { if (mediaPhotos.value.length > 1) showPhotoSort.value = true }
+	function openPhotoSort() { if (!props.isOnline) { uni.showToast({ title: t('照片排序需要联网'), icon: 'none' }); return }; if (mediaPhotos.value.length > 1) showPhotoSort.value = true }
 	/** 关闭图片排序底部弹层并放弃临时顺序。 */
-	function closePhotoSort() { showPhotoSort.value = false }
-	/** 应用确认后的图片顺序并通知详情页保存普通草稿。 */
-	function confirmPhotoSort(photos: UTSJSONObject[]) { let index = 0; const merged = draft.value.photos.map((photo) => photo?.bizType === 'checkPoint' ? photo : photos[index++]); draft.value = { ...draft.value, photos: merged }; showPhotoSort.value = false; emit('photos-sorted', { item: props.item, photos: merged, data: buildDraftData() }) }
+	function closePhotoSort() { if (!props.sorting) showPhotoSort.value = false }
+	/** 将临时顺序交给详情页在线保存；服务端成功前不改动本地检查项草稿。 */
+	function confirmPhotoSort(photos: UTSJSONObject[]) { if (!props.sorting) emit('photos-sorted', { item: props.item, photos }) }
+	/** 服务端排序及报告保存均成功后关闭弹层并恢复已持久化的检查项数据。 */
+	function completePhotoSort() { showPhotoSort.value = false; resetDraft(props.item as UTSJSONObject) }
 	/** 打开当前检查项已关联的疵点记录。 */
 	function openDefect(defect: UTSJSONObject) { emit('open-defect', defect) }
 	/** 将服务端疵点等级标准化为 H5 使用的三级枚举。 */
@@ -261,6 +272,7 @@
 
 	/** 监听父页面切换的检查项，并初始化与其对应的可编辑草稿。 */
 	watch((): UTSJSONObject => itemData.value, (item: UTSJSONObject) => resetDraft(item), { immediate: true, deep: true })
+	watch((): number => props.sortSavedRevision, () => completePhotoSort())
 </script>
 
 <style>
@@ -269,15 +281,26 @@
 	.sheet-handle { width: 74rpx; height: 8rpx; margin: 14rpx auto 8rpx; border-radius: 4rpx; background-color: #d7dde7; }
 	.sheet-head { height: 92rpx; padding: 0 24rpx; flex-direction: row; align-items: center; border-bottom-width: 1rpx; border-bottom-color: #eef2f7; }
 	.sheet-title { flex: 1; padding: 0 16rpx; color: #172033; font-size: 28rpx; font-weight: 700; text-align: center; }
-	.sheet-body { flex: 1; min-height: 0; padding: 24rpx 28rpx; padding-bottom: 24rpx; }
+	.sheet-body { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; padding-bottom: 24rpx; }
+	.sheet-body-content { margin-left: 28rpx; margin-right: 28rpx; padding-top: 24rpx; }
 	.current-result-banner { min-height: 72rpx; padding: 0 22rpx; border-radius: 16rpx; flex-direction: row; align-items: center; justify-content: space-between; }
 	.banner-pass { background-color: #ecfdf3; }.banner-fail { background-color: #fef2f2; }.banner-pending { background-color: #fffbeb; }.banner-na { background-color: #f1f5f9; }
 	.banner-left { flex-direction: row; align-items: center; }.result-status-dot { width: 14rpx; height: 14rpx; margin-right: 12rpx; border-radius: 7rpx; background-color: #64748b; }
 	.result-status-label { color: #334155; font-size: 24rpx; font-weight: 600; }.banner-right { color: #64748b; font-size: 22rpx; }
 	.item-description { margin-top: 22rpx; padding: 20rpx; border-radius: 16rpx; color: #64748b; font-size: 24rpx; line-height: 36rpx; background-color: #f8fafc; }
 	.type-section, .media-section, .defects-section, .notes-section { margin-top: 28rpx; }.section-title-row { margin-bottom: 16rpx; flex-direction: row; align-items: center; justify-content: space-between; }.section-title { margin-bottom: 16rpx; color: #334155; font-size: 26rpx; font-weight: 700; }
-	.group-navigation { min-height: 72rpx; flex-direction: row; align-items: center; justify-content: space-around; color: #039447; font-size: 24rpx; }.group-summary { margin-top: 20rpx; color: #64748b; font-size: 22rpx; }.summary-scroll { width: 100%; margin-top: 12rpx; }.summary-row { flex-direction: row; min-height: 58rpx; align-items: center; border-bottom-width: 1rpx; border-bottom-color: #e2e8f0; }.summary-label, .summary-cell { width: 170rpx; padding: 8rpx; color: #475569; font-size: 21rpx; }.summary-current { color: #039447; background-color: #ecfdf3; }
+	.group-navigation { min-height: 72rpx; flex-direction: row; align-items: center; justify-content: space-between; }.group-index { color: #334155; font-size: 26rpx; font-weight: 600; }.group-delete { align-items: flex-end; margin: 8rpx 0; }.group-summary { margin-top: 20rpx; color: #64748b; font-size: 22rpx; }.summary-scroll { width: 100%; margin-top: 12rpx; }.summary-row { flex-direction: row; min-height: 58rpx; align-items: center; border-bottom-width: 1rpx; border-bottom-color: #e2e8f0; }.summary-label, .summary-cell { width: 170rpx; padding: 8rpx; color: #475569; font-size: 21rpx; }.summary-current { color: #039447; background-color: #ecfdf3; }
 	.barcode-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 30; justify-content: flex-end; background-color: rgba(15,23,42,.55); }.barcode-dialog { padding: 30rpx; padding-bottom: 30rpx; border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
+	.barcode-section { width: 100%; min-width: 0; box-sizing: border-box; }
+	.barcode-card { width: 100%; box-sizing: border-box; margin-bottom: 20rpx; padding: 20rpx; border-width: 2rpx; border-style: solid; border-color: #cbd5e1; border-radius: 20rpx; background-color: #ffffff; }
+	.barcode-card-header { width: 100%; min-width: 0; margin-bottom: 16rpx; flex-direction: row; align-items: center; justify-content: space-between; }
+	.barcode-card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #1e293b; font-size: 28rpx; font-weight: 600; }
+	.barcode-row { width: 100%; min-width: 0; min-height: 64rpx; flex-direction: row; align-items: center; }
+	.barcode-row-label { width: 120rpx; margin-right: 16rpx; color: #64748b; font-size: 24rpx; }
+	.barcode-row-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #1e293b; font-size: 26rpx; }
+	.barcode-editor-header { flex-direction: row; align-items: center; justify-content: space-between; margin-bottom: 28rpx; }
+	.barcode-name-input { width: 100%; height: 88rpx; padding: 0 24rpx; box-sizing: border-box; border-width: 2rpx; border-style: solid; border-color: #94a3b8; border-radius: 16rpx; background-color: #ffffff; font-size: 28rpx; }
+	.barcode-editor-actions { margin-top: 32rpx; flex-direction: row; justify-content: space-between; }
 	.group-card { margin-bottom: 16rpx; padding: 14rpx 16rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 16rpx; background-color: #ffffff; }.group-head { min-height: 48rpx; flex-direction: row; align-items: center; justify-content: space-between; color: #334155; font-size: 23rpx; font-weight: 600; }
 	.value-row { min-height: 78rpx; flex-direction: row; align-items: center; }.value-label { width: 220rpx; color: #64748b; font-size: 23rpx; }.value-input { flex: 1; height: 66rpx; padding: 0 16rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 14rpx; font-size: 24rpx; background-color: #f8fafc; }
 	.photo-grid { flex-direction: row; flex-wrap: wrap; }.photo-item, .photo-add { position: relative; width: 190rpx; height: 190rpx; margin: 8rpx; overflow: hidden; border-radius: 18rpx; background-color: #f1f5f9; }.photo-image { width: 190rpx; height: 190rpx; }.photo-add { border-width: 2rpx; border-style: dashed; border-color: #b7c1cf; align-items: center; justify-content: center; color: #64748b; font-size: 22rpx; }.photo-state { position: absolute; left: 8rpx; bottom: 8rpx; padding: 5rpx 9rpx; border-radius: 10rpx; color: #ffffff; font-size: 18rpx; background-color: rgba(15,23,42,0.62); }.photo-delete { position: absolute; top: 8rpx; right: 8rpx; width: 42rpx; height: 42rpx; border-radius: 21rpx; align-items: center; justify-content: center; background-color: rgba(15,23,42,0.68); }

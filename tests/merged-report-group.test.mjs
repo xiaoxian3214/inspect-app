@@ -38,6 +38,50 @@ test('merged download stores one shared report and two lightweight members', asy
   assert.equal(child.plan.goodsName, '子货品')
 })
 
+/** 同组仅重新保存一个成员时，报告和已有成员的状态仍须一致。 */
+test('saving one merged member updates the status of every stored group member', async () => {
+  const database = createMemoryDatabase()
+  const repository = createReportRepository(database)
+  await repository.savePlans(mergedRecords())
+
+  const updatedChild = { ...mergedRecords()[1], status: 3, plan: { ...mergedRecords()[1].plan, status: 3 } }
+  await repository.savePlans([updatedChild])
+
+  assert.equal(database.readTable('report')[0].status, 3)
+  assert.deepEqual(database.readTable('inspection_plan').map((row) => row.status), [3, 3])
+  assert.deepEqual((await repository.listPlans()).map((plan) => plan.status), [3, 3])
+})
+
+/** 合并验货最终提交后共享报告和全部成员一起进入报告页签。 */
+test('completed merged snapshot marks every local member as reported', async () => {
+  const database = createMemoryDatabase()
+  const repository = createReportRepository(database)
+  await repository.savePlans(mergedRecords())
+  const detail = await repository.getPlanById('parent-1')
+  await repository.saveDetailSnapshot('parent-1', {
+    ...detail, status: 3, plan: { ...detail.plan, status: 3 },
+    inspectionPlans: detail.inspectionPlans.map((plan) => ({ ...plan, status: 3 })),
+    syncStatus: 'SYNCED', pendingSyncPayload: null
+  })
+  assert.deepEqual((await repository.listPlans()).map((plan) => plan.status), [3, 3])
+  assert.equal(database.readTable('report')[0].status, 3)
+})
+
+/** 非合并验货提交后只有当前计划进入报告页签。 */
+test('completed ordinary snapshot marks only its own local plan as reported', async () => {
+  const database = createMemoryDatabase()
+  const repository = createReportRepository(database)
+  await repository.savePlans(mergedRecords().map((record, index) => ({
+    ...record, id: `single-${index}`, planId: `single-${index}`,
+    plan: { ...record.plan, id: `single-${index}`, parentPlanId: '', mergeType: 0 },
+    report: { id: `report-${index}`, planId: `single-${index}` },
+    inspectionPlans: [], standardItems: [], itemResults: [], checklistData: {}
+  })))
+  const detail = await repository.getPlanById('single-0')
+  await repository.saveDetailSnapshot('single-0', { ...detail, status: 3, plan: { ...detail.plan, status: 3 } })
+  assert.deepEqual((await repository.listPlans()).map((plan) => plan.status), [3, 1])
+})
+
 test('shared report owns one photo and one upload queue across member entries', async () => {
   const database = createMemoryDatabase()
   const repository = createReportRepository(database)

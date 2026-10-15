@@ -7,6 +7,7 @@ export function createInspectionSubmissionService(options) {
   const uploadPendingPhotos = options.uploadPendingPhotos
   const evaluatePhotos = options.evaluatePhotos
   const planApi = options.planApi
+  const waitForPendingSync = options.waitForPendingSync
 
   /**
    * 断言当前设备在线，避免最终提交进入离线重试或自动同步流程。
@@ -48,6 +49,7 @@ export function createInspectionSubmissionService(options) {
     if (planId === '') throw new Error('计划ID缺失，无法提交验货报告')
 
     await assertOnline('最终提交需要联网，请连接网络后重试')
+    if (typeof waitForPendingSync === 'function') await waitForPendingSync()
     await ensurePhotosUploaded(photoPlanId)
     await assertOnline('网络已断开，请重新联网后提交')
 

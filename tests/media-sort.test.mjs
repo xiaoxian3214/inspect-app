@@ -43,3 +43,12 @@ test('invalid indexes keep the original order while normalizing sort numbers', (
   assert.deepEqual(sorted.map((photo) => photo.photoId), ['photo-1', 'photo-2'])
   assert.deepEqual(sorted.map((photo) => photo.sortNo), [1, 2])
 })
+
+/** 原生拖拽以三列格子和手指位移算目标，不依赖浏览器 DOM 坐标。 */
+test('resolves a dragged photo destination across rows and partial final rows', () => {
+  assert.equal(mediaSort.resolveMediaDragTarget(0, 100, 0, 100, 5), 1)
+  assert.equal(mediaSort.resolveMediaDragTarget(0, 0, 100, 100, 5), 3)
+  assert.equal(mediaSort.resolveMediaDragTarget(4, -100, -100, 100, 5), 0)
+  assert.equal(mediaSort.resolveMediaDragTarget(3, 300, 0, 100, 5), 4)
+  assert.equal(mediaSort.resolveMediaDragTarget(2, 0, 0, 0, 5), 2)
+})

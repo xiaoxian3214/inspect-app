@@ -2125,7 +2125,7 @@ function handleChecklistConfirm(option) {
   width: 100%;
   background: #fff;
   border-radius: 32rpx 32rpx 0 0;
-  padding: 32rpx;
+  padding: 24rpx;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -2143,7 +2143,7 @@ function handleChecklistConfirm(option) {
   background: #fff;
   border: 2rpx solid #e5e7eb;
   border-radius: 24rpx;
-  padding: 16rpx 24rpx;
+  padding: 16rpx 8rpx;
   overflow-y: auto;
 }
 

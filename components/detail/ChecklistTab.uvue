@@ -82,7 +82,7 @@
 				</view>
 			</view>
 		</view>
-		<view class="finish-button" @click="finish"><text>{{ translateText('总结并提交') }}</text></view>
+		<view class="finish-button" @click="finish"><text class="finish-button-label">{{ translateText('总结并提交') }}</text></view>
 	</view>
 </template>
 
@@ -233,6 +233,6 @@
 	.inspection-plan-order { color: #334155; font-size: 24rpx; }
 	.inspection-plan-goods { margin-top: 8rpx; color: #0f172a; font-size: 28rpx; }
 	.child-defects { padding-left: 32rpx; padding-right: 30rpx; }
-	.finish-button { height: 92rpx; margin: 24rpx 0 8rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: #03ae4f; color:#fff }
-	.finish-button { color: #ffffff; font-size: 30rpx; font-weight: 600; }
+	.finish-button { height: 92rpx; margin: 24rpx 0 8rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: #03ae4f; }
+	.finish-button-label { color: #ffffff; font-size: 30rpx; font-weight: 600; }
 </style>

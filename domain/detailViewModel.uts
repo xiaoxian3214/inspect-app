@@ -477,6 +477,91 @@ export function calculateDetailProgress(checklistItems, checklistData) {
   return Math.round((completed / items.length) * 100)
 }
 
+/** 按 H5 的普通、锁定、待验/在验条件筛选复制目标，同时排除当前合并组的全部成员。 */
+export function filterCopyTargetPlans(plans, currentDetail) {
+  const ownPlan = currentDetail?.plan ?? {}
+  const excludedIds = new Set([
+    currentDetail?.planId, ownPlan?.id, ownPlan?.parentPlanId,
+    ...(Array.isArray(currentDetail?.inspectionPlans) ? currentDetail.inspectionPlans.map((row) => row?.id ?? row?.planId) : [])
+  ].map((id) => String(id ?? '').trim()).filter((id) => id !== ''))
+  return (Array.isArray(plans) ? plans : []).filter((row) => {
+    const plan = row?.plan ?? row
+    const id = String(plan?.id ?? plan?.planId ?? '').trim()
+    const parentId = String(plan?.parentPlanId ?? row?.parentPlanId ?? '').trim()
+    const status = Number(plan?.status ?? row?.status ?? 0)
+    const mergeType = Number(plan?.mergeType ?? row?.mergeType ?? 0)
+    const lockFlag = plan?.lockFlag ?? row?.lockFlag
+    return id !== '' && !excludedIds.has(id) && !excludedIds.has(parentId)
+      && mergeType === 0 && [0, 1].includes(status)
+      && (lockFlag == null || Number(lockFlag) === 1)
+  })
+}
+
+/** 联网原样展示搜索接口记录；离线才筛选当前验货员已锁定的本地普通计划。 */
+export function selectCopyTargetPlans(remotePlans, localPlans, currentDetail, inspectorId, remoteAuthoritative) {
+  if (remoteAuthoritative) return Array.isArray(remotePlans) ? remotePlans : []
+  const userId = String(inspectorId ?? '').trim()
+  const candidates = filterCopyTargetPlans(localPlans, currentDetail)
+  const seen = new Set()
+  const selected = []
+  for (const row of candidates) {
+    const plan = row?.plan ?? row
+    const id = String(plan?.id ?? plan?.planId ?? '').trim()
+    if (seen.has(id)) continue
+    if (Number(plan?.lockFlag ?? row?.lockFlag) !== 1
+      || (userId !== '' && String(plan?.inspectorId ?? row?.inspectorId ?? '').trim() !== userId)) continue
+    seen.add(id)
+    selected.push(plan)
+  }
+  return selected
+}
+
+/** 仅展示有真实结果主键的主检查点及合并子检查点，并排除当前来源。 */
+export function buildBatchMoveTargets(detail, sourceItemId: string = '') {
+  const baseItems = (Array.isArray(detail?.checklistItems) ? detail.checklistItems : [])
+    .filter((item) => String(item?.sonPlanId ?? '').trim() === '')
+  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : []
+  const results = Array.isArray(detail?.itemResults) ? detail.itemResults : []
+  const sourceKey = String(sourceItemId ?? '').trim()
+  const targets = []
+  for (const item of baseItems) {
+    const baseId = String(item?.baseItemId ?? item?.itemId ?? item?.id ?? '').trim()
+    if (baseId === '') continue
+    const standardId = String(item?.standardItemId ?? '').trim()
+    const result = results.find((row) => !row?.sonPlanId && (
+      String(row?.id ?? row?.itemResultId ?? '').trim() === baseId
+      || (standardId !== '' && String(row?.standardItemId ?? '').trim() === standardId)
+    ))
+    const bizId = String(result?.id ?? result?.itemResultId ?? '').trim()
+    if (bizId === '') continue
+    const name = String(item?.itemName ?? item?.name ?? baseId)
+    if (baseId !== sourceKey && bizId !== sourceKey) targets.push({ ...item, bizId, itemId: bizId, sonPlanId: '', name, subLabel: '' })
+  }
+  if (plans.length <= 1) return targets
+  for (const plan of plans) {
+    const sonPlanId = String(plan?.id ?? plan?.planId ?? '').trim()
+    if (sonPlanId === '') continue
+    const extra = [plan?.subGoodsNo, plan?.batchNo].map((value) => String(value ?? '').trim()).filter((value) => value !== '').join('#')
+    const orderNo = String(plan?.clientOrderNo ?? '').trim()
+    const subLabel = extra !== '' && orderNo !== '' ? `${orderNo}（${extra}）` : orderNo || extra || sonPlanId
+    for (const item of baseItems) {
+      const baseId = String(item?.baseItemId ?? item?.itemId ?? item?.id ?? '').trim()
+      const localKey = makeChecklistDataKey(baseId, sonPlanId)
+      if (baseId === '' || localKey === sourceKey) continue
+      const standardId = String(item?.standardItemId ?? '').trim()
+      const result = results.find((row) => String(row?.sonPlanId ?? '').trim() === sonPlanId && (
+        String(row?.baseItemResultId ?? '').trim() === baseId
+        || (standardId !== '' && String(row?.standardItemId ?? '').trim() === standardId)
+        || String(row?.id ?? row?.itemResultId ?? '').trim() === `${baseId}_${sonPlanId}`
+      ))
+      const bizId = String(result?.id ?? result?.itemResultId ?? '').trim()
+      if (bizId === '') continue
+      targets.push({ ...item, bizId, itemId: localKey, baseItemId: baseId, sonPlanId, name: String(item?.itemName ?? item?.name ?? baseId), subLabel })
+    }
+  }
+  return targets
+}
+
 /**
  * 将远程或本地报告详情归一化为 App 详情页统一数据结构。
  */
@@ -678,15 +763,18 @@ function cloneSerializableValue(value) {
 function resolveChecklistTarget(detail, requestedItemId, sonPlanId: string = '') {
   const normalizedItemId = String(requestedItemId ?? '').trim()
   const normalizedSonPlanId = String(sonPlanId ?? '').trim()
-  const item = (detail?.checklistItems ?? []).find((row) => {
-    if (String(row?.sonPlanId ?? '').trim() !== normalizedSonPlanId) return false
+  /** 判断一个主行或合并子行是否对应请求的检查项。 */
+  const matchesItem = (row) => {
     const candidates = [row?.itemId, row?.id, row?.baseItemId, row?.standardItemId]
       .map((value) => String(value ?? '').trim())
       .filter((value) => value !== '')
     return candidates.includes(normalizedItemId)
-  }) || null
+  }
+  const items = detail?.checklistItems ?? []
+  const exact = items.find((row) => String(row?.sonPlanId ?? '').trim() === normalizedSonPlanId && matchesItem(row)) || null
+  const item = exact ?? (normalizedSonPlanId !== '' ? items.find((row) => String(row?.sonPlanId ?? '').trim() === '' && matchesItem(row)) : null)
   const baseItemId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? normalizedItemId).split('__')[0]
-  const key = String(item?.itemId || makeChecklistDataKey(baseItemId, normalizedSonPlanId))
+  const key = exact != null ? String(exact?.itemId ?? makeChecklistDataKey(baseItemId, normalizedSonPlanId)) : makeChecklistDataKey(baseItemId, normalizedSonPlanId)
   const sourceRow = (detail?.itemResults ?? []).find((row) => {
     const rowSonPlanId = String(row?.sonPlanId ?? '').trim()
     if (rowSonPlanId !== normalizedSonPlanId) return false
@@ -785,6 +873,48 @@ export function copyChecklistItemToDetail(sourceDetail, targetDetail, payload: a
   return targetDetailState
 }
 
+/** 按标准检查项 ID 找到每个目标计划自己的结果主键；缺少真实结果行时阻止复用源计划主键。 */
+export function resolveCopyTargetItemIds(sourceDetail, targetDetail, selectedItemIds) {
+  const sourceRows = Array.isArray(sourceDetail?.itemResults) ? sourceDetail.itemResults : []
+  const targetRows = Array.isArray(targetDetail?.itemResults) ? targetDetail.itemResults : []
+  const requested = Array.isArray(selectedItemIds) ? selectedItemIds : []
+  return [...new Set(requested.map((id) => String(id ?? '').trim()).filter((id) => id !== ''))].map((sourceId) => {
+    const sourceRow = sourceRows.find((row) => String(row?.id ?? row?.itemResultId ?? '') === sourceId && !row?.sonPlanId)
+    const sourceItem = (sourceDetail?.checklistItems ?? []).find((item) => String(item?.itemId ?? item?.id ?? '') === sourceId && !item?.sonPlanId)
+    const standardItemId = String(sourceRow?.standardItemId ?? sourceItem?.standardItemId ?? '').trim()
+    if (standardItemId === '') throw new Error(`源检查项 ${sourceId} 缺少模板 ID，无法匹配目标`)
+    const targetRow = targetRows.find((row) => String(row?.standardItemId ?? '').trim() === standardItemId && !row?.sonPlanId)
+    const targetId = String(targetRow?.id ?? targetRow?.itemResultId ?? '').trim()
+    if (targetId === '') throw new Error(`目标计划缺少检查结果 ${standardItemId}，请先下载目标计划`)
+    return targetId
+  })
+}
+
+/** 按照片实际来源检查结果分组，为 H5 图片复制接口生成持久任务参数。 */
+export function buildBatchPhotoCopyRequests(detail, fileIds, targetItems) {
+  const planId = String(detail?.planId ?? detail?.plan?.id ?? '').trim()
+  const requested = new Set((Array.isArray(fileIds) ? fileIds : []).map((id) => String(id ?? '').trim()).filter((id) => id !== ''))
+  const targets = Array.isArray(targetItems) ? targetItems : []
+  const groups = new Map()
+  for (const photo of (detail?.photos ?? [])) {
+    const fileId = String(photo?.fileId ?? '').trim()
+    if (!requested.has(fileId) || photo?.ownerType !== 'checklist') continue
+    const ownerKey = String(photo?.dataKey ?? photo?.ownerId ?? '').trim()
+    const sourceRow = (detail?.itemResults ?? []).find((row) => {
+      const rowId = String(row?.id ?? row?.itemResultId ?? '').trim()
+      const sonPlanId = String(row?.sonPlanId ?? '').trim()
+      return rowId === ownerKey || (sonPlanId !== '' && makeChecklistDataKey(String(row?.baseItemResultId ?? rowId.split(`_${sonPlanId}`)[0]), sonPlanId) === ownerKey)
+    })
+    const sourceItemId = String(sourceRow?.id ?? sourceRow?.itemResultId ?? ownerKey).trim()
+    const targetItemIds = [...new Set(targets.map((target) => String(target?.bizId ?? '').trim()).filter((id) => id !== '' && id !== sourceItemId))]
+    if (sourceItemId === '' || targetItemIds.length === 0) continue
+    const groupKey = `${sourceItemId}:${targetItemIds.join(',')}`
+    if (!groups.has(groupKey)) groups.set(groupKey, { sourcePlanId: planId, sourceItemId, targetPlanIds: [planId], targetItemIds, fileIds: [] })
+    if (!groups.get(groupKey).fileIds.includes(fileId)) groups.get(groupKey).fileIds.push(fileId)
+  }
+  return [...groups.values()]
+}
+
 /**
  * 将一张已上传图片复制到目标本地检查项，并按服务端文件 ID 防止重复记录。
  */
@@ -809,6 +939,38 @@ export function copyChecklistPhotoToItem(detail, photo, targetItem, options: any
     options?.createPhotoId
   )
   return updateChecklistItem(normalized, target.key, { ...current, photos: [...currentPhotos, copiedPhoto] })
+}
+
+/** 一次解析当前详情，把选中已上传媒体复制到多个检查项并按目标文件 ID 去重。 */
+export function copyChecklistPhotosToItems(detail, fileIds, targetItems, options: any = {}) {
+  const requestedIds = new Set((Array.isArray(fileIds) ? fileIds : []).map((id) => String(id ?? '').trim()).filter((id) => id !== ''))
+  if (requestedIds.size === 0 || !Array.isArray(targetItems) || targetItems.length === 0) return detail
+  const normalized = normalizeInspectionDetail(detail, detail?.planId)
+  const photosById = new Map()
+  for (const photo of (normalized?.photos ?? [])) {
+    const id = String(photo?.fileId ?? '').trim()
+    if (requestedIds.has(id) && !photosById.has(id)) photosById.set(id, photo)
+  }
+  let updated = normalized
+  let changed = false
+  for (const targetItem of targetItems) {
+    const target = resolveChecklistTarget(updated, targetItem?.standardItemId ?? targetItem?.itemId ?? targetItem?.id, targetItem?.sonPlanId ?? '')
+    if (target.key === '') continue
+    const current = updated?.checklistData?.[target.key] ?? {}
+    const currentPhotos = Array.isArray(current?.photos) ? current.photos : []
+    const existing = new Set(currentPhotos.map((photo) => String(photo?.fileId ?? '').trim()))
+    const additional = []
+    for (const id of requestedIds) {
+      const photo = photosById.get(id)
+      if (photo == null || existing.has(id) || String(photo?.ownerId ?? photo?.dataKey ?? '') === target.key) continue
+      additional.push(cloneChecklistPhotoForTarget(photo, target, updated?.plan ?? {}, currentPhotos.length + additional.length, options?.createPhotoId))
+      existing.add(id)
+    }
+    if (additional.length === 0) continue
+    updated = updateChecklistItem(updated, target.key, { ...current, photos: [...currentPhotos, ...additional] })
+    changed = true
+  }
+  return changed ? updated : detail
 }
 
 /**
@@ -858,6 +1020,7 @@ function buildUploadedFileList(photos) {
       fileId: String(photo?.fileId ?? ''),
       filePath: photo?.filePath ?? '',
       thumbnailPath: photo?.thumbnailPath ?? '',
+      ...(photo?.sortNo != null ? { sortNo: Number(photo.sortNo) } : {}),
       ...(photo?.bizType ? { bizType: photo.bizType } : {}),
       ...(photo?.fileType ? { fileType: photo.fileType } : {}),
       ...(photo?.fileExt ? { fileExt: photo.fileExt } : {}),
@@ -873,7 +1036,10 @@ function buildUploadedFileList(photos) {
  * 将条码编辑数据转换为服务端 barcodeValue JSON 字符串。
  */
 function buildBarcodeValue(data) {
-  const items = Array.isArray(data?.barcodeItems) ? data.barcodeItems : []
+  const items = (Array.isArray(data?.barcodeItems) ? data.barcodeItems : []).map((row) => typeof row === 'string'
+    ? { name: '', code: row.trim(), format: '' }
+    : { name: String(row?.name ?? row?.label ?? '').trim(), code: String(row?.code ?? row?.value ?? row?.barcode ?? '').trim(), format: String(row?.format ?? row?.scanType ?? '').trim() })
+    .filter((row) => row.name !== '' || row.code !== '' || row.format !== '')
   if (items.length > 0) return JSON.stringify(items)
   const codes = Array.isArray(data?.barcodeList) ? data.barcodeList : []
   if (codes.length > 0) return JSON.stringify(codes.map((code) => ({ name: '', code: String(code ?? ''), format: '' })))

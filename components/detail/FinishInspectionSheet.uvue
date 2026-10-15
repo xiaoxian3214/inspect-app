@@ -1,81 +1,97 @@
 <template>
 	<view v-if="visible" class="overlay" @click="closeSheet">
-		<view class="dialog" :style="{ maxHeight: dialogMaxHeight, paddingBottom: dialogBottomPadding }" @click.stop="stopEvent">
+		<view class="dialog" :style="{ height: dialogHeight, maxHeight: dialogMaxHeight, paddingBottom: dialogBottomPadding }" @click.stop="stopEvent">
 			<view class="modal-header"><view class="modal-heading"><text class="title">{{ translateText('总结并提交') }}</text><text v-if="productTitle !== ''" class="product-title">{{ productTitle }}</text></view><text class="close-button" @click="closeSheet">×</text></view>
 			<scroll-view class="modal-content" scroll-y :style="{ maxHeight: contentMaxHeight }">
-			<text class="notice">{{ translateText('最终提交需要联网，并等待全部图片上传完成。离线时只能保存草稿，系统不会自动完成最终提交。') }}</text>
-			<text class="section-title">{{ translateText('数量') }}</text>
-			<view class="info-row"><text class="info-label">{{ translateText('订单数量') }}</text><text class="info-value">{{ displayQuantities.orderQuantity }}</text></view>
-			<view class="info-row"><view class="ready-label" @click="setReadyQuantity"><text class="info-label">{{ translateText('已备好数量') }}</text><text class="set-link">{{ translateText('（设置）') }}</text></view><text class="info-value">{{ displayQuantities.readyQuantity }}</text></view>
-			<view class="info-row"><text class="info-label">{{ translateText('预计抽样数量') }}</text><text class="info-value">{{ displayQuantities.sampleQuantity }}</text></view>
-			<text class="section-title">{{ translateText('疵点') }}</text>
-			<view class="stat-header"><text class="stat-label"></text><text class="stat-col">{{ translateText('实际发现') }}</text><text class="stat-col">{{ translateText('最大值') }}</text></view>
-			<view v-for="stat in displayStats" :key="stat.key" class="stat-row"><text class="stat-label" :class="[{ 'stat-exceed': stat.exceed }]">{{ translateText(stat.label) }}</text><text class="stat-col" :class="[{ 'stat-exceed': stat.exceed }]">{{ stat.actual }}</text><text class="stat-col" :class="[{ 'stat-exceed': stat.exceed }]">{{ stat.max }}</text></view>
-			<text v-if="exceedsAql" class="aql-warn">{{ translateText('疵点数量超出AQL允许最大值') }}</text>
-			<view v-if="exceedsAql">
-				<text class="label">{{ translateText('失败检查点') }}</text>
-				<view v-for="item in failedItems" :key="item.id" class="failed-item"><view class="failed-dot"></view><text class="failed-name">{{ item.name }}</text></view>
-				<text v-if="failedCheckpoints.length === 0" class="failed-empty">{{ translateText('暂无失败检查点') }}</text>
-			</view>
-			<text class="section-title">{{ translateText('状态') }}</text>
-			<text class="label">{{ translateText('验货总结结果') }}</text>
-			<view class="result-row"><view v-for="option in options" :key="option.value" class="result-option" :class="[{ active: overallResult === option.value }, option.value.toLowerCase()]" @click="selectResult(option.value)"><text>{{ translateText(option.label) }}</text></view></view>
-			<text class="label">{{ translateText('总结性评语') }}</text>
-			<textarea class="remarks" :value="overallRemarks" :maxlength="3000" :placeholder="translateText('填写整体质量情况和结论')" @input="updateRemarks" />
-			<view v-if="pendingUploadCount > 0" class="pending-warning"><text>{{ translateText('仍有 {count} 张图片等待上传，提交时将先处理图片上传。', { count: pendingUploadCount }) }}</text></view>
+				<text class="notice">{{ translateText('最终提交需要联网，并等待全部图片上传完成。离线时只能保存草稿，系统不会自动完成最终提交。') }}</text>
+				<text class="section-title">{{ translateText('数量') }}</text>
+				<view class="info-row"><text class="info-label">{{ translateText('订单数量') }}</text><text class="info-value">{{ displayQuantities.orderQuantity }}</text></view>
+				<view class="info-row"><view class="ready-label" @click="setReadyQuantity"><text class="info-label">{{ translateText('已备好数量') }}</text><text class="set-link">{{ translateText('（设置）') }}</text></view><text class="info-value">{{ displayQuantities.readyQuantity }}</text></view>
+				<view class="info-row"><text class="info-label">{{ translateText('预计抽样数量') }}</text><text class="info-value">{{ displayQuantities.sampleQuantity }}</text></view>
+				<text class="section-title">{{ translateText('疵点') }}</text>
+				<view class="finish-defect-header"><text class="finish-defect-spacer"></text><text class="finish-defect-col-hd">{{ translateText('实际发现') }}</text><text class="finish-defect-col-hd">{{ translateText('最大值') }}</text></view>
+				<view v-for="stat in displayStats" :key="stat.key" class="info-row finish-defect-row"><text class="finish-defect-label" :class="{ 'stat-exceed': stat.exceed }">{{ translateText(stat.label) }}</text><text class="finish-defect-col" :class="{ 'stat-exceed': stat.exceed }">{{ stat.actual }}</text><text class="finish-defect-col" :class="{ 'stat-exceed': stat.exceed }">{{ stat.max }}</text></view>
+				<text v-if="exceedsAql" class="aql-warn">{{ translateText('疵点数量超出AQL允许最大值') }}</text>
+				<view v-if="exceedsAql"><view class="section-title finish-collapse-row" @click="toggleFailedCheckpoints"><text>{{ translateText('失败检查点') }}</text><text>{{ failedCheckpointsExpanded ? '∧' : '∨' }}</text></view><view v-if="failedCheckpointsExpanded" class="finish-failed-list"><view v-for="item in failedItems" :key="item.id" class="finish-failed-item"><view class="finish-failed-dot"></view><text class="finish-failed-name">{{ item.name }}</text></view><text v-if="failedItems.length === 0" class="finish-failed-empty">{{ translateText('暂无失败检查点') }}</text></view></view>
+				<text class="section-title">{{ translateText('状态') }}</text>
+				<view class="info-row"><text class="info-label">{{ translateText('状态') }}</text><view class="finish-status-area"><view v-if="overallResult !== ''" class="finish-status-tag" :class="statusClass"><view class="finish-status-dot" :class="statusDotClass"></view><text>{{ translateText(statusLabel) }}</text></view><view class="finish-set-status-btn" @click="openStatusPicker"><text class="finish-set-status-label">{{ translateText('设置状态') }}</text></view></view></view>
+				<text class="section-title">{{ translateText('总结性评语') }}</text>
+				<textarea class="finish-remarks" :value="overallRemarks" :maxlength="3000" :placeholder="translateText('总结评论')" @input="updateRemarks" />
+				<view v-if="pendingUploadCount > 0" class="pending-warning"><text>{{ translateText('仍有 {count} 张图片等待上传，提交时将先处理图片上传。', { count: pendingUploadCount }) }}</text></view>
 			</scroll-view>
-			<view class="actions"><button class="button cancel" :disabled="submitting" @click="closeSheet">{{ translateText('取消') }}</button><button class="button submit" :disabled="submitting" @click="submit">{{ translateText(submitting ? '提交中...' : '确认提交') }}</button></view>
+			<view class="actions"><view class="button cancel" :class="{ 'button-disabled': submitting }" @click="closeSheet"><text class="cancel-label">{{ translateText('取消') }}</text></view><view class="button submit" :class="{ 'button-disabled': submitting }" @click="submit"><text class="submit-label">{{ translateText(submitting ? '提交中...' : '确认提交') }}</text></view></view>
 		</view>
+		<view v-if="statusPickerVisible" class="finish-status-sheet-overlay" @click.stop="closeStatusPicker"><view class="finish-status-sheet" :style="{ paddingBottom: dialogBottomPadding }" @click.stop="stopEvent"><text class="finish-status-sheet-title">{{ translateText('设置状态') }}</text><view v-for="option in options" :key="option.value" class="finish-status-sheet-option" @click="selectResult(option.value)"><text class="finish-status-sheet-label">{{ translateText(option.label) }}</text><text v-if="overallResult === option.value" class="finish-status-sheet-check">✓</text></view><view class="finish-status-sheet-actions"><view class="finish-status-reset-btn" @click="resetResult"><text class="finish-status-reset-label">{{ translateText('重置状态') }}</text></view></view><view class="finish-status-sheet-cancel" @click="closeStatusPicker"><text class="finish-status-cancel-label">{{ translateText('取消') }}</text></view></view></view>
 	</view>
 </template>
 
 <script setup lang="uts">
 	import { windowHeightPx, safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
-	import { computed } from 'vue'
+	import { computed, ref, watch } from 'vue'
 	type DefectStat = { key: string, label: string, actual: number, max: number, exceed: boolean }
 	type FailedCheckpoint = { id: string, name: string }
 	type QuantityTotals = { orderQuantity: number, readyQuantity: number, sampleQuantity: number }
+	type ResultOption = { value: string, label: string }
 	const props = defineProps({ visible: { type: Boolean, default: false }, productTitle: { type: String, default: '' }, quantityTotals: { type: Object, default: () => ({}) }, overallResult: { type: String, default: '' }, overallRemarks: { type: String, default: '' }, pendingUploadCount: { type: Number, default: 0 }, submitting: { type: Boolean, default: false }, defectStats: { type: Array, default: () => [] }, exceedsAql: { type: Boolean, default: false }, failedCheckpoints: { type: Array, default: () => [] } })
 	const emit = defineEmits(['close', 'set-ready-quantity', 'update-result', 'update-remarks', 'submit'])
-	/** 为原生总结弹层提供可调用的翻译方法。 */
-	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
-	/** 计算包含设备安全区的弹窗尺寸。 */
-	const dialogMaxHeight = computed((): string => windowHeightPx(0.92))
-	/** 内容区独立滚动，避免长疵点列表把底部确认按钮推出屏幕。 */
-	const contentMaxHeight = computed((): string => windowHeightPx(0.68))
-	/** 计算包含手势区域的底部留白。 */
-	const dialogBottomPadding = computed((): string => safeBottomPaddingPx(32))
-	/** 把报告数量对象转换为原生模板可安全读取的固定数值字段。 */
-	const displayQuantities = computed((): QuantityTotals => { const values = props.quantityTotals as UTSJSONObject; return { orderQuantity: parseFloat((values['orderQuantity'] ?? 0).toString()), readyQuantity: parseFloat((values['readyQuantity'] ?? 0).toString()), sampleQuantity: parseFloat((values['sampleQuantity'] ?? 0).toString()) } })
-	/** 将动态 AQL 统计转换为可供原生模板渲染的固定字段。 */
-	const displayStats = computed((): DefectStat[] => (props.defectStats as UTSJSONObject[]).map((raw: UTSJSONObject): DefectStat => ({ key: (raw['key'] ?? '').toString(), label: (raw['label'] ?? '').toString(), actual: parseFloat((raw['actual'] ?? 0).toString()), max: parseFloat((raw['max'] ?? 0).toString()), exceed: raw['exceed'] === true })))
-	/** 将失败检查点转换为可供原生模板渲染的固定字段。 */
-	const failedItems = computed((): FailedCheckpoint[] => (props.failedCheckpoints as UTSJSONObject[]).map((raw: UTSJSONObject): FailedCheckpoint => ({ id: (raw['id'] ?? '').toString(), name: (raw['name'] ?? '').toString() })))
-	type ResultOption = { value: string, label: string }
+	const failedCheckpointsExpanded = ref(true)
+	const statusPickerVisible = ref(false)
 	const options: ResultOption[] = [{ value: 'APPROVED', label: '合格' }, { value: 'REJECTED', label: '不合格' }, { value: 'PENDING', label: '待定' }]
-	/** 更新最终验货总结结果。 */
-	function selectResult(value: string) { emit('update-result', value) }
-	/** 更新最终验货总结评语。 */
+	/** 每次打开总结弹层时恢复默认展开的失败检查点并关闭状态选择。 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (visible) { failedCheckpointsExpanded.value = true; statusPickerVisible.value = false } })
+	/** 翻译原生总结弹层及状态设置弹层的文案。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
+	/** 恢复原生总结弹层的较高最大高度。 */
+	const dialogMaxHeight = computed((): string => windowHeightPx(0.92))
+	/** 让总结弹层稳定占用更多屏幕高度，避免内容较少时仍显得过矮。 */
+	const dialogHeight = computed((): string => windowHeightPx(0.88))
+	/** 扩大可滚动正文的高度以容纳疵点和状态。 */
+	const contentMaxHeight = computed((): string => windowHeightPx(0.75))
+	/** 为原有底部操作按钮保留手势安全区域。 */
+	const dialogBottomPadding = computed((): string => safeBottomPaddingPx(32))
+	/** 从报告数量对象安全读取三项汇总值。 */
+	const displayQuantities = computed((): QuantityTotals => { const values = props.quantityTotals as UTSJSONObject; return { orderQuantity: parseFloat((values['orderQuantity'] ?? 0).toString()), readyQuantity: parseFloat((values['readyQuantity'] ?? 0).toString()), sampleQuantity: parseFloat((values['sampleQuantity'] ?? 0).toString()) } })
+	/** 将 AQL 统计转换成原生模板的固定字段。 */
+	const displayStats = computed((): DefectStat[] => (props.defectStats as UTSJSONObject[]).map((raw: UTSJSONObject): DefectStat => ({ key: (raw['key'] ?? '').toString(), label: (raw['label'] ?? '').toString(), actual: parseFloat((raw['actual'] ?? 0).toString()), max: parseFloat((raw['max'] ?? 0).toString()), exceed: raw['exceed'] === true })))
+	/** 将失败检查点转换成原生模板的固定字段。 */
+	const failedItems = computed((): FailedCheckpoint[] => (props.failedCheckpoints as UTSJSONObject[]).map((raw: UTSJSONObject): FailedCheckpoint => ({ id: (raw['id'] ?? '').toString(), name: (raw['name'] ?? '').toString() })))
+	/** 根据服务端结果值展示 H5 的状态文字。 */
+	const statusLabel = computed((): string => options.find((option: ResultOption): boolean => option.value === props.overallResult)?.label ?? props.overallResult)
+	/** 根据结果状态设置标签的颜色。 */
+	const statusClass = computed((): string => props.overallResult === 'APPROVED' ? 'status-approved' : props.overallResult === 'REJECTED' ? 'status-rejected' : 'status-pending')
+	/** 根据结果状态设置标签圆点的颜色。 */
+	const statusDotClass = computed((): string => props.overallResult === 'APPROVED' ? 'dot-approved' : props.overallResult === 'REJECTED' ? 'dot-rejected' : 'dot-pending')
+	/** 展开或收起超出 AQL 时的失败检查点。 */
+	function toggleFailedCheckpoints() { failedCheckpointsExpanded.value = !failedCheckpointsExpanded.value }
+	/** 打开独立的状态设置底部弹层。 */
+	function openStatusPicker() { statusPickerVisible.value = true }
+	/** 关闭独立的状态设置底部弹层。 */
+	function closeStatusPicker() { statusPickerVisible.value = false }
+	/** 选中结果后通知页面更新草稿并关闭状态选择。 */
+	function selectResult(value: string) { emit('update-result', value); statusPickerVisible.value = false }
+	/** 清空结果后通知页面更新草稿并关闭状态选择。 */
+	function resetResult() { emit('update-result', ''); statusPickerVisible.value = false }
+	/** 更新总结评语，草稿写入仍由详情页面调度。 */
 	function updateRemarks(event: UniInputEvent) { emit('update-remarks', event.detail.value) }
-	/** 请求父页面打开已备好数量设置，而不在原生总结层发起网络请求。 */
+	/** 请求打开已备好数量的原生设置弹层。 */
 	function setReadyQuantity() { emit('set-ready-quantity') }
-	/** 请求页面执行联网最终提交。 */
-	function submit() { emit('submit') }
-	/** 关闭最终提交弹层。 */
-	function closeSheet() { emit('close') }
-	/** 阻止点击内容区域关闭弹层。 */
+	/** 沿用页面已有的最终提交校验与联网提交逻辑。 */
+	function submit() { if (!props.submitting) emit('submit') }
+	/** 关闭总结弹层，正在提交时不允许关闭。 */
+	function closeSheet() { if (!props.submitting) emit('close') }
+	/** 阻止内容区域点击事件穿透到遮罩。 */
 	function stopEvent() {}
 </script>
 
 <style>
 	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2300; justify-content: flex-end; background-color: rgba(15,23,42,0.55); }
-	.dialog { width: 100%; padding: 24rpx 32rpx 32rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }
+	.dialog { width: 100%; flex-direction: column; padding: 24rpx 32rpx 32rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }
 	.modal-header { flex-direction: row; align-items: flex-start; justify-content: space-between; padding-bottom: 16rpx; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
 	.modal-heading { flex: 1; }
 	.product-title { margin-top: 8rpx; color: #64748b; font-size: 23rpx; }
 	.close-button { padding: 0 8rpx; color: #94a3b8; font-size: 42rpx; }
-	.modal-content { width: 100%; }
+	.modal-content { flex: 1; min-height: 0; width: 100%; }
 	.title { color: #172033; font-size: 34rpx; font-weight: 700; }
 	.section-title { margin-top: 24rpx; padding: 12rpx 16rpx; color: #334155; font-size: 26rpx; font-weight: 600; background-color: #f5f7f9; }
 	.info-row { min-height: 76rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 8rpx 16rpx; border-bottom-width: 1rpx; border-bottom-color: #edf0f3; }
@@ -84,27 +100,49 @@
 	.info-value { color: #172033; font-size: 26rpx; font-weight: 600; }
 	.set-link { color: #03ae4f; font-size: 23rpx; }
 	.notice { margin-top: 16rpx; padding: 18rpx; border-radius: 15rpx; color: #9a6700; font-size: 23rpx; line-height: 36rpx; background-color: #fffbeb; }
-	.label { margin: 24rpx 0 12rpx; color: #334155; font-size: 24rpx; font-weight: 600; }
-	.stat-header { flex-direction: row; }
-	.stat-row { flex-direction: row; padding: 10rpx 0; border-bottom-width: 1rpx; border-bottom-color: #f1f5f9; }
-	.stat-label { flex: 1; color: #334155; font-size: 25rpx; }
-	.stat-col { flex: 1; color: #334155; font-size: 25rpx; text-align: center; }
-	.stat-exceed { color: #dc2626; font-weight: 700; }
+	.finish-defect-header { flex-direction: row; align-items: center; padding: 8rpx 16rpx 4rpx; }
+	.finish-defect-spacer { flex: 1; }
+	.finish-defect-col-hd { width: 128rpx; color: #94a3b8; font-size: 22rpx; text-align: center; }
+	.finish-defect-row { min-height: 56rpx; padding: 4rpx 16rpx; }
+	.finish-defect-label { flex: 1; color: #475569; font-size: 25rpx; }
+	.finish-defect-col { width: 128rpx; color: #1e293b; font-size: 26rpx; font-weight: 600; text-align: center; }
+	.stat-exceed { color: #ef4444; font-weight: 700; }
 	.aql-warn { margin-top: 14rpx; color: #dc2626; font-size: 23rpx; }
-	.failed-item { flex-direction: row; align-items: center; padding: 8rpx 0; }
-	.failed-dot { width: 12rpx; height: 12rpx; margin-right: 12rpx; border-radius: 6rpx; background-color: #ef4444; }
-	.failed-name { color: #475569; font-size: 24rpx; }
-	.failed-empty { color: #94a3b8; font-size: 23rpx; }
-	.result-row { flex-direction: row; }
-	.result-option { flex: 1; height: 70rpx; margin: 0 6rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 15rpx; align-items: center; justify-content: center; }
-	.result-option { color: #64748b; font-size: 24rpx; }
-	.result-option.active.approved { border-color: #22c55e; background-color: #ecfdf3; }
-	.result-option.active.rejected { border-color: #ef4444; background-color: #fef2f2; }
-	.result-option.active.pending { border-color: #f59e0b; background-color: #fffbeb; }
-	.remarks { min-height: 170rpx; padding: 18rpx; border-width: 2rpx; border-color: #e2e8f0; border-radius: 15rpx; font-size: 25rpx; background-color: #f8fafc; }
+	.finish-collapse-row { flex-direction: row; justify-content: space-between; }
+	.finish-failed-list { padding: 12rpx 0 4rpx; }
+	.finish-failed-item { flex-direction: row; align-items: center; margin-bottom: 10rpx; padding: 14rpx 20rpx; border-radius: 16rpx; background-color: #f8fafc; }
+	.finish-failed-dot { width: 14rpx; height: 14rpx; margin-right: 16rpx; border-radius: 7rpx; background-color: #ef4444; }
+	.finish-failed-name { flex: 1; color: #1e293b; font-size: 26rpx; }
+	.finish-failed-empty { padding: 12rpx 0; color: #94a3b8; font-size: 24rpx; text-align: center; }
+	.finish-status-area { flex-direction: row; align-items: center; }
+	.finish-status-tag { flex-direction: row; align-items: center; margin-right: 16rpx; padding: 8rpx 18rpx; border-width: 2rpx; border-radius: 40rpx; font-size: 24rpx; }
+	.finish-status-dot { width: 12rpx; height: 12rpx; margin-right: 10rpx; border-radius: 6rpx; }
+	.status-approved { border-color: #86efac; background-color: #ecfdf3; color: #15803d; }
+	.status-rejected { border-color: #fda4af; background-color: #fff1f2; color: #be123c; }
+	.status-pending { border-color: #fcd34d; background-color: #fffbeb; color: #b45309; }
+	.dot-approved { background-color: #15803d; }
+	.dot-rejected { background-color: #be123c; }
+	.dot-pending { background-color: #b45309; }
+	.finish-set-status-btn { height: 60rpx; margin: 0; padding: 0 24rpx; border-radius: 12rpx; background-color: #f1f5f9; align-items: center; justify-content: center; }
+	.finish-set-status-label { color: #334155; font-size: 26rpx; }
+	.finish-remarks { width: 100%; min-height: 160rpx; margin-top: 12rpx; padding: 16rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 14rpx; color: #1e293b; font-size: 26rpx; background-color: #fff; }
 	.pending-warning { margin-top: 18rpx; color: #dc2626; font-size: 23rpx; }
 	.actions { margin-top: 28rpx; flex-direction: row; }
-	.button { flex: 1; height: 82rpx; margin: 0 8rpx; border-radius: 17rpx; font-size: 26rpx; }
-	.button.cancel { color: #475569; background-color: #f1f5f9; }
-	.button.submit { color: #fff; background-color: #03ae4f; }
+	.button { flex: 1; height: 82rpx; margin: 0 8rpx; border-radius: 17rpx; align-items: center; justify-content: center; }
+	.button.cancel { background-color: #f1f5f9; }
+	.button.submit { background-color: #03ae4f; }
+	.button-disabled { opacity: .5; }
+	.cancel-label { color: #475569; font-size: 26rpx; }
+	.submit-label { color: #fff; font-size: 26rpx; }
+	.finish-status-sheet-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2310; justify-content: flex-end; background-color: rgba(0,0,0,.4); }
+	.finish-status-sheet { width: 100%; overflow: hidden; border-top-left-radius: 28rpx; border-top-right-radius: 28rpx; background-color: #fff; }
+	.finish-status-sheet-title { padding: 24rpx 0 16rpx; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; color: #64748b; font-size: 28rpx; text-align: center; }
+	.finish-status-sheet-option { height: 96rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 0 32rpx; border-bottom-width: 2rpx; border-bottom-color: #f8fafc; }
+	.finish-status-sheet-label { color: #1e293b; font-size: 30rpx; }
+	.finish-status-sheet-check { color: #16a34a; font-size: 30rpx; font-weight: 700; }
+	.finish-status-sheet-actions { padding: 20rpx 24rpx 8rpx; }
+	.finish-status-reset-btn { width: 100%; height: 84rpx; margin: 0; border-width: 2rpx; border-color: #cbd5e1; border-radius: 16rpx; background-color: #f8fafc; align-items: center; justify-content: center; }
+	.finish-status-reset-label { color: #334155; font-size: 28rpx; }
+	.finish-status-sheet-cancel { width: 100%; height: 104rpx; margin: 12rpx 0 0; border-top-width: 2rpx; border-top-color: #f1f5f9; background-color: #fff; align-items: center; justify-content: center; }
+	.finish-status-cancel-label { color: #334155; font-size: 32rpx; }
 </style>

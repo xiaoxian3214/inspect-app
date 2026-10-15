@@ -61,6 +61,26 @@ test('uploads pending photos before final submission and forces finishFlag to on
   assert.deepEqual(generated, [{ planId: 'plan-1', finishFlag: 1 }])
 })
 
+/** 防止普通草稿的接口响应晚于最终提交而覆盖服务端已报告状态。 */
+test('waits for an in-flight ordinary draft sync before final generation', async () => {
+  let releaseDraft
+  const draftSync = new Promise((resolve) => { releaseDraft = resolve })
+  const calls = []
+  const service = serviceModule.createInspectionSubmissionService({
+    isOnline: async () => true,
+    waitForPendingSync: async () => { calls.push('wait'); await draftSync },
+    listPhotos: async () => [], uploadPendingPhotos: async () => {}, evaluatePhotos,
+    planApi: { generateReport: async (payload) => { calls.push(`generate:${payload.finishFlag}`) } }
+  })
+  const submitting = service.submitFinalReport({ planId: 'plan-1', payload: { planId: 'plan-1' } })
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.deepEqual(calls, ['wait'])
+  releaseDraft()
+  await submitting
+  assert.deepEqual(calls, ['wait', 'generate:1'])
+})
+
 /** 合并报告以父计划提交，但检查图片必须使用本地成员入口读取共享照片。 */
 test('merged final submission checks group photos through a member while submitting the parent once', async () => {
   const lookedUp = []

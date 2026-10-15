@@ -90,5 +90,14 @@ export function createAutomaticSyncService(options) {
     return activeSync
   }
 
-  return { syncWhenOnline, subscribe, getState }
+  /** 等待正在运行的普通同步结束而不启动新任务；超时后阻止最终提交与草稿并发。 */
+  async function waitForIdle(timeoutMs: number = 30000) {
+    const startedAt = Date.now()
+    while (activeSync != null) {
+      if (Date.now() - startedAt > timeoutMs) throw new Error('同步任务处理超时，请稍后重试')
+      await new Promise((resolve) => setTimeout(resolve, 120))
+    }
+  }
+
+  return { syncWhenOnline, waitForIdle, subscribe, getState }
 }

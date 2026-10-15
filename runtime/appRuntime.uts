@@ -139,12 +139,13 @@ const defectCatalogService = createDefectCatalogService({
 })
 const inspectionSubmissionService = createInspectionSubmissionService({
   isOnline: isNetworkOnline,
+  waitForPendingSync: () => automaticSyncService.waitForIdle(),
   listPhotos: (planId) => photoRepository.listByReportId(planId),
   uploadPendingPhotos: (planId) => inspectionMediaService.uploadPendingPhotos(planId),
   evaluatePhotos: evaluateFinalSubmissionPhotos,
   planApi
 })
-const persistentOperationService = createPersistentOperationService({ requestQueueRepository, reportFileApi, isOnline: isNetworkOnline })
+const persistentOperationService = createPersistentOperationService({ requestQueueRepository, reportFileApi, planApi, isOnline: isNetworkOnline })
 const syncQueueOverviewService = createSyncQueueOverviewService({ reportRepository, photoRepository, requestQueueRepository, isPlanPendingSync })
 
 /**
@@ -238,6 +239,11 @@ export function getCurrentSession() {
  */
 export function syncOfflineDataAutomatically() {
   return automaticSyncService.syncWhenOnline()
+}
+
+/** 等待正在执行的普通草稿和图片同步结束，不启动额外任务。 */
+export function waitForAutomaticSyncIdle() {
+  return automaticSyncService.waitForIdle()
 }
 
 /** 订阅自动同步的实时阶段，供详情页显示上传进度与队列；返回取消订阅函数。 */

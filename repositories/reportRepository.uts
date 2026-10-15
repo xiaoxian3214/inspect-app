@@ -298,7 +298,7 @@ function writeItemResults(transaction, groupPlanId, detail) {
     && parseJson(row?.jsonData)?.checklistItem == null && !ids.has(String(row?.itemResultId ?? '')))
 }
 
-/** 按共享计划 ID 写报告及成员元数据，检查点和疵点由各自表持有。 */
+/** 按共享计划 ID 写报告及成员元数据，并统一已存同组成员的状态；检查点和疵点由各自表持有。 */
 function writeRelationalReport(transaction, records) {
   const first = records[0]
   const groupPlanId = getSharedPlanId(first)
@@ -324,6 +324,9 @@ function writeRelationalReport(transaction, records) {
       status, ...businessRow(record?.plan, PLAN_FIELDS), id: planId,
       jsonData: JSON.stringify(member)
     })
+  })
+  transaction.read('inspection_plan').filter((row) => String(row?.groupPlanId ?? '') === groupPlanId).forEach((row) => {
+    if (Number(row?.status) !== status) transaction.upsert('inspection_plan', 'planId', { ...row, status })
   })
   if (preserveDirty) return
   writeItemResults(transaction, groupPlanId, first)

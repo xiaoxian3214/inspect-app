@@ -1,36 +1,142 @@
 <template>
-	<view v-if="visible" class="overlay" @click="closeSheet"><view class="dialog" :style="{ maxHeight: dialogMaxHeight, paddingBottom: dialogBottomPadding }" @click.stop="stopEvent"><text class="title">{{ translateText('复制检查项') }}</text><text class="hint">{{ translateText('将当前计划的检查结果复制到同一合并验货组中的其他计划。') }}</text><text class="label">{{ translateText('源检查项') }}</text><picker :range="itemLabels" @change="selectItem"><view class="picker"><text>{{ translateText(itemLabels[itemIndex] ?? '请选择检查项') }}</text><text>›</text></view></picker><text class="label">{{ translateText('目标计划') }}</text><picker :range="planLabels" @change="selectPlan"><view class="picker"><text>{{ translateText(planLabels[planIndex] ?? '请选择目标计划') }}</text><text>›</text></view></picker><view class="option-row"><text>{{ translateText('复制检查结果') }}</text><switch :checked="copyStatus" color="#03ae4f" @change="changeStatus" /></view><view class="option-row"><text>{{ translateText('复制备注') }}</text><switch :checked="copyRemarks" color="#03ae4f" @change="changeRemarks" /></view><view class="option-row"><text>{{ translateText('复制图片') }}</text><switch :checked="copyPhotos" color="#03ae4f" @change="changePhotos" /></view><view class="actions"><button class="button cancel" @click="closeSheet">{{ translateText('取消') }}</button><button class="button save" :disabled="submitting" @click="submitCopy">{{ translateText(submitting ? '处理中...' : '确认复制') }}</button></view></view></view>
+	<view v-if="visible" class="overlay" @click="closeSheet">
+		<view class="dialog" :style="{ height: dialogHeight, paddingBottom: dialogBottomPadding }" @click.stop="stopEvent">
+			<view class="header"><text class="close" @click="closeSheet">×</text><text class="title">{{ translateText('复制检查点到其他验货') }}</text><text class="step-indicator">{{ currentStep }}/3</text></view>
+			<scroll-view class="body" scroll-y>
+				<view v-if="currentStep === 1">
+					<text class="step-title">{{ translateText('选择需要复制的信息') }}</text>
+					<view class="select-row" @click="toggleAllFields"><view class="checkbox" :class="{ checked: allFieldsSelected }"><text v-if="allFieldsSelected" class="check-mark">✓</text></view><text class="row-label">{{ translateText('全选') }}</text></view>
+					<view v-for="field in fieldOptions" :key="field.key" class="option-row" :class="{ unavailable: !field.available }" @click="toggleField(field.key)"><view class="checkbox" :class="{ checked: field.available && isFieldSelected(field.key) }"><text v-if="field.available && isFieldSelected(field.key)" class="check-mark">✓</text></view><view><text class="row-label">{{ translateText(field.label) }}</text><text v-if="!field.available" class="row-hint">{{ translateText('不适用于当前类型') }}</text></view></view>
+				</view>
+				<view v-if="currentStep === 2">
+					<view class="plan-step-heading"><text class="plan-step-title">{{ translateText('选择目标单据') }}</text><text v-if="!loadingPlans" class="plan-count">{{ displayPlans.length }}</text></view>
+					<text v-if="loadingPlans" class="empty">{{ translateText('加载中...') }}</text><text v-else-if="plans.length === 0" class="empty">{{ translateText('暂无可选的验货单据') }}</text>
+					<view v-for="plan in displayPlans" :key="plan.id" class="option-row" :class="{ selected: selectedPlanIds.includes(plan.id) }" @click="togglePlan(plan.id)"><view class="checkbox" :class="{ checked: selectedPlanIds.includes(plan.id) }"><text v-if="selectedPlanIds.includes(plan.id)" class="check-mark">✓</text></view><view class="row-info"><view class="plan-title"><text class="row-label">{{ plan.orderNo }}</text><text v-if="plan.extra !== ''" class="plan-extra">（{{ plan.extra }}）</text></view><text v-if="plan.goodsNo !== ''" class="row-hint">{{ plan.goodsNo }}</text><text class="row-hint">{{ plan.goodsName }}</text></view></view>
+				</view>
+				<view v-if="currentStep === 3">
+					<text class="step-title">{{ translateText('选择要复制的检查项') }}</text>
+					<view v-if="exactItems.length > 0"><text class="group-title">{{ translateText('相同的检查点类型、检查点和标题') }}</text><text class="current-item">{{ translateText('当前检查项：{name}', { name: sourceItemName }) }}</text><view class="select-row" @click="toggleGroup(true)"><view class="checkbox" :class="{ checked: groupSelected(true) }"><text v-if="groupSelected(true)" class="check-mark">✓</text></view><text class="row-label">{{ translateText('全选/全不选') }}</text></view><view v-for="item in exactItems" :key="item.id" class="option-row" @click="toggleItem(item.id)"><view class="checkbox" :class="{ checked: selectedItemIds.includes(item.id) }"><text v-if="selectedItemIds.includes(item.id)" class="check-mark">✓</text></view><view class="row-info"><text class="row-label">{{ item.name }}</text><text class="row-hint">{{ item.type }}</text></view></view></view>
+					<view v-if="typeItems.length > 0"><text class="group-title">{{ translateText('相同的检查点类型') }}</text><view class="select-row" @click="toggleGroup(false)"><view class="checkbox" :class="{ checked: groupSelected(false) }"><text v-if="groupSelected(false)" class="check-mark">✓</text></view><text class="row-label">{{ translateText('全选/全不选') }}</text></view><view v-for="item in typeItems" :key="item.id" class="option-row" @click="toggleItem(item.id)"><view class="checkbox" :class="{ checked: selectedItemIds.includes(item.id) }"><text v-if="selectedItemIds.includes(item.id)" class="check-mark">✓</text></view><view class="row-info"><text class="row-label">{{ item.name }}</text><text class="row-hint">{{ item.type }}</text></view></view></view>
+					<text v-if="exactItems.length === 0 && typeItems.length === 0" class="empty">{{ translateText('没有找到可匹配的检查项') }}</text>
+				</view>
+			</scroll-view>
+			<view class="footer"><view v-if="currentStep > 1" class="action back" @click="previousStep"><text class="back-label">{{ translateText('上一步') }}</text></view><view v-if="currentStep < 3" class="action primary" :class="{ disabled: !canNext }" @click="nextStep"><text class="primary-label">{{ translateText('下一步') }}</text></view><view v-else class="action primary" :class="{ disabled: !canSubmit || submitting }" @click="submitCopy"><text class="primary-label">{{ translateText(submitting ? '复制中...' : '开始复制') }}</text></view></view>
+		</view>
+	</view>
 </template>
+
 <script setup lang="uts">
 	import { windowHeightPx, safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
 	import { firstNonEmptyText } from '../../domain/searchViewModel.uts'
 	import { computed, ref, watch } from 'vue'
-	const props = defineProps({ visible: { type: Boolean, default: false }, items: { type: Array, default: () => [] }, sourceItemId: { type: String, default: '' }, plans: { type: Array, default: () => [] }, submitting: { type: Boolean, default: false } })
+	type CopyField = { key: string, label: string, available: boolean }
+	type CopyItem = { id: string, sourceKey: string, name: string, type: string }
+	type CopyPlan = { id: string, orderNo: string, extra: string, goodsNo: string, goodsName: string }
+	const props = defineProps({ visible: { type: Boolean, default: false }, items: { type: Array, default: () => [] }, sourceItemId: { type: String, default: '' }, plans: { type: Array, default: () => [] }, loadingPlans: { type: Boolean, default: false }, submitting: { type: Boolean, default: false } })
 	const emit = defineEmits(['close', 'submit'])
-	const itemIndex = ref(0); const planIndex = ref(0); const copyStatus = ref(true); const copyRemarks = ref(true); const copyPhotos = ref(false)
-	/** 提供原生模板可调用的翻译方法。 */
-	function translateText(key: string): string { return t(key) }
-	/** 按设备窗口尺寸限制弹窗最大高度。 */
-	const dialogMaxHeight = computed((): string => windowHeightPx(0.9))
-	/** 为弹窗底部叠加系统安全区。 */
-	const dialogBottomPadding = computed((): string => safeBottomPaddingPx(30))
-	/** 返回检查项选择器文案。 */
-	const itemLabels = computed((): string[] => (props.items as UTSJSONObject[]).map((item: UTSJSONObject): string => firstNonEmptyText([item['itemName'], item['name'], item['itemId'], item['id']], '')))
-	/** 返回目标计划选择器文案。 */
-	const planLabels = computed((): string[] => (props.plans as UTSJSONObject[]).map((plan: UTSJSONObject): string => { const order = firstNonEmptyText([plan['clientOrderNo']], ''); const goods = firstNonEmptyText([plan['subGoodsNo'], plan['goodsName']], ''); const label = [order, goods].filter((part: string) => part !== '').join(' · '); return label !== '' ? label : (plan['id'] ?? '').toString() }))
-	/** 选择源检查项。 */ function selectItem(event: UniPickerChangeEvent) { itemIndex.value = parseInt((event.detail.value ?? '0').toString()) }
-	/** 选择目标计划。 */ function selectPlan(event: UniPickerChangeEvent) { planIndex.value = parseInt((event.detail.value ?? '0').toString()) }
-	/** 更新是否复制检查结果。 */ function changeStatus(event: UniSwitchChangeEvent) { copyStatus.value = event.detail.value === true }
-	/** 更新是否复制备注。 */ function changeRemarks(event: UniSwitchChangeEvent) { copyRemarks.value = event.detail.value === true }
-	/** 更新是否复制图片。 */ function changePhotos(event: UniSwitchChangeEvent) { copyPhotos.value = event.detail.value === true }
-	/** 提交复制检查项请求参数。 */ function submitCopy() { const item = (props.items as UTSJSONObject[])[itemIndex.value]; const plan = (props.plans as UTSJSONObject[])[planIndex.value]; if (item == null || plan == null) return; emit('submit', { sourceItemId: firstNonEmptyText([item['itemId'], item['id']], ''), targetPlanIds: [firstNonEmptyText([plan['id'], plan['planId']], '')], targetItemIds: [firstNonEmptyText([item['standardItemId'], item['itemId'], item['id']], '')], copyStatus: copyStatus.value, copyRemarks: copyRemarks.value, copyPhotos: copyPhotos.value }) }
-	/** 关闭复制检查项弹层。 */ function closeSheet() { emit('close') }
-	/** 阻止点击内容区域关闭弹层。 */ function stopEvent() {}
-	/** 每次打开弹层时预选入口检查项，普通菜单仍从首项开始。 */ function resetSelection(visible: boolean) { if (visible) { const index = (props.items as UTSJSONObject[]).findIndex((item: UTSJSONObject) => firstNonEmptyText([item['itemId'], item['id']], '') === props.sourceItemId); itemIndex.value = index >= 0 ? index : 0; planIndex.value = 0 } }
-	/** 监听弹层显隐并恢复当前入口对应的检查项选择。 */
+	const currentStep = ref(1)
+	const selectedPlanIds = ref<string[]>([])
+	const selectedItemIds = ref<string[]>([])
+	const copyPhotos = ref(true)
+	const copyStatus = ref(true)
+	const copySpecs = ref(true)
+	const copyText = ref(true)
+	const copyBarcode = ref(true)
+	const copyRemarks = ref(true)
+	/** 翻译复制弹层的步骤和字段文案。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
+	/** 固定三步复制弹层高度为屏幕的九成。 */
+	const dialogHeight = computed((): string => windowHeightPx(0.9))
+	/** 保证复制操作区不与系统手势区域重叠。 */
+	const dialogBottomPadding = computed((): string => safeBottomPaddingPx(24))
+	/** 将可复制的检查项转成稳定的 ID、名称和类型。 */
+	const displayItems = computed((): CopyItem[] => (props.items as UTSJSONObject[]).filter((item: UTSJSONObject): boolean => (item['sonPlanId'] ?? '').toString() === '').map((item: UTSJSONObject): CopyItem => ({ id: firstNonEmptyText([item['baseItemId'], item['itemId'], item['id'], item['standardItemId']], ''), sourceKey: firstNonEmptyText([item['itemId'], item['id']], ''), name: firstNonEmptyText([item['itemName'], item['name']], ''), type: (item['itemType'] ?? 'Standard').toString() })).filter((item: CopyItem): boolean => item.id !== ''))
+	/** 按 H5 的订单号补充信息、副货号#批次及货品名称组织目标单据。 */
+	const displayPlans = computed((): CopyPlan[] => (props.plans as UTSJSONObject[]).map((plan: UTSJSONObject): CopyPlan => {
+		const subGoodsNo = (plan['subGoodsNo'] ?? '').toString().trim()
+		const batchNo = (plan['batchNo'] ?? '').toString().trim()
+		const extra = Number(plan['goodsFlag'] ?? 0) === 1 ? (plan['domeNo'] ?? '').toString() : [(plan['produceNo'] ?? '').toString(), (plan['modelNo'] ?? '').toString()].filter((value: string): boolean => value !== '').join(' ')
+		return { id: firstNonEmptyText([plan['id'], plan['planId']], ''), orderNo: (plan['clientOrderNo'] ?? '').toString(), extra, goodsNo: [subGoodsNo, batchNo].filter((value: string): boolean => value !== '').join('#'), goodsName: firstNonEmptyText([plan['goodsName'], plan['clientName']], '') }
+	}))
+	/** 以当前检查项作为 H5 复制弹层的源检查项。 */
+	const sourceItem = computed((): CopyItem | null => displayItems.value.find((item: CopyItem): boolean => item.id === props.sourceItemId || item.sourceKey === props.sourceItemId) ?? displayItems.value[0] ?? null)
+	/** 展示当前源检查项名称。 */
+	const sourceItemName = computed((): string => sourceItem.value?.name ?? '')
+	/** 与 H5 相同，按类型决定哪些字段可以复制。 */
+	const fieldOptions = computed((): CopyField[] => { const type = sourceItem.value?.type ?? ''; return [{ key: 'photos', label: '照片和视频', available: true }, { key: 'status', label: '状态', available: true }, { key: 'specs', label: '规格', available: type === 'Measurements' }, { key: 'text', label: '文本', available: type === 'Text' }, { key: 'barcode', label: '条码', available: type === 'Barcodes' }, { key: 'remarks', label: '评论', available: true }] })
+	/** 读取指定复制字段的选择状态。 */
+	function isFieldSelected(key: string): boolean { if (key === 'photos') return copyPhotos.value; if (key === 'status') return copyStatus.value; if (key === 'specs') return copySpecs.value; if (key === 'text') return copyText.value; if (key === 'barcode') return copyBarcode.value; return copyRemarks.value }
+	/** 更新一个当前类型支持的复制字段。 */
+	function toggleField(key: string) { if (!fieldOptions.value.some((field: CopyField): boolean => field.key === key && field.available)) return; if (key === 'photos') copyPhotos.value = !copyPhotos.value; else if (key === 'status') copyStatus.value = !copyStatus.value; else if (key === 'specs') copySpecs.value = !copySpecs.value; else if (key === 'text') copyText.value = !copyText.value; else if (key === 'barcode') copyBarcode.value = !copyBarcode.value; else copyRemarks.value = !copyRemarks.value }
+	/** 计算可选字段是否已全部选中。 */
+	const allFieldsSelected = computed((): boolean => fieldOptions.value.filter((field: CopyField): boolean => field.available).every((field: CopyField): boolean => isFieldSelected(field.key)))
+	/** 全选或取消当前类型支持的复制字段。 */
+	function toggleAllFields() { const next = !allFieldsSelected.value; copyPhotos.value = next; copyStatus.value = next; copySpecs.value = next && sourceItem.value?.type === 'Measurements'; copyText.value = next && sourceItem.value?.type === 'Text'; copyBarcode.value = next && sourceItem.value?.type === 'Barcodes'; copyRemarks.value = next }
+	/** 切换一个目标计划的多选状态。 */
+	function togglePlan(id: string) { selectedPlanIds.value = selectedPlanIds.value.includes(id) ? selectedPlanIds.value.filter((value: string): boolean => value !== id) : [...selectedPlanIds.value, id] }
+	/** 返回同类型且同名的检查项，包含源项。 */
+	const exactItems = computed((): CopyItem[] => displayItems.value.filter((item: CopyItem): boolean => item.type === sourceItem.value?.type && item.name === sourceItem.value?.name))
+	/** 返回同类型但标题不同的检查项。 */
+	const typeItems = computed((): CopyItem[] => displayItems.value.filter((item: CopyItem): boolean => item.type === sourceItem.value?.type && item.name !== sourceItem.value?.name))
+	/** 切换目标检查项的多选状态。 */
+	function toggleItem(id: string) { selectedItemIds.value = selectedItemIds.value.includes(id) ? selectedItemIds.value.filter((value: string): boolean => value !== id) : [...selectedItemIds.value, id] }
+	/** 判断一个匹配组是否全部选中。 */
+	function groupSelected(exact: boolean): boolean { const rows = exact ? exactItems.value : typeItems.value; return rows.length > 0 && rows.every((item: CopyItem): boolean => selectedItemIds.value.includes(item.id)) }
+	/** 对同名或同类型目标检查项批量切换勾选。 */
+	function toggleGroup(exact: boolean) { const rows = exact ? exactItems.value : typeItems.value; const ids = rows.map((item: CopyItem): string => item.id); selectedItemIds.value = groupSelected(exact) ? selectedItemIds.value.filter((id: string): boolean => !ids.includes(id)) : [...new Set([...selectedItemIds.value, ...ids])] }
+	/** 判断当前步骤是否可以继续。 */
+	const canNext = computed((): boolean => currentStep.value === 1 ? fieldOptions.value.some((field: CopyField): boolean => field.available && isFieldSelected(field.key)) : !props.loadingPlans && selectedPlanIds.value.length > 0)
+	/** 判断是否已选择需要复制的目标检查项。 */
+	const canSubmit = computed((): boolean => selectedPlanIds.value.length > 0 && selectedItemIds.value.length > 0)
+	/** 前进到下一步，进入检查项步骤时预选相同类型与标题的检查项。 */
+	function nextStep() { if (!canNext.value || currentStep.value >= 3) return; if (currentStep.value === 2) selectedItemIds.value = exactItems.value.map((item: CopyItem): string => item.id); currentStep.value++ }
+	/** 返回上一步，保留当前多选内容。 */
+	function previousStep() { if (currentStep.value > 1) currentStep.value-- }
+	/** 向详情页提交多目标计划与检查项以及全部字段选择。 */
+	function submitCopy() { if (!canSubmit.value || props.submitting || sourceItem.value == null) return; emit('submit', { sourceItemId: sourceItem.value.sourceKey, targetPlanIds: selectedPlanIds.value, targetItemIds: selectedItemIds.value, copyPhotos: copyPhotos.value, copyStatus: copyStatus.value, copySpecs: copySpecs.value, copyText: copyText.value, copyBarcode: copyBarcode.value, copyRemarks: copyRemarks.value }) }
+	/** 正在复制时阻止关闭，避免多次提交。 */
+	function closeSheet() { if (!props.submitting) emit('close') }
+	/** 阻止内容触摸关闭整个弹层。 */
+	function stopEvent() {}
+	/** 每次打开复制弹层都从字段选择开始，并按检查项类型初始化字段。 */
+	function resetSelection(visible: boolean) { if (!visible) return; currentStep.value = 1; selectedPlanIds.value = []; selectedItemIds.value = []; copyPhotos.value = true; copyStatus.value = true; copySpecs.value = sourceItem.value?.type === 'Measurements'; copyText.value = sourceItem.value?.type === 'Text'; copyBarcode.value = sourceItem.value?.type === 'Barcodes'; copyRemarks.value = true }
+	/** 监听弹层打开，恢复 H5 三步流程的初始状态。 */
 	watch((): boolean => props.visible, (visible: boolean) => resetSelection(visible))
 </script>
+
 <style>
-	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2320; justify-content: flex-end; background-color: rgba(15,23,42,.55); }.dialog { width: 100%; padding: 24rpx 30rpx 30rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #fff; }.title { color: #172033; font-size: 33rpx; font-weight: 700; }.hint { margin-top: 12rpx; color: #64748b; font-size: 23rpx; line-height: 36rpx; }.label { margin: 22rpx 0 10rpx; color: #334155; font-size: 24rpx; font-weight: 600; }.picker { height: 72rpx; padding: 0 18rpx; flex-direction: row; align-items: center; justify-content: space-between; border-width: 2rpx; border-color: #e2e8f0; border-radius: 15rpx; color: #475569; background-color: #f8fafc; }.option-row { min-height: 76rpx; flex-direction: row; align-items: center; justify-content: space-between; color: #475569; font-size: 25rpx; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }.actions { margin-top: 24rpx; flex-direction: row; }.button { flex: 1; height: 80rpx; margin: 0 8rpx; border-radius: 17rpx; font-size: 26rpx; }.button.cancel { color: #475569; background-color: #f1f5f9; }.button.save { color: #fff; background-color: #03ae4f; }
+	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2320; justify-content: flex-end; background-color: rgba(15,23,42,.55); }
+	.dialog { width: 100%; box-sizing: border-box; flex-direction: column; overflow: hidden; border-top-left-radius: 28rpx; border-top-right-radius: 28rpx; background-color: #fff; }
+	.header { min-height: 96rpx; flex-direction: row; align-items: center; padding: 0 24rpx; border-bottom-width: 1rpx; border-bottom-color: #f0f0f0; }
+	.close { width: 76rpx; color: #94a3b8; font-size: 44rpx; }
+	.title { flex: 1; color: #1a1a1a; font-size: 32rpx; font-weight: 600; text-align: center; }
+	.step-indicator { width: 76rpx; color: #94a3b8; font-size: 26rpx; text-align: right; }
+	.body { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; padding: 32rpx; }
+	.step-title { margin-bottom: 24rpx; color: #334155; font-size: 30rpx; font-weight: 500; }
+	.plan-step-heading { flex-direction: row; align-items: center; margin-bottom: 24rpx; }
+	.plan-step-title { color: #334155; font-size: 30rpx; font-weight: 500; }
+	.plan-count { min-width: 36rpx; height: 36rpx; margin-left: 14rpx; padding: 0 9rpx; border-radius: 18rpx; color: #1a5f3f; font-size: 22rpx; line-height: 36rpx; text-align: center; background-color: #e8f5ee; }
+	.select-row { flex-direction: row; align-items: center; min-height: 72rpx; border-bottom-width: 1rpx; border-bottom-color: #f1f5f9; }
+	.option-row { min-height: 88rpx; flex-direction: row; align-items: center; margin: 8rpx 0; padding: 16rpx; border-radius: 12rpx; background-color: #f8fafc; }
+	.option-row.selected { background-color: #e8f5ee; }
+	.option-row.unavailable { opacity: .45; }
+	.checkbox { width: 36rpx; height: 36rpx; margin-right: 16rpx; border-width: 2rpx; border-style: solid; border-color: #94a3b8; border-radius: 6rpx; background-color: #ffffff; align-items: center; justify-content: center; }
+	.checkbox.checked { border-color: #1a5f3f; background-color: #1a5f3f; }
+	.check-mark { color: #fff; font-size: 24rpx; }
+	.row-info { flex: 1; }
+	.plan-title { flex-direction: row; flex-wrap: wrap; align-items: center; }
+	.plan-extra { margin-left: 8rpx; color: #94a3b8; font-size: 22rpx; }
+	.row-label { color: #334155; font-size: 27rpx; }
+	.row-hint { margin-top: 4rpx; color: #94a3b8; font-size: 22rpx; }
+	.group-title { margin-top: 20rpx; color: #334155; font-size: 28rpx; font-weight: 600; }
+	.current-item { margin-top: 14rpx; padding: 16rpx; border-left-width: 6rpx; border-left-color: #1a5f3f; border-radius: 8rpx; color: #1a5f3f; font-size: 25rpx; background-color: #e8f5ee; }
+	.empty { padding: 60rpx 0; color: #94a3b8; font-size: 26rpx; text-align: center; }
+	.footer { flex-direction: row; padding: 20rpx 24rpx 0; border-top-width: 1rpx; border-top-color: #f0f0f0; }
+	.action { flex: 1; height: 80rpx; margin: 0 8rpx; border-radius: 12rpx; align-items: center; justify-content: center; }
+	.action.back { background-color: #f5f5f5; }
+	.action.primary { background-color: #1a5f3f; }
+	.action.disabled { opacity: .5; }
+	.back-label { color: #64748b; font-size: 28rpx; }
+	.primary-label { color: #fff; font-size: 28rpx; }
 </style>
