@@ -8,14 +8,14 @@
 				<text class="head-action done" @click="saveOrder">{{ translateText(saving ? '保存中...' : '完成') }}</text>
 			</view>
 			<text class="sort-hint">{{ translateText('按住照片拖拽可调整顺序') }}</text>
-			<scroll-view class="sort-body" :scroll-y="dragIndex < 0" :show-scrollbar="false">
+			<scroll-view class="sort-body" direction="dragIndex < 0 ? 'vertical' : 'none'" :show-scrollbar="false">
 				<view class="sort-grid">
 					<view
 						v-for="(photo, index) in sortedPhotos"
 						:key="index"
 						class="sort-cell" :style="{ height: sortCellHeight, transform: dragIndex === index ? dragTransform : 'translate(0px, 0px)' }"
 						:class="{ dragging: dragIndex === index }"
-						@touchstart="onTouchStart(index, $event)"
+						@touchstart="onTouchStart(index, $event as UniTouchEvent)"
 						@touchmove="onTouchMove"
 						@touchend="onTouchEnd"
 						@touchcancel="onTouchCancel"
@@ -66,18 +66,23 @@
 	function clearPressTimer() { const timer = pressTimer; if (timer != null) { clearTimeout(timer); pressTimer = null } }
 	/** 清除一次触摸手势的位置和高亮，不改变待保存照片顺序。 */
 	function resetDrag() { clearPressTimer(); touchStartIndex = -1; dragIndex.value = -1; dragOverIndex.value = -1; dragDeltaX.value = 0; dragDeltaY.value = 0 }
-	/** 打开排序弹层时复制当前图片顺序，关闭时清除拖动状态。 */
+	/**
+	 * 打开排序弹层时复制当前图片顺序并清除上一次的拖动状态。
+	 * 关闭时不再写入拖动状态：弹层根节点已被 v-if 销毁，此时写入会驱动已销毁的渲染子树
+	 * 在 vapor 原生渲染线程重新渲染并闪退；再次打开时会重新清理。
+	 */
 	watch((): boolean => props.visible, (visible: boolean) => {
-		if (visible) sortedPhotos.value = normalizeMediaOrder(props.photos) as UTSJSONObject[]
+		if (!visible) return
+		sortedPhotos.value = normalizeMediaOrder(props.photos) as UTSJSONObject[]
 		resetDrag()
 	})
 
 	/** 长按计时完成后开启拖动，轻触或滚动不改变顺序。 */
 	function beginDrag(index: number) { pressTimer = null; if (touchStartIndex !== index) return; dragIndex.value = index; dragOverIndex.value = index }
-	/** 记录按住照片的位置，短暂按住后开启拖动。 */
-	function onTouchStart(index: number, event: TouchEvent) { resetDrag(); touchStartIndex = index; touchStartX = event.touches[0]?.clientX ?? 0; touchStartY = event.touches[0]?.clientY ?? 0; pressTimer = setTimeout(() => beginDrag(index), 300) }
+	/** 记录按住照片的位置，短暂按住后开启拖动；模板 $event 是动态类型，这里收窄为原生触摸事件再取坐标。 */
+	function onTouchStart(index: number, event: UniTouchEvent) { resetDrag(); touchStartIndex = index; const touch = event.touches[0]; touchStartX = touch != null ? parseFloat((touch.clientX ?? 0).toString()) : 0; touchStartY = touch != null ? parseFloat((touch.clientY ?? 0).toString()) : 0; pressTimer = setTimeout(() => beginDrag(index), 300) }
 	/** 拖动时预览目标位置；未长按前明显移动手指则交还滚动。 */
-	function onTouchMove(event: TouchEvent) { if (touchStartIndex < 0) return; const deltaX = (event.touches[0]?.clientX ?? touchStartX) - touchStartX; const deltaY = (event.touches[0]?.clientY ?? touchStartY) - touchStartY; if (dragIndex.value < 0) { if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) { clearPressTimer(); touchStartIndex = -1 }; return }; dragDeltaX.value = deltaX; dragDeltaY.value = deltaY; dragOverIndex.value = resolveMediaDragTarget(dragIndex.value, deltaX, deltaY, parseFloat(sortCellHeight.value), sortedPhotos.value.length) }
+	function onTouchMove(event: UniTouchEvent) { if (touchStartIndex < 0) return; const touch = event.touches[0]; const currentX: number = touch != null ? parseFloat((touch.clientX ?? 0).toString()) : touchStartX; const currentY: number = touch != null ? parseFloat((touch.clientY ?? 0).toString()) : touchStartY; const deltaX = currentX - touchStartX; const deltaY = currentY - touchStartY; if (dragIndex.value < 0) { if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) { clearPressTimer(); touchStartIndex = -1 }; return }; dragDeltaX.value = deltaX; dragDeltaY.value = deltaY; dragOverIndex.value = resolveMediaDragTarget(dragIndex.value, deltaX, deltaY, parseFloat(sortCellHeight.value), sortedPhotos.value.length) }
 	/** 松手时将拖动照片插入目标格，再清理临时拖动状态。 */
 	function onTouchEnd() { if (dragIndex.value >= 0 && dragOverIndex.value >= 0 && dragOverIndex.value !== dragIndex.value) sortedPhotos.value = moveMediaItem(sortedPhotos.value, dragIndex.value, dragOverIndex.value) as UTSJSONObject[]; resetDrag() }
 	/** 系统取消触摸时放弃本次拖动，不修改顺序。 */

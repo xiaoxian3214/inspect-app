@@ -22,7 +22,7 @@
 
 				<view v-if="expandedSections[section.id]" class="section-children">
 					<view v-for="child in section.children ?? []" :key="child.id" class="checklist-row-wrap">
-						<SwipeResultCell :result="getItemResult(child.id)" @left-open="handleSwipeOpen(child.raw)" @select-result="setResult(child.raw, $event)" @content-click="openItem(child.raw)">
+						<SwipeResultCell :result="getItemResult(child.id)" @left-open="handleSwipeOpen(child.raw)" @select-result="setResult(child.raw, $event as string)" @content-click="openItem(child.raw)">
 							<view class="check-item-block" :class="rowClass(child.id)">
 								<view v-if="getItemDefects(child.id).length > 0" class="defect-indicator" :class="getItemResult(child.id)"></view>
 								<view v-if="getItemResult(child.id) !== '' && getItemDefects(child.id).length === 0" class="status-indicator checklist-result-indicator" :class="getItemResult(child.id)"></view>
@@ -59,7 +59,7 @@
 						</SwipeResultCell>
 
 						<view v-if="hasMergedInspectionPlans && expandedItems[child.id]" class="inspection-plan-list">
-							<SwipeResultCell v-for="(plan, planIndex) in planRows" :key="`${child.id}-${plan.id === '' ? planIndex : plan.id}`" :result="getItemResult(child.id, plan.id)" @left-open="handleSwipeOpen(child.raw, plan.id)" @select-result="setResult(child.raw, $event, plan.id)" @content-click="openItem(child.raw, plan.id)">
+							<SwipeResultCell v-for="(plan, planIndex) in planRows" :key="`${child.id}-${plan.id === '' ? planIndex : plan.id}`" :result="getItemResult(child.id, plan.id)" @left-open="handleSwipeOpen(child.raw, plan.id)" @select-result="setResult(child.raw, $event as string, plan.id)" @content-click="openItem(child.raw, plan.id)">
 								<view class="check-item-block inspection-plan-card" :class="rowClass(child.id, plan.id)">
 									<view v-if="getItemDefects(child.id, plan.id).length > 0" class="defect-indicator" :class="getItemResult(child.id, plan.id)"></view>
 									<view v-if="getItemResult(child.id, plan.id) !== '' && getItemDefects(child.id, plan.id).length === 0" class="status-indicator checklist-result-indicator" :class="getItemResult(child.id, plan.id)"></view>
@@ -89,7 +89,7 @@
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
 	/** 在原生模板中以明确方法调用翻译动态检查项文本。 */
-	function translateText(key: any): string { return t((key ?? '').toString()) }
+	function translateText(key: string): string { return t(key) }
 	import { computed, ref, watch } from 'vue'
 	import SwipeResultCell from '../common/SwipeResultCell.uvue'
 	import AppIcon from '../icons/AppIcon.uvue'
@@ -113,27 +113,27 @@
 	/** 默认展开第一个 H5 清单章节，保留用户后续手动折叠状态。 */
 	function ensureInitialSection(items: UTSJSONObject[]) { if (items.length === 0 || hasInitialSection.value) return; expandedSections.value = { [(items[0]['id'] ?? 'section-0').toString()]: true }; hasInitialSection.value = true }
 	/** 切换章节展开状态。 */
-	function toggleSection(sectionId: any) { const key = (sectionId ?? '').toString(); expandedSections.value[key] = expandedSections.value[key] !== true }
+	function toggleSection(sectionId: string) { const key = sectionId; expandedSections.value[key] = expandedSections.value[key] !== true }
 	/** 切换合并验货检查项下的子计划列表。 */
-	function toggleItemExpand(itemId: any) { const key = (itemId ?? '').toString(); expandedItems.value[key] = expandedItems.value[key] !== true }
+	function toggleItemExpand(itemId: string) { const key = itemId; expandedItems.value[key] = expandedItems.value[key] !== true }
 	/** 生成普通或合并子行的本地清单键。 */
-	function dataKey(itemId: any, sonPlanId: string = ''): string { const childId = sonPlanId.trim(); const baseId = (itemId ?? '').toString(); return childId === '' ? baseId : `${baseId}__${childId}` }
+	function dataKey(itemId: string, sonPlanId: string = ''): string { const childId = sonPlanId.trim(); const baseId = itemId; return childId === '' ? baseId : `${baseId}__${childId}` }
 	/** 返回指定主行或合并子行的编辑数据。 */
-	function itemData(itemId: any, sonPlanId: string = ''): UTSJSONObject { return ((props.checklistData as UTSJSONObject)[dataKey(itemId, sonPlanId)] as UTSJSONObject | null) ?? {} }
+	function itemData(itemId: string, sonPlanId: string = ''): UTSJSONObject { return ((props.checklistData as UTSJSONObject)[dataKey(itemId, sonPlanId)] as UTSJSONObject | null) ?? {} }
 	/** 返回指定主行或合并子行的结果值。 */
-	function getItemResult(itemId: any, sonPlanId: string = ''): string { return (itemData(itemId, sonPlanId)['result'] ?? '').toString() }
+	function getItemResult(itemId: string, sonPlanId: string = ''): string { return (itemData(itemId, sonPlanId)['result'] ?? '').toString() }
 	/** 返回指定主行或合并子行的备注。 */
-	function getItemComment(itemId: any, sonPlanId: string = ''): string { return (itemData(itemId, sonPlanId)['comment'] ?? '').toString() }
+	function getItemComment(itemId: string, sonPlanId: string = ''): string { return (itemData(itemId, sonPlanId)['comment'] ?? '').toString() }
 	/** 返回指定主行或合并子行的图片数量。 */
-	function getItemPhotoCount(itemId: any, sonPlanId: string = ''): number { const photos = itemData(itemId, sonPlanId)['photos']; return Array.isArray(photos) ? (photos as UTSJSONObject[]).length : 0 }
+	function getItemPhotoCount(itemId: string, sonPlanId: string = ''): number { const photos = itemData(itemId, sonPlanId)['photos']; return Array.isArray(photos) ? (photos as UTSJSONObject[]).length : 0 }
 	/** 返回指定主行或合并子行的第一张媒体记录。 */
-	function getItemFirstPhoto(itemId: any, sonPlanId: string = ''): UTSJSONObject | null { const storedPhotos = itemData(itemId, sonPlanId)['photos']; const photos = Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : []; return photos.length > 0 ? photos[0] : null }
+	function getItemFirstPhoto(itemId: string, sonPlanId: string = ''): UTSJSONObject | null { const storedPhotos = itemData(itemId, sonPlanId)['photos']; const photos = Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : []; return photos.length > 0 ? photos[0] : null }
 	/** 统计章节四种结果所占百分比。 */
-	function getSectionStats(section: UTSJSONObject): ResultStats { const storedChildren = section['children']; const children = Array.isArray(storedChildren) ? storedChildren as UTSJSONObject[] : []; let passCount = 0; let failCount = 0; let pendingCount = 0; let naCount = 0; children.forEach((child: UTSJSONObject) => { const result = getItemResult(child['id'] ?? ''); if (result === 'pass') passCount++; else if (result === 'fail') failCount++; else if (result === 'pending') pendingCount++; else if (result === 'na') naCount++ }); if (children.length === 0) return { pass: 0, fail: 0, pending: 0, na: 0 }; return { pass: Math.round(passCount / children.length * 100), fail: Math.round(failCount / children.length * 100), pending: Math.round(pendingCount / children.length * 100), na: Math.round(naCount / children.length * 100) } }
+	function getSectionStats(section: UTSJSONObject): ResultStats { const storedChildren = section['children']; const children = Array.isArray(storedChildren) ? storedChildren as UTSJSONObject[] : []; let passCount = 0; let failCount = 0; let pendingCount = 0; let naCount = 0; children.forEach((child: UTSJSONObject) => { const result = getItemResult((child['id'] ?? '').toString()); if (result === 'pass') passCount++; else if (result === 'fail') failCount++; else if (result === 'pending') pendingCount++; else if (result === 'na') naCount++ }); if (children.length === 0) return { pass: 0, fail: 0, pending: 0, na: 0 }; return { pass: Math.round(passCount / children.length * 100), fail: Math.round(failCount / children.length * 100), pending: Math.round(pendingCount / children.length * 100), na: Math.round(naCount / children.length * 100) } }
 	/** 统计合并验货各子计划在单个检查项上的结果分布。 */
-	function getMergedProgress(itemId: any): MergedProgress { const ids = (props.inspectionPlanRows as UTSJSONObject[]).map((plan: UTSJSONObject) => planId(plan)).filter((id: string) => id !== ''); if (ids.length === 0) return { pass: 0, fail: 0, pending: 0, na: 0, hasResult: false }; let passCount = 0; let failCount = 0; let pendingCount = 0; let naCount = 0; ids.forEach((childId: string) => { const result = getItemResult(itemId, childId); if (result === 'pass') passCount++; else if (result === 'fail') failCount++; else if (result === 'pending') pendingCount++; else if (result === 'na') naCount++ }); return { pass: Math.round(passCount / ids.length * 100), fail: Math.round(failCount / ids.length * 100), pending: Math.round(pendingCount / ids.length * 100), na: Math.round(naCount / ids.length * 100), hasResult: passCount + failCount + pendingCount + naCount > 0 } }
+	function getMergedProgress(itemId: string): MergedProgress { const ids = (props.inspectionPlanRows as UTSJSONObject[]).map((plan: UTSJSONObject) => planId(plan)).filter((id: string) => id !== ''); if (ids.length === 0) return { pass: 0, fail: 0, pending: 0, na: 0, hasResult: false }; let passCount = 0; let failCount = 0; let pendingCount = 0; let naCount = 0; ids.forEach((childId: string) => { const result = getItemResult(itemId, childId); if (result === 'pass') passCount++; else if (result === 'fail') failCount++; else if (result === 'pending') pendingCount++; else if (result === 'na') naCount++ }); return { pass: Math.round(passCount / ids.length * 100), fail: Math.round(failCount / ids.length * 100), pending: Math.round(pendingCount / ids.length * 100), na: Math.round(naCount / ids.length * 100), hasResult: passCount + failCount + pendingCount + naCount > 0 } }
 	/** 返回疵点关联的主行或合并子行。 */
-	function getItemDefects(itemId: any, sonPlanId: string = ''): UTSJSONObject[] { const baseId = (itemId ?? '').toString(); const childId = sonPlanId.trim(); const resultId = childId !== '' ? `${baseId}_${childId}` : baseId; return (props.defects as UTSJSONObject[]).filter((defect: UTSJSONObject) => { if ((defect['checkItemId'] ?? '').toString() !== baseId) return false; const linkedResultId = (defect['checkItemResultId'] ?? defect['itemResultId'] ?? '').toString().trim(); return childId !== '' ? linkedResultId === resultId : (linkedResultId === '' || linkedResultId === baseId) }) }
+	function getItemDefects(itemId: string, sonPlanId: string = ''): UTSJSONObject[] { const baseId = itemId; const childId = sonPlanId.trim(); const resultId = childId !== '' ? `${baseId}_${childId}` : baseId; return (props.defects as UTSJSONObject[]).filter((defect: UTSJSONObject) => { if ((defect['checkItemId'] ?? '').toString() !== baseId) return false; const linkedResultId = (defect['checkItemResultId'] ?? defect['itemResultId'] ?? '').toString().trim(); return childId !== '' ? linkedResultId === resultId : (linkedResultId === '' || linkedResultId === baseId) }) }
 	/** 返回 H5 疵点严重等级中文名称。 */
 	function severityLabel(defect: UTSJSONObject): string { const raw = `${(defect['type'] ?? defect['defectType'] ?? '').toString().toLowerCase()} ${(defect['typeLabel'] ?? '').toString().toLowerCase()}`; if (raw.includes('critical') || raw.includes('致命') || raw.includes('极严重')) return '致命缺陷'; if (raw.includes('major') || raw.includes('主要') || raw.includes('严重')) return '主要缺陷'; return '次要缺陷' }
 	/** 拼接清单行内的疵点摘要。 */
@@ -143,13 +143,13 @@
 	/** 返回疵点第一张图片路径。 */
 	function defectThumb(defect: UTSJSONObject): UTSJSONObject | null { const storedPhotos = defect['photos']; const photos = Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : []; return photos.length > 0 ? photos[0] : null }
 	/** 返回行结果和疵点状态对应的样式类。 */
-	function rowClass(itemId: any, sonPlanId: string = '') { const result = getItemResult(itemId, sonPlanId); return { pass: result === 'pass', fail: result === 'fail', pending: result === 'pending', na: result === 'na', hasDefects: getItemDefects(itemId, sonPlanId).length > 0 } }
+	function rowClass(itemId: string, sonPlanId: string = ''): UTSJSONObject { const result = getItemResult(itemId, sonPlanId); return { pass: result === 'pass', fail: result === 'fail', pending: result === 'pending', na: result === 'na', hasDefects: getItemDefects(itemId, sonPlanId).length > 0 } }
 	/** 判断检查项是否在最终提交必填校验中失败。 */
-	function isItemFailed(itemId: any): boolean { return props.failedItemIds.includes((itemId ?? '').toString()) }
+	function isItemFailed(itemId: string): boolean { return props.failedItemIds.includes(itemId) }
 	/** 判断检查项是否在最终提交必传图片校验中失败。 */
-	function isPhotoFailed(itemId: any): boolean { return props.failedPhotoItemIds.includes((itemId ?? '').toString()) }
+	function isPhotoFailed(itemId: string): boolean { return props.failedPhotoItemIds.includes(itemId) }
 	/** 判断章节内是否存在必填或必传图片失败项。 */
-	function isSectionFailed(section: UTSJSONObject): boolean { const storedChildren = section['children']; const children = Array.isArray(storedChildren) ? storedChildren as UTSJSONObject[] : []; return children.some((child: UTSJSONObject) => isItemFailed(child['id'] ?? '') || isPhotoFailed(child['id'] ?? '')) }
+	function isSectionFailed(section: UTSJSONObject): boolean { const storedChildren = section['children']; const children = Array.isArray(storedChildren) ? storedChildren as UTSJSONObject[] : []; return children.some((child: UTSJSONObject) => isItemFailed((child['id'] ?? '').toString()) || isPhotoFailed((child['id'] ?? '').toString())) }
 	/** 打开普通检查项或指定合并子计划检查项。 */
 	function openItem(item: UTSJSONObject, sonPlanId: string = '') { emit('open-item', item, sonPlanId) }
 	/** 打开清单行关联的疵点详情。 */
@@ -157,9 +157,9 @@
 	/** 将左侧快捷动作打开事件交给父页面，未检查时由父页面自动设为合格。 */
 	function handleSwipeOpen(item: UTSJSONObject, sonPlanId: string = '') { emit('swipe-open', item['id'], sonPlanId) }
 	/** 发送普通或合并子行的 H5 四态检查结果。 */
-	function setResult(item: UTSJSONObject, result: any, sonPlanId: string = '') { emit('set-result', item['id'], (result ?? '').toString(), sonPlanId, item) }
+	function setResult(item: UTSJSONObject, result: string, sonPlanId: string = '') { emit('set-result', item['id'], result, sonPlanId, item) }
 	/** 打开检查项拍照；已有图片时进入检查项编辑，无图片时直接调用相机。 */
-	function requestPhoto(item: UTSJSONObject, sonPlanId: string = '') { if (getItemPhotoCount(item['id'] ?? '', sonPlanId) > 0) emit('open-item', item, sonPlanId); else emit('photo-capture', item, sonPlanId) }
+	function requestPhoto(item: UTSJSONObject, sonPlanId: string = '') { if (getItemPhotoCount((item['id'] ?? '').toString(), sonPlanId) > 0) emit('open-item', item, sonPlanId); else emit('photo-capture', item, sonPlanId) }
 	/** 通知父页面重新加载当前计划详情。 */
 	function retryDetail() { emit('retry-detail') }
 	/** 打开总结并提交弹层。 */

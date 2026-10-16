@@ -18,6 +18,6 @@ test('list local-data action opens the live database table browser', async () =>
   assert.match(debugPage, /<picker[^>]*:range="tableOptions"[^>]*:value="activeTableIndex"[^>]*@change="changeTable"/)
   assert.match(debugPage, /tableOptions = computed\(\(\) => tables\.value\.map\(/)
   assert.match(debugPage, /TABLE_ORDER\[index\]/)
-  assert.doesNotMatch(debugPage, /tabRowWidth|scroll-x="true"|:scroll-x="true"/)
+  assert.doesNotMatch(debugPage, /tabRowWidth|direction="horizontal"|direction="horizontal"/)
   assert.match(pagesConfig, /pages\/debug\/database/)
 })

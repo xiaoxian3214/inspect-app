@@ -1,7 +1,7 @@
 <template>
 	<view class="media-grid">
 		<view
-			v-for="(media, index) in photos"
+			v-for="(media, index) in mediaItems"
 			:key="index"
 			class="media-cell"
 		>
@@ -41,6 +41,8 @@
 
 	/** 判断媒体数量是否仍允许继续拍摄或选择。 */
 	const canAdd = computed((): boolean => props.photos.length < Math.max(1, props.maxCount))
+	/** 把媒体数组属性收窄为对象数组，避免原生模板把动态元素传给 media 为 Object 的子组件时报类型不匹配。 */
+	const mediaItems = computed((): UTSJSONObject[] => (props.photos as UTSJSONObject[]).map((photo: UTSJSONObject): UTSJSONObject => photo))
 	/** 通知父组件打开原生连拍相机。 */
 	function captureMedia() { if (!props.disabled && canAdd.value) emit('capture-media') }
 	/** 转发媒体删除事件。 */

@@ -1,25 +1,41 @@
-/** 将计划数量的空值显示为占位符，同时保留有效的零。 */
-function displayQuantity(value) {
+/**
+ * 将计划数量的空值显示为占位符，同时保留有效的零。
+ * @param value 计划数量原始值
+ * @returns 有效数量原样返回，空值返回 '-'
+ */
+function displayQuantity(value: string | number | null): string | number {
   return value === undefined || value === null || value === '' ? '-' : value
 }
 
-/** 按 H5 字段优先级选择第一个非空值，并保留数字零。 */
-function firstNonEmpty(values) {
+/**
+ * 按 H5 字段优先级选择第一个非空值，并保留数字零。
+ * @param values 按优先级排列的候选值列表
+ * @returns 第一个非空值，全部为空时返回 '-'
+ */
+function firstNonEmpty(values: (string | number | null)[]): string | number {
   for (const value of values) {
     if (value !== undefined && value !== null && value !== '') return value
   }
   return '-'
 }
 
-/** 将预计离港日期压缩为列表弹框使用的年月日文本。 */
-function displayDepartureDate(value) {
+/**
+ * 将预计离港日期压缩为列表弹框使用的年月日文本。
+ * @param value 预计离港日期原始值
+ * @returns 截断为 10 位的年月日文本，空值返回 '-'
+ */
+function displayDepartureDate(value: string | number | null): string {
   const text = String(value ?? '').trim()
   if (text === '') return '-'
   return text.length >= 10 ? text.substring(0, 10) : text
 }
 
-/** 按 H5 的字段及回退顺序构建下载确认弹框的计划信息。 */
-export function buildDownloadPlanFields(item) {
+/**
+ * 按 H5 的字段及回退顺序构建下载确认弹框的计划信息。
+ * @param item 计划或下载记录对象
+ * @returns 按展示顺序排列的 {label, value} 字段列表
+ */
+export function buildDownloadPlanFields(item: UTSJSONObject | null): UTSJSONObject[] {
   const plan = item?.plan != null && typeof item.plan === 'object' ? item.plan : item ?? {}
   return [
     { label: '订单号', value: firstNonEmpty([plan?.clientOrderNo, plan?.domeNo, item?.clientOrderNo, item?.domeNo, item?.planNo]) },
@@ -38,7 +54,11 @@ export function buildDownloadPlanFields(item) {
   ]
 }
 
-/** 从下载字段中选取 H5“复制当前验货”弹框的前七项计划摘要。 */
-export function buildCopyPlanFields(item) {
+/**
+ * 从下载字段中选取 H5“复制当前验货”弹框的前七项计划摘要。
+ * @param item 计划或下载记录对象
+ * @returns 仅含前七项计划摘要的字段列表
+ */
+export function buildCopyPlanFields(item: UTSJSONObject | null): UTSJSONObject[] {
   return buildDownloadPlanFields(item).slice(0, 7)
 }

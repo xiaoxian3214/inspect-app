@@ -9,18 +9,22 @@ const RECENT_CATEGORY_LIMIT = 8
 
 /**
  * 去除首尾空白后返回字符串，空值统一返回空串。
+ * @param value 本地存储中读出的任意文本值
+ * @returns 去除首尾空白后的字符串
  */
-function asTrimmedText(value) {
+function asTrimmedText(value: string | number | boolean | null): string {
   return String(value == null ? '' : value).trim()
 }
 
 /**
  * 归一化本地存储中的最近使用分类：剔除缺编码或缺描述的记录，
  * 缺失 tier3Code 时以 defectCode 兜底，并截断到最多 8 条。
+ * @param rows 本地存储中读取的历史记录列表，允许为空
+ * @returns 归一化后的最近使用分类列表
  */
-export function normalizeRecentCategories(rows) {
-  const source = Array.isArray(rows) ? rows : []
-  const normalized = []
+export function normalizeRecentCategories(rows: UTSJSONObject[] | null): UTSJSONObject[] {
+  const source = Array.isArray(rows) ? rows : ([] as UTSJSONObject[])
+  const normalized: UTSJSONObject[] = []
   for (const row of source) {
     if (row == null || typeof row !== 'object') continue
     const defectCode = asTrimmedText(row.defectCode)
@@ -41,8 +45,11 @@ export function normalizeRecentCategories(rows) {
 /**
  * 将新选中的分类写入历史头部：按 defectCode 去重后置顶，
  * 缺编码或缺描述时忽略写入并返回原列表，结果最多保留 8 条。
+ * @param list 现有历史列表，允许为空
+ * @param category 本次选中的分类对象
+ * @returns 去重置顶并截断后的历史列表
  */
-export function pushRecentCategory(list, category) {
+export function pushRecentCategory(list: UTSJSONObject[] | null, category: UTSJSONObject): UTSJSONObject[] {
   const base = normalizeRecentCategories(list)
   if (category == null || typeof category !== 'object') return base
   const normalized = normalizeRecentCategories([category])

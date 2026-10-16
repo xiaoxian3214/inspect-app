@@ -45,8 +45,10 @@ const OWNER_TYPE_TO_BIZ_TYPE = {
 
 /**
  * 返回第 attempt 次重试前需要等待的毫秒数，超出退避表后固定为 5 分钟封顶。
+ * @param attempt 即将执行的重试序号（从 1 开始）
+ * @returns 本次重试前的等待毫秒数
  */
-export function getPhotoUploadRetryDelay(attempt) {
+export function getPhotoUploadRetryDelay(attempt: number): number {
   const normalizedAttempt = Math.max(1, parseInt(String(attempt)) ?? 1)
   return PHOTO_UPLOAD_RETRY_DELAYS[normalizedAttempt - 1] ?? PHOTO_UPLOAD_MAX_RETRY_DELAY
 }
@@ -55,8 +57,10 @@ export function getPhotoUploadRetryDelay(attempt) {
  * 按错误携带的 HTTP 状态判断是否值得自动重试：
  * 408/425/429 与 5xx 可重试，其余 4xx（参数、鉴权、文件过大等）不重试，
  * 无 HTTP 状态的网络类错误默认可重试，但显式标记 retryable=false 的错误永不重试。
+ * @param error 上传失败错误对象
+ * @returns 是否允许自动重试
  */
-export function isRetryableUploadError(error) {
+export function isRetryableUploadError(error: UTSJSONObject | null): boolean {
   if (error != null && error?.retryable === false) return false
   const httpStatus = parseInt(String(error?.httpStatus ?? error?.statusCode ?? error?.status ?? 0))
   if (httpStatus === 408 || httpStatus === 425 || httpStatus === 429 || httpStatus >= 500) return true
@@ -68,8 +72,12 @@ export function isRetryableUploadError(error) {
  * 将一次上传失败归类为可重试的 retry_wait 或需人工处理的 needs_attention。
  * retryCount 为本次失败前该照片已完成的重试次数，返回值原样携带；
  * delayMs 与 nextRetryAt 描述第 retryCount+1 次重试的等待时长与触发时间。
+ * @param error 上传失败错误对象
+ * @param retryCount 本次失败前已完成的重试次数
+ * @param nowMs 当前时间戳（毫秒）
+ * @returns 含 retryable、status、message、retryCount、delayMs、nextRetryAt 的分类结果
  */
-export function classifyUploadFailure(error, retryCount, nowMs) {
+export function classifyUploadFailure(error: UTSJSONObject | null, retryCount: number, nowMs: number): UTSJSONObject {
   const normalizedRetryCount = Math.max(0, parseInt(String(retryCount)) ?? 0)
   const timestamp = parseInt(String(nowMs))
   const normalizedNow = Number.isFinite(timestamp) && timestamp !== 0 ? timestamp : Date.now()
@@ -99,8 +107,11 @@ export function classifyUploadFailure(error, retryCount, nowMs) {
 /**
  * 判断照片是否已到达可再次上传的时间：
  * 仅 retry_wait 状态受 nextRetryAt 约束，其余待上传状态立即可执行。
+ * @param photo 待上传照片记录
+ * @param nowMs 当前时间戳（毫秒）
+ * @returns 当前是否允许再次尝试上传
  */
-export function isPhotoUploadRetryReady(photo, nowMs) {
+export function isPhotoUploadRetryReady(photo: UTSJSONObject | null, nowMs: number): boolean {
   if (String(photo?.uploadStatus ?? '').toLowerCase() !== 'retry_wait') return true
   const nextRetryAt = Date.parse(String(photo?.nextRetryAt ?? ''))
   const timestamp = parseInt(String(nowMs))
@@ -111,8 +122,10 @@ export function isPhotoUploadRetryReady(photo, nowMs) {
 /**
  * 按当前网络类型推导图片并发上传数：
  * 无网络为 0，弱网（2g/3g）为 1，4g 为 2，wifi/5g/未知默认 4。
+ * @param networkInfo uni.getNetworkType 返回的网络信息对象
+ * @returns 允许并发上传的图片数量
  */
-export function resolveUploadConcurrency(networkInfo) {
+export function resolveUploadConcurrency(networkInfo: UTSJSONObject | null): number {
   const networkType = String(networkInfo?.networkType ?? '').trim().toLowerCase()
   if (networkType === 'none') return 0
   if (networkType === '2g' || networkType === '3g' || networkType === 'slow-2g') return 1
@@ -127,7 +140,7 @@ export function resolveUploadConcurrency(networkInfo) {
  * @param media 媒体记录对象或本地路径字符串
  * @returns 是否应按视频通道处理
  */
-export function isVideoMedia(media) {
+export function isVideoMedia(media: UTSJSONObject | null): boolean {
   if (media == null) return false
   if (typeof media === 'string') return pathHasVideoExtension(media)
   const mediaType = String(media?.mediaType ?? '').trim().toLowerCase()
@@ -143,8 +156,10 @@ export function isVideoMedia(media) {
 
 /**
  * 判断路径字符串去除查询串与锚点后是否以视频扩展名结尾。
+ * @param path 本地或远端媒体路径或媒体记录
+ * @returns 是否为视频扩展名
  */
-function pathHasVideoExtension(path) {
+function pathHasVideoExtension(path: UTSJSONObject | string | null): boolean {
   const normalizedPath = String(path ?? '').trim().split(/[?#]/)[0]
   if (normalizedPath === '') return false
   const dotIndex = normalizedPath.lastIndexOf('.')
@@ -157,8 +172,9 @@ function pathHasVideoExtension(path) {
  * @param durationSeconds 视频时长（秒），未知时跳过校验
  * @returns valid 表示是否通过，message 为超限时的用户可读原因
  */
-export function validateVideoDuration(durationSeconds) {
-  const duration = parseInt(String(durationSeconds))
+export function validateVideoDuration(durationSeconds: number): UTSJSONObject {
+  /* 向上取整：60.5 秒这类超限时长若被截断成 60 秒会被误判为通过，超出 60 秒必须拦截。 */
+  const duration = Math.ceil(durationSeconds)
   if (!(duration > 0)) return { valid: true, message: '' }
   if (duration > MAX_VIDEO_DURATION_SECONDS) {
     return { valid: false, message: `视频时长不能超过 ${MAX_VIDEO_DURATION_SECONDS} 秒` }
@@ -171,8 +187,9 @@ export function validateVideoDuration(durationSeconds) {
  * @param sizeMb 视频大小（MB），未知时跳过校验
  * @returns valid 表示是否通过，message 为超限时的用户可读原因
  */
-export function validateVideoSize(sizeMb) {
-  const size = parseInt(String(sizeMb))
+export function validateVideoSize(sizeMb: number): UTSJSONObject {
+  /* 向上取整：200.5MB 若被截断成 200MB 会被误判为通过，超出 200MB 必须拦截。 */
+  const size = Math.ceil(sizeMb)
   if (!(size > 0)) return { valid: true, message: '' }
   if (size > MAX_VIDEO_SIZE_MB) {
     return { valid: false, message: `视频大小不能超过 ${MAX_VIDEO_SIZE_MB}MB` }
@@ -182,8 +199,10 @@ export function validateVideoSize(sizeMb) {
 
 /**
  * 按媒体类型推导上传兜底超时（毫秒）：视频 15 分钟，其余（图片）2 分钟。
+ * @param media 媒体记录对象或本地路径字符串
+ * @returns 上传超时毫秒数
  */
-export function resolveUploadTimeoutMs(media) {
+export function resolveUploadTimeoutMs(media: UTSJSONObject | null): number {
   return isVideoMedia(media) ? VIDEO_UPLOAD_TIMEOUT_MS : IMAGE_UPLOAD_TIMEOUT_MS
 }
 
@@ -191,8 +210,11 @@ export function resolveUploadTimeoutMs(media) {
  * 校验并归一化单张照片的服务端上传参数。
  * 优先使用照片自带的 bizId/bizType，缺失时按 ownerType 映射（checklist→checkResult、defect→defect），
  * 业务类型缺失或非法（如 REPORT）时直接抛错，避免把无效数据提交给服务端。
+ * @param planId 当前计划标识，用于兜底 bizId
+ * @param params 照片记录上的业务参数
+ * @returns 含 bizId、bizType、subGoodsNo、sortNo 的上传参数
  */
-export function buildValidatedUploadParams(planId, params) {
+export function buildValidatedUploadParams(planId: string, params: UTSJSONObject | null): UTSJSONObject {
   const source = params != null && typeof params === 'object' ? params : {}
   let bizId = String(source?.bizId ?? '').trim()
   let bizType = String(source?.bizType ?? '').trim()

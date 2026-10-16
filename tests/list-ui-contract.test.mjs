@@ -101,8 +101,8 @@ test('list immediately removes released card rows from local and remote caches',
   assert.match(card, /const response = await planOperationService\.unlockPlan\(props\.item\)[\s\S]*?emit\('released', response\)/)
   assert.match(card, /const response = await planOperationService\.resetPlan\(props\.item\)[\s\S]*?emit\('released', response\)/)
   assert.match(list, /@released="handleCardReleased"/)
-  assert.match(list, /function handleCardReleased\(payload\)[\s\S]*?localPlans\.value = filterReleasedPlans\(/)
-  assert.match(list, /function handleCardReleased\(payload\)[\s\S]*?remoteListMap\[tab\.key\] = filterReleasedPlans\(/)
+  assert.match(list, /function handleCardReleased\(payload[^)]*\)[\s\S]*?localPlans\.value = filterReleasedPlans\(/)
+  assert.match(list, /function handleCardReleased\(payload[^)]*\)[\s\S]*?remoteListMap\[tab\.key\] = filterReleasedPlans\(/)
 })
 
 /** 下载时将当前卡片或合并成员传给保存服务，避免刷新后丢失展示字段。 */
@@ -112,12 +112,21 @@ test('plan card passes original list items into download persistence', async () 
   assert.match(card, /planDownloadService\.downloadToLocal\(downloadPlanId,[\s\S]*?isMerged\.value \? downloadMergedItems\.value : \[props\.item\]\)/)
 })
 
+/**
+ * 解析 pages.json：HBuilderX 运行时会写入 // #ifdef 条件编译注释，需先剥离注释再做 JSON 解析。
+ * @param source pages.json 原文
+ * @returns 解析后的配置对象
+ */
+function parsePagesConfig(source) {
+  return JSON.parse(source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, ''))
+}
+
 /** 本机未下载的卡片不得通过详情接口绕开下载弹框直接导航。 */
 test('plan card requires local download before detail navigation', async () => {
   const cardSource = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
   const detailSource = await readFile('pages/report/detail.uvue', 'utf8')
   const iconSource = await readFile('components/icons/AppIcon.uvue', 'utf8')
-  const pagesSource = JSON.parse(await readFile('pages.json', 'utf8'))
+  const pagesSource = parsePagesConfig(await readFile('pages.json', 'utf8'))
 
   assert.match(cardSource, /resolveCardClickAction/)
   assert.match(cardSource, /if \(action === 'open-download'\) return openDownloadModal\(\)/)
@@ -136,7 +145,7 @@ test('list distinguishes remote rows with download timestamps from stored local 
   const source = await readFile('pages/report/list.uvue', 'utf8')
 
   assert.match(source, /:is-local-downloaded="isStoredLocally\(item\)"/)
-  assert.match(source, /function isStoredLocally\(item\)/)
+  assert.match(source, /function isStoredLocally\(item: UTSJSONObject\)/)
   assert.doesNotMatch(source, /:is-local-downloaded="Boolean\(item\?\.downloadedAt\)"/)
 })
 
@@ -153,7 +162,7 @@ test('list keeps H5 remote cache when local data refreshes after card click', as
 /** “加载更多”按 H5 重新请求第一页，翻页按钮才改变远程页码。 */
 test('list load-more refreshes page one while next-page advances separately', async () => {
   const source = await readFile('pages/report/list.uvue', 'utf8')
-  const loadMore = source.match(/async function loadMore\(\) \{([\s\S]*?)\n\t\}/)?.[1] ?? ''
+  const loadMore = source.match(/async function loadMore\(\)[^{]*\{([\s\S]*?)\n\t\}/)?.[1] ?? ''
 
   assert.match(loadMore, /await loadPage\(1, \{ remote: true, appendMessage: true, loadingMore: true \}\)/)
   assert.doesNotMatch(loadMore, /currentPage\.value|totalPages\.value/)
@@ -265,6 +274,6 @@ test('list card completes the H5 split workflow', async () => {
   assert.match(card, /const productName = computed\(\(\) => getMergePreviewRow\(props\.item\)\.productName\)/)
   assert.match(card, /const inspectType = computed\(\(\) => getPlanInspectTypeLabel\(props\.item\)\)/)
   assert.doesNotMatch(card, /拆分验货功能待接入/)
-  assert.match(list, /async function openSplitPreview\(item\)[\s\S]*?await isNetworkOnline\(\)/)
+  assert.match(list, /async function openSplitPreview\(item: UTSJSONObject\)[\s\S]*?await isNetworkOnline\(\)/)
   assert.match(list, /async function confirmSplit\(\)[\s\S]*?await isNetworkOnline\(\)[\s\S]*?planOperationService\.splitPlan/)
 })

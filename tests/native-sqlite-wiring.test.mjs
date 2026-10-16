@@ -14,11 +14,8 @@ test('runtime uses lime-sqlite rather than qcm native SQLite or uniStorage', asy
   assert.match(debugPage, /当前实际存储引擎：SQLite/)
 })
 
-test('camera pages use xview and persisted detail media does not silently keep failed temp paths', async () => {
-  const camera = await readFile('pages/report/camera.uvue', 'utf8')
+test('persisted detail media does not silently keep failed temp paths', async () => {
   const detail = await readFile('pages/report/detail.uvue', 'utf8')
-  assert.match(camera, /<xview-camera-view/)
-  assert.doesNotMatch(camera, /qcm-native-camera/)
   assert.doesNotMatch(detail, /fail:\s*\(\)\s*=>\s*resolve\(tempPath\)/)
 })
 

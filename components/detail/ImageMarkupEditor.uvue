@@ -69,7 +69,7 @@
 	/** 读取图片编辑器标题的当前语言文案。 */
 	const editorTitle = computed(() => t('编辑图片'))
 	/** 读取图片加载中的当前语言提示。 */
-	const loadingLabel = computed(() => t('加载中…'))
+	const loadingLabel = computed(() => t('加载中...'))
 	/** 读取图片加载失败时的当前语言重试提示。 */
 	const loadFailedLabel = computed(() => t('加载失败，点击重试'))
 	/** 读取标注文字输入框的当前语言占位提示。 */
@@ -156,6 +156,8 @@
 		dragStartPoint = null
 		dragOriginal = null
 		loading.value = true
+		/* 重新打开编辑器时必须解除上一次导出遗留的保存态，避免保存按钮失效。 */
+		saving.value = false
 	}
 
 	/** 根据图片实际宽高比计算舞台尺寸，填满可用空间（对标预览模式）。 */
@@ -182,8 +184,12 @@
 		saveCanvasHeight.value = Math.max(1, Math.round(displayHeight * scale))
 	}
 
-	/** 查询舞台在屏幕中的位置 */
+	/**
+	 * 查询舞台在屏幕中的位置。
+	 * 弹层已关闭时直接返回，避免延迟回调把布局状态写回已经销毁的渲染子树。
+	 */
 	function queryStageRect() {
+		if (!props.visible) return
 		uni.createSelectorQuery().in(instance!).select('.image-stage').boundingClientRect().exec((rects) => {
 			const rect = rects[0] as NodeInfo
 			if (rect != null) stageRect.value = { left: parseFloat((rect.left ?? 0).toString()), top: parseFloat((rect.top ?? 0).toString()) }
@@ -451,13 +457,13 @@
 					finished = true
 					reject(new Error('图片导出超时，请重试'))
 				}, 15000)
-				/** 结束导出并清理看门狗，保证 Promise 只结算一次。 */
+				/** 结束导出并清理看门狗，保证 Promise 只结算一次；编辑器已关闭时不再回传结果。 */
 				const settle = (error: Error | null, resultPath: string) => {
 					if (finished) return
 					finished = true
 					clearTimeout(watchdog)
 					if (error != null) { reject(error); return }
-					emit('edited', resultPath)
+					if (props.visible) emit('edited', resultPath)
 					resolve()
 				}
 				uni.createCanvasContextAsync({ id: 'markup-save-canvas', component: instance!, success: (ctx) => {
@@ -490,13 +496,18 @@
 					} catch (err) { settle(new Error((err).toString()), '') }
 				}, fail: (err) => settle(new Error(err.errMsg), '') })
 			})
-		} catch (error) { uni.showToast({ title: t(((error as Error)?.message ?? '保存失败').toString()), icon: 'none' }) } finally { saving.value = false }
+		} catch (error) { const errorMessage = ((error as Error)?.message ?? '').toString(); uni.showToast({ title: errorMessage !== '' ? t(errorMessage) : t('保存失败'), icon: 'none' }) } finally { if (props.visible) saving.value = false }
 	}
 
-	/** 弹窗可见时加载图片 */
+	/**
+	 * 弹层可见性或图片来源变化时重建画布并加载图片。
+	 * 关闭（visible 变为 false）时不得写入内部状态：根节点已被 v-if 销毁，此时写入会驱动
+	 * 已销毁的渲染子树在 vapor 原生渲染线程重新渲染并闪退；重置与加载由打开时的同一次变化完成。
+	 */
 	watch((): string => `${props.visible}:${props.source}`, () => {
+		if (!props.visible) return
 		resetEditorState()
-		if (props.visible && props.source !== '') loadImage()
+		if (props.source !== '') loadImage()
 	}, { immediate: true })
 </script>
 

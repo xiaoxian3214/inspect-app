@@ -18,7 +18,8 @@ test('native user drawer matches the H5 three-section layout and locale codes', 
   const style = source.split('<style>')[1] ?? ''
   assert.match(template, /class="user-drawer-header"[\s\S]*?class="user-info-list"[\s\S]*?class="user-drawer-footer"/)
   for (const label of ['用户信息', '用户名称', '用户ID', '邮箱', '切换语言', '邀请供应商', '查看本地数据', '清除本地缓存', '退出登录']) assert.ok(template.includes(`t('${label}')`), label)
-  assert.match(template, /v-for="code in locales"[\s\S]*?class="user-lang-option"[\s\S]*?:class="\{ active: code === locale \}"[\s\S]*?\{\{ code \}\}/)
+  assert.match(template, /v-for="code in localeCodes"[\s\S]*?class="user-lang-option"[\s\S]*?:class="\{ active: code === locale \}"[\s\S]*?\{\{ code \}\}/)
+  assert.match(source, /const localeCodes = computed\(\(\): string\[\] => \(props\.locales as string\[\]\)\.map/)
   assert.match(template, /@click="changeLanguage\(code\)"/)
   assert.match(style, /\.user-drawer\s*\{[^}]*width:\s*82%;[^}]*max-width:\s*640rpx;[^}]*flex-direction:\s*column;/s)
   assert.match(style, /\.user-drawer-footer\s*\{[^}]*margin-top:\s*auto;/s)
@@ -48,7 +49,7 @@ test('update action precedes logout and delegates to the list page', async () =>
   assert.match(template, /@click="checkForUpdates"[^>]*>.*t\('检查更新'\)[\s\S]*?t\('退出登录'\)/)
   assert.match(drawer, /emit\('check-for-updates'\)/)
   assert.match(page, /@check-for-updates="handleCheckForUpdates"/)
-  assert.match(page, /function handleCheckForUpdates\(\)\s*\{\s*uni\.showToast\(\{ title: t\('检查更新功能待接入'\), icon: 'none' \}\)/)
+  assert.match(page, /function handleCheckForUpdates\(\)[^{]*\{\s*uni\.showToast\(\{ title: t\('检查更新功能待接入'\), icon: 'none' \}\)/)
   assert.equal(translations.match(/\["检查更新",/g)?.length, 2)
   assert.equal(translations.match(/\["检查更新功能待接入",/g)?.length, 2)
 })

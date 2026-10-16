@@ -1,31 +1,43 @@
 export function createApiRequestQueue() {
-  const pendingTasks = []
-  const promisesByKey = new Map()
-  const activeLanes = new Set()
+  const pendingTasks: UTSJSONObject[] = []
+  const promisesByKey = new Map<string, any>()
+  const activeLanes = new Set<string>()
   let sequence = 0
+
+  /** 读取排队任务的数字字段，避免动态值在 Kotlin 端参与算术时报类型不匹配。 */
+  function taskNumber(task: UTSJSONObject, field: string): number {
+    return parseFloat((task[field] ?? 0).toString())
+  }
+
+  /** 读取排队任务的文本字段，收窄为 String 以便通过 Set/Map 做通道与去重查找。 */
+  function taskText(task: UTSJSONObject, field: string): string {
+    return String(task[field] ?? '')
+  }
 
   /** 按优先级和入队顺序排列等待中的请求。 */
   function sortPendingTasks() {
-    pendingTasks.sort((left, right) => {
-      if (left.priority !== right.priority) return right.priority - left.priority
-      return left.sequence - right.sequence
+    pendingTasks.sort((left: UTSJSONObject, right: UTSJSONObject): number => {
+      const leftPriority = taskNumber(left, 'priority')
+      const rightPriority = taskNumber(right, 'priority')
+      if (leftPriority !== rightPriority) return rightPriority - leftPriority
+      return taskNumber(left, 'sequence') - taskNumber(right, 'sequence')
     })
   }
 
   /** 为每条空闲通道启动最高优先级请求，通道内部保持串行。 */
   function runNext() {
     while (pendingTasks.length > 0) {
-      const index = pendingTasks.findIndex((task) => !activeLanes.has(task.lane))
+      const index = pendingTasks.findIndex((task: UTSJSONObject): boolean => !activeLanes.has(taskText(task, 'lane')))
       if (index < 0) return
       const task = pendingTasks.splice(index, 1)[0]
-      activeLanes.add(task.lane)
+      activeLanes.add(taskText(task, 'lane'))
 
       Promise.resolve()
-        .then(() => task.execute())
-        .then(task.resolve, task.reject)
+        .then(() => task['execute']())
+        .then(task['resolve'], task['reject'])
         .finally(() => {
-          if (task.key !== '') promisesByKey.delete(task.key)
-          activeLanes.delete(task.lane)
+          if (taskText(task, 'key') !== '') promisesByKey.delete(taskText(task, 'key'))
+          activeLanes.delete(taskText(task, 'lane'))
           runNext()
         })
     }
@@ -38,7 +50,10 @@ export function createApiRequestQueue() {
     }
 
     const key = String(task.key ?? '').trim()
-    if (key !== '' && promisesByKey.has(key)) return promisesByKey.get(key)
+    if (key !== '') {
+      const existing = promisesByKey.get(key)
+      if (existing != null) return existing
+    }
 
     let resolveTask
     let rejectTask
@@ -58,7 +73,7 @@ export function createApiRequestQueue() {
     sequence += 1
 
     if (key !== '') promisesByKey.set(key, promise)
-    pendingTasks.push(queueTask)
+    pendingTasks.push(queueTask as UTSJSONObject)
     sortPendingTasks()
     Promise.resolve().then(runNext)
     return promise

@@ -4,7 +4,7 @@
 </template>
 
 <script setup lang="uts">
-	import { computed, ref, watch } from 'vue'
+	import { computed, onBeforeUnmount, onUnmounted, ref, watch } from 'vue'
 	import AppIcon from '../icons/AppIcon.uvue'
 	import { API_BASE_URL } from '../../config/appConfig.uts'
 	import { getMediaDisplayUrl } from '../../domain/mediaDisplay.uts'
@@ -25,8 +25,25 @@
 	const downloadAttempted = ref(false)
 	/** 优先展示本地图片，失效时展示同一文件 ID 对应的服务端图片。 */
 	const source = computed((): string => fallbackSource.value !== '' ? fallbackSource.value : getMediaDisplayUrl(mediaData.value, props.viewMode, API_BASE_URL))
-	/** 本地路径失效时先尝试 H5 地址；服务端地址需鉴权时再按 fileId 下载为临时图片。 */
+	/** 记录当前图片单元是否已随弹层或列表项销毁。 */
+	let disposed = false
+	/**
+	 * 卸载前标记图片单元已销毁。
+	 * 原生 image 的 @error 回调与“按 fileId 鉴权下载”都可能晚于弹层关闭才返回，
+	 * 销毁后再写 source/fallbackSource，会让已经释放的 image 元素在 vapor 原生渲染线程
+	 * 重新求值（TemplateRenderElementSharedDataFieldTracker::Track 野指针 → SIGSEGV）。
+	 * 使用 onBeforeUnmount 提前置位，早于原生节点销毁生效。
+	 */
+	onBeforeUnmount(() => { disposed = true })
+	/** 兜底标记：即使卸载流程另有分叉，也不允许再写回自身状态。 */
+	onUnmounted(() => { disposed = true })
+
+	/**
+	 * 本地路径失效时先尝试 H5 地址；服务端地址需鉴权时再按 fileId 下载为临时图片。
+	 * 销毁后立即返回，避免异步回调把状态写回已经销毁的渲染子树。
+	 */
 	async function handleImageError() {
+		if (disposed) return
 		if (fallbackSource.value === '' && (mediaData.value['localPath'] ?? '').toString().trim() !== '') {
 			const remote = getMediaDisplayUrl({ ...mediaData.value, localPath: '' }, props.viewMode, API_BASE_URL)
 			if (remote !== '' && remote !== source.value) { fallbackSource.value = remote; return }
@@ -37,13 +54,14 @@
 		const mode = props.viewMode
 		try {
 			const path = await reportFileApi.downloadInspectFile(fileId, mode)
+			if (disposed) return
 			if ((mediaData.value['fileId'] ?? '').toString().trim() === fileId && props.viewMode === mode) fallbackSource.value = path
 		} catch (_) {}
 	}
-	/** 媒体记录切换时清空上次图片失败使用的远程回退路径。 */
-	watch((): UTSJSONObject => mediaData.value, (_: UTSJSONObject) => { fallbackSource.value = ''; downloadAttempted.value = false })
-	/** 缩略图与预览模式切换时重新计算媒体地址。 */
-	watch((): string => props.viewMode, (_: string) => { fallbackSource.value = ''; downloadAttempted.value = false })
+	/** 媒体记录切换时清空上次图片失败使用的远程回退路径；销毁后不再写回。 */
+	watch((): UTSJSONObject => mediaData.value, (_: UTSJSONObject) => { if (disposed) return; fallbackSource.value = ''; downloadAttempted.value = false })
+	/** 缩略图与预览模式切换时重新计算媒体地址；销毁后不再写回。 */
+	watch((): string => props.viewMode, (_: string) => { if (disposed) return; fallbackSource.value = ''; downloadAttempted.value = false })
 </script>
 
 <style>

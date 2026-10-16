@@ -72,7 +72,11 @@
 	function previousPhoto() { navigatePhoto(-1) }
 	/** 预览当前媒体库的下一张。 */
 	function nextPhoto() { navigatePhoto(1) }
-	/** 本地图片直接编辑；仅有服务端文件时先鉴权下载预览图到本地。 */
+	/**
+	 * 本地图片直接编辑；仅有服务端文件时先鉴权下载预览图到本地。
+	 * 每一步 await 之后都校验弹层仍可见，避免下载期间弹层被关闭后仍改写编辑状态、
+	 * 甚至在关闭态把标注编辑器打开（写入已销毁的渲染子树会触发 vapor 渲染线程崩溃）。
+	 */
 	async function openImageEditor() {
 		if (isVideo.value || openingEditor.value || props.saving) return
 		openingEditor.value = true
@@ -84,8 +88,11 @@
 				localAvailable = await new Promise<boolean>((resolve) => {
 					uni.getImageInfo({ src: localPath, success: () => resolve(true), fail: () => { console.warn('[PhotoEditorSheet] localPath not readable:', localPath); resolve(false) } })
 				})
+				if (!props.visible) return
 			}
-			editSource.value = localAvailable ? localPath : fileId !== '' ? await reportFileApi.downloadInspectFile(fileId, 'preview') : ''
+			const resolvedSource = localAvailable ? localPath : (fileId !== '' ? await reportFileApi.downloadInspectFile(fileId, 'preview') : '')
+			if (!props.visible) return
+			editSource.value = resolvedSource
 			if (editSource.value === '') {
 				if (fileId !== '' && localPath !== '') throw new Error('本地图片不可用且服务端下载失败，请检查网络后重试')
 				if (fileId !== '') throw new Error('服务端图片下载失败，请检查网络后重试')
@@ -93,16 +100,23 @@
 			}
 			editing.value = true
 		} catch (error) { uni.showToast({ title: t(((error as Error)?.message ?? t('下载图片失败')).toString()), icon: 'none', duration: 2500 }) }
-		finally { openingEditor.value = false }
+		finally { if (props.visible) openingEditor.value = false }
 	}
 	/** 关闭画布编辑器并丢弃未保存的笔画。 */
 	function closeImageEditor() { editing.value = false; editSource.value = '' }
 	/** 将已保存的本地新图路径交给页面持久化为待上传媒体。 */
 	function saveEditedImage(path: string) { emit('edited', path) }
-	/** 切换预览目标或关闭弹层时清空旧图的编辑状态。 */
-	watch((): UTSJSONObject => photoData.value, () => closeImageEditor())
-	/** 关闭媒体预览时保证子编辑器不残留。 */
-	watch((): boolean => props.visible, (visible: boolean) => { if (!visible) closeImageEditor() })
+	/**
+	 * 切换预览目标时清空旧图的编辑状态，且仅在预览可见时写入。
+	 * 弹层实例在关闭后仍然挂载，若不带守卫，关闭期间父页面推送新的预览媒体会改写编辑状态，
+	 * 驱动已销毁的渲染子树在 vapor 原生渲染线程重新渲染并闪退。
+	 */
+	watch((): UTSJSONObject => photoData.value, () => { if (props.visible) closeImageEditor() })
+	/**
+	 * 打开媒体预览时清空上一次的图片编辑状态并解除编辑请求锁；关闭时不写入内部状态，
+	 * 避免弹层子树已销毁后仍被内部状态驱动重新渲染。
+	 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (visible) { openingEditor.value = false; closeImageEditor() } })
 	/** 阻止点击预览区域关闭弹层。 */
 	function stopEvent() {}
 </script>

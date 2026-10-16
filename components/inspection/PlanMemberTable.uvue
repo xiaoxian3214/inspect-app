@@ -6,7 +6,7 @@
 			<text class="member-cell member-heading" :class="{ 'cell-divider': downloadable }">{{ localizedHeaders ? translateText('产品名称') : 'Name' }}</text>
 			<text v-if="downloadable" class="member-action member-heading">{{ translateText('操作') }}</text>
 		</view>
-		<scroll-view class="member-body" :scroll-y="true">
+		<scroll-view class="member-body" direction="vertical">
 			<text v-if="loading" class="member-message">{{ translateText('加载中...') }}</text>
 			<text v-else-if="rows.length === 0" class="member-message">{{ translateText('暂无可选的验货单据') }}</text>
 			<view v-else>

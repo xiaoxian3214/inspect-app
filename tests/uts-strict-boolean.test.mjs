@@ -46,24 +46,14 @@ test('detail components declare referenced functions before calling them', async
   ]) assert.ok(editor.indexOf(dependency) < editor.indexOf(caller), `${dependency} must precede ${caller}`)
 })
 
-/** 原生拍照页回调依赖先声明且动态路径不调用 Kotlin String 构造函数。 */
-test('native camera declares callback and converts paths safely', async () => {
+/** 自定义拍照页的落盘与回传依赖先声明，且路径处理不调用 Kotlin String 构造函数。 */
+test('custom camera page declares save helpers before the capture handler', async () => {
   const source = await readFile('pages/report/simple-camera.uvue', 'utf8')
-  assert.ok(source.indexOf('function goBackWithResult(') < source.indexOf('function handlePhotoTaken('))
+  assert.ok(source.indexOf('function persistCapturePath(') < source.indexOf('function persistCapturePaths('))
+  assert.ok(source.indexOf('function persistCapturePaths(') < source.indexOf('async function handleFinishCapture('))
+  assert.ok(source.indexOf('function goBackWithResult(') < source.indexOf('async function handleFinishCapture('))
+  assert.ok(source.indexOf('function clearReadyFallbackTimer(') < source.indexOf('onMounted('))
   assert.doesNotMatch(source, /\bString\s*\(/)
-})
-
-/** 相机页先声明录像与相册操作，防止原生 setup 中调用尚未定义的方法。 */
-test('camera declares capture and album dependencies before handlers', async () => {
-  const source = await readFile('pages/report/camera.uvue', 'utf8')
-  for (const [dependency, caller] of [
-    ['function stopVideoRecording(', 'function handleVideoStarted('],
-    ['function stopVideoRecording(', 'function handleShutterPress('],
-    ['function startVideoRecording(', 'function handleShutterPress('],
-    ['function takePhoto(', 'function handleShutterPress('],
-    ['function chooseVideoFromAlbum(', 'function chooseMediaFromAlbum('],
-    ['function chooseFromAlbum(', 'function chooseMediaFromAlbum('],
-  ]) assert.ok(source.indexOf(dependency) < source.indexOf(caller), `${dependency} must precede ${caller}`)
 })
 
 /** 评论和图片编辑弹层在原生端不依赖 JS String(value) 构造函数。 */

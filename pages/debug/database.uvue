@@ -30,7 +30,7 @@
 			<text class="copy" @click="copyActiveTable">复制 JSON</text>
 		</view>
 
-		<scroll-view class="rows" :scroll-y="true">
+		<scroll-view class="rows" direction="vertical">
 			<view v-if="loading" class="empty"><text>正在读取本地数据...</text></view>
 			<view v-else-if="activeRows.length === 0" class="empty"><text>当前表暂无数据</text></view>
 			<view v-for="(row, index) in activeRows" :key="rowKey(row, index)" class="row-card">

@@ -7,7 +7,7 @@
 			<text class="nav-placeholder">·</text>
 		</view>
 
-		<scroll-view class="content" :scroll-y="true">
+		<scroll-view class="content" direction="vertical">
 			<view class="card">
 				<text class="card-title">数据库状态</text>
 				<text class="status" :class="opened ? 'status-open' : 'status-closed'">{{ opened ? '已打开' : '未打开' }}</text>

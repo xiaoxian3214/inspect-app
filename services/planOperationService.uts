@@ -37,7 +37,7 @@ export function createPlanOperationService(options) {
 
   /** 分页查询合并父计划成员，包含尚未下载或未回传 parentPlanId 的远程卡片。 */
   async function getMergedMemberIds(parentPlanId) {
-    const memberIds = new Set()
+    const memberIds = new Set<any>()
     const pageSize = 100
     let page = 1
     while (true) {

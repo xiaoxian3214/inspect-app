@@ -119,8 +119,8 @@ export function createPlanApi(apiClient) {
     const rows = Array.isArray(data)
       ? data
       : (Array.isArray(data?.records) ? data.records : (Array.isArray(data?.data?.records) ? data.data.records : []))
-    const options = []
-    const seenIds = new Set()
+    const options: UTSJSONObject[] = []
+    const seenIds = new Set<string>()
     for (const item of rows) {
       const id = String(item?.id ?? item?.templateId ?? item?.value ?? item?.code ?? '').trim()
       const name = String(item?.templateName ?? item?.name ?? item?.label ?? item?.templateLabel ?? '').trim()

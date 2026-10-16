@@ -7,7 +7,7 @@ const COMMENT_TARGET_TYPE = 'REPORT'
  * @param index 顶层序号，用于兜底生成评论 ID
  * @returns 归一化后的 { id, content, authorName, createdAt, updatedAt, replies }
  */
-export function normalizeCommentRow(row, index) {
+export function normalizeCommentRow(row: UTSJSONObject | null, index: number): UTSJSONObject {
 	const normalizedIndex = parseInt(String(index)) ?? 0
 	const source = row != null && typeof row === 'object' ? row : {}
 	const id = String(source.id ?? source.commentId ?? source.reviewCommentId ?? source.reviewId ?? `comment_${normalizedIndex}`).trim()
@@ -15,7 +15,7 @@ export function normalizeCommentRow(row, index) {
 	const authorName = String(source.createByName ?? source.creatorName ?? source.commenterName ?? source.commenter ?? source.userName ?? source.createName ?? source.reviewerName ?? source.createBy ?? '').trim()
 	const createdAt = String(source.createDate ?? source.createdAt ?? source.updateDate ?? source.updatedAt ?? '').trim()
 	const updatedAt = String(source.updateDate ?? source.updatedAt ?? source.createDate ?? source.createdAt ?? '').trim()
-	const replies = (Array.isArray(source.replies) ? source.replies : []).map((reply, replyIndex) => normalizeCommentRow(reply, replyIndex))
+	const replies = (Array.isArray(source.replies) ? source.replies : ([] as UTSJSONObject[])).map((reply, replyIndex) => normalizeCommentRow(reply, replyIndex))
 	return { id, content, authorName, createdAt, updatedAt, replies }
 }
 
@@ -24,8 +24,8 @@ export function normalizeCommentRow(row, index) {
  * @param payload 接口返回的评论数据
  * @returns 归一化评论数组
  */
-export function normalizeReportComments(payload) {
-	let rows = []
+export function normalizeReportComments(payload: UTSJSONObject | any[] | null): UTSJSONObject[] {
+	let rows: any[] = []
 	if (Array.isArray(payload)) rows = payload
 	else if (payload != null && typeof payload === 'object') {
 		if (Array.isArray(payload.records)) rows = payload.records
@@ -43,10 +43,10 @@ export function normalizeReportComments(payload) {
  * @param parentName 直接被回复人姓名，写入 replyToName
  * @param bucket 输出的扁平回复列表
  */
-function collectFlattenedReplies(replies, parentName, bucket) {
-	const rows = Array.isArray(replies) ? replies : []
+function collectFlattenedReplies(replies: UTSJSONObject[] | null, parentName: string, bucket: UTSJSONObject[]): void {
+	const rows = Array.isArray(replies) ? replies : ([] as UTSJSONObject[])
 	for (const row of rows) {
-		bucket.push({ id: row.id, content: row.content, authorName: row.authorName, createdAt: row.createdAt, updatedAt: row.updatedAt, replyToName: String(parentName ?? ''), replies: [] })
+		bucket.push({ id: row.id, content: row.content, authorName: row.authorName, createdAt: row.createdAt, updatedAt: row.updatedAt, replyToName: String(parentName ?? ''), replies: [] as UTSJSONObject[] })
 		collectFlattenedReplies(row.replies, row.authorName, bucket)
 	}
 }
@@ -56,10 +56,10 @@ function collectFlattenedReplies(replies, parentName, bucket) {
  * @param comments normalizeReportComments 的输出
  * @returns 顶层线程数组，replies 内为扁平后代回复
  */
-export function buildCommentThreads(comments) {
-	const rows = Array.isArray(comments) ? comments : []
+export function buildCommentThreads(comments: UTSJSONObject[] | null): UTSJSONObject[] {
+	const rows = Array.isArray(comments) ? comments : ([] as UTSJSONObject[])
 	return rows.map((row) => {
-		const replies = []
+		const replies: UTSJSONObject[] = []
 		collectFlattenedReplies(row.replies, row.authorName, replies)
 		return { id: row.id, content: row.content, authorName: row.authorName, createdAt: row.createdAt, updatedAt: row.updatedAt, replyToName: '', replies }
 	})
@@ -71,13 +71,13 @@ export function buildCommentThreads(comments) {
  * @param commentId 被点击的评论 ID
  * @returns 回复目标线程；找不到时返回 null
  */
-export function resolveReplyTarget(threads, commentId) {
+export function resolveReplyTarget(threads: UTSJSONObject[] | null, commentId: string): UTSJSONObject | null {
 	const normalizedId = String(commentId ?? '').trim()
 	if (normalizedId === '') return null
-	const threadRows = Array.isArray(threads) ? threads : []
+	const threadRows = Array.isArray(threads) ? threads : ([] as UTSJSONObject[])
 	for (const thread of threadRows) {
 		if (thread.id === normalizedId) return thread
-		const replyRows = Array.isArray(thread.replies) ? thread.replies : []
+		const replyRows = Array.isArray(thread.replies) ? thread.replies : ([] as UTSJSONObject[])
 		for (const reply of replyRows) {
 			if (reply.id === normalizedId) return thread
 		}
@@ -90,7 +90,7 @@ export function resolveReplyTarget(threads, commentId) {
  * @param content 用户输入的评论内容
  * @returns { valid, message }，valid 为 false 时 message 说明原因
  */
-export function validateCommentContent(content) {
+export function validateCommentContent(content: string | null): UTSJSONObject {
 	const normalized = String(content ?? '').trim()
 	if (normalized === '') return { valid: false, message: '评论内容不能为空' }
 	if (normalized.length > COMMENT_CONTENT_MAX_LENGTH) return { valid: false, message: `评论内容不能超过${COMMENT_CONTENT_MAX_LENGTH}字` }
@@ -99,10 +99,10 @@ export function validateCommentContent(content) {
 
 /**
  * 组装报告评论提交参数：评论目标即报告自身，parentId 为空时提交 null。
- * @param options { reportId, content, parentId }，parentId 可省略
+ * @param options { reportId, content, parentId } 评论草稿，parentId 可省略
  * @returns { reportId, targetId, targetType, parentId, content }
  */
-export function buildReportCommentParams(options) {
+export function buildReportCommentParams(options: UTSJSONObject | null): UTSJSONObject {
 	const source = options != null && typeof options === 'object' ? options : {}
 	const reportId = String(source.reportId ?? '').trim()
 	if (reportId === '') throw new Error('缺少报告ID')

@@ -1,5 +1,10 @@
-/** 按稳定照片 ID 查找当前媒体，避免上传刷新后对象引用变化导致预览跳错。 */
-export function findMediaIndex(photos, photo) {
+/**
+ * 按稳定照片 ID 查找当前媒体，避免上传刷新后对象引用变化导致预览跳错。
+ * @param photos 当前媒体分组列表
+ * @param photo 目标媒体记录
+ * @returns 命中的下标，未命中返回 -1
+ */
+export function findMediaIndex(photos: UTSJSONObject[], photo: UTSJSONObject | null): number {
   const photoId = String(photo?.photoId ?? '')
   if (photoId !== '') return photos.findIndex((entry) => String(entry?.photoId ?? '') === photoId)
   const fileId = String(photo?.fileId ?? '')
@@ -9,22 +14,38 @@ export function findMediaIndex(photos, photo) {
   return photos.findIndex((entry) => entry === photo)
 }
 
-/** 在当前媒体分组内循环切换上一张或下一张；目标不存在时不跨组跳转。 */
-export function adjacentMedia(photos, photo, offset) {
+/**
+ * 在当前媒体分组内循环切换上一张或下一张；目标不存在时不跨组跳转。
+ * @param photos 当前媒体分组列表
+ * @param photo 当前媒体记录
+ * @param offset 相对偏移（-1 上一张，1 下一张）
+ * @returns 相邻媒体记录，无法定位或分组为空时返回 null
+ */
+export function adjacentMedia(photos: UTSJSONObject[], photo: UTSJSONObject | null, offset: number): UTSJSONObject | null {
   const index = findMediaIndex(photos, photo)
   if (index < 0 || photos.length === 0) return null
   return photos[(index + offset + photos.length) % photos.length]
 }
 
-/** 用编辑后的本地记录原位替换图片，保留媒体库排序和其他媒体。 */
-export function replaceMedia(photos, oldPhoto, newPhoto) {
+/**
+ * 用编辑后的本地记录原位替换图片，保留媒体库排序和其他媒体。
+ * @param photos 当前媒体分组列表
+ * @param oldPhoto 原始媒体记录
+ * @param newPhoto 编辑后的媒体记录
+ * @returns 替换后的新列表，未命中时原样返回
+ */
+export function replaceMedia(photos: UTSJSONObject[], oldPhoto: UTSJSONObject | null, newPhoto: UTSJSONObject): UTSJSONObject[] {
   const index = findMediaIndex(photos, oldPhoto)
   if (index < 0) return photos
   return photos.map((photo, position) => position === index ? newPhoto : photo)
 }
 
-/** 复制业务归属元数据并清除旧图片的远程文件、上传及本地路径字段。 */
-export function editedMediaMetadata(photo) {
+/**
+ * 复制业务归属元数据并清除旧图片的远程文件、上传及本地路径字段。
+ * @param photo 原始媒体记录
+ * @returns 只保留业务归属字段并标记为 image 的元数据对象
+ */
+export function editedMediaMetadata(photo: UTSJSONObject | null): UTSJSONObject {
   const {
     photoId, id, reportId, localPath, fileId, filePath, thumbnailPath, previewUrl,
     coverUrl, url, dataUrl, fileName, fileExt, fileSize, fileType, mimeType,
@@ -34,13 +55,23 @@ export function editedMediaMetadata(photo) {
   return { ...metadata, mediaType: 'image' }
 }
 
-/** 使用图片信息接口返回的已解析本地路径供原生画布解码，缺失时回退原始来源。 */
-export function canvasImageSource(info, source) {
+/**
+ * 使用图片信息接口返回的已解析本地路径供原生画布解码，缺失时回退原始来源。
+ * @param info 图片信息接口返回对象
+ * @param source 原始图片地址
+ * @returns 优先使用解析后的本地路径
+ */
+export function canvasImageSource(info: UTSJSONObject | null, source: string | null): string {
   const path = String(info?.path ?? '').trim()
   return path !== '' ? path : String(source ?? '').trim()
 }
 
-/** 在加载超时提示中保留失败阶段及原生错误，供设备端定位画布初始化问题。 */
-export function editorTimeoutMessage(stage, cause) {
+/**
+ * 在加载超时提示中保留失败阶段及原生错误，供设备端定位画布初始化问题。
+ * @param stage 失败的加载阶段
+ * @param cause 原生错误描述
+ * @returns 面向用户的超时提示文案
+ */
+export function editorTimeoutMessage(stage: string, cause: string): string {
   return `${stage}超时，请重试${cause !== '' ? `：${cause}` : ''}`
 }

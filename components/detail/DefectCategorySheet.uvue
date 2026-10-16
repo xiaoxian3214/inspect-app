@@ -21,7 +21,7 @@
 				</view>
 			</view>
 
-			<scroll-view class="category-list" :scroll-y="true">
+			<scroll-view class="category-list" direction="vertical">
 				<view v-if="filteredOptions.length === 0" class="empty-state"><text>{{ translateText(categoryTree.length > 0 ? '没有匹配的疵点分类' : '暂无疵点分类缓存，请联网刷新') }}</text></view>
 				<view v-for="item in filteredOptions" :key="item.code" class="category-row" @click="selectCategory(item)">
 					<view class="category-copy">

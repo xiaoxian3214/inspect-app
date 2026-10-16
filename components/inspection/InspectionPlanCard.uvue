@@ -157,14 +157,18 @@
 		import { normalizePlanStatus } from '../../domain/planViewModel.uts'
 	import { extractCopiedPlanId, firstNonEmptyText, getItemInspectType, getItemParentPlanId, getMergePreviewRow, getPlanInspectTypeLabel, getPlanOperationId } from '../../domain/searchViewModel.uts'
 	import { initializeRuntime, planApi, planDownloadService, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
-	type PlanApiMethods = { searchPlans: (params: UTSJSONObject, page: number, pageSize: number) => Promise<UTSJSONObject>, getPlanTemplates: () => Promise<UTSJSONObject[]>, getInspectTypeDict: () => Promise<UTSJSONObject[]>, updateFinishQuantity: (planId: string, quantity: string) => Promise<any> }
+	/** 计划接口收窄视图；updateFinishQuantity 经 apiClient.request → unwrapResponse 返回 JSON 数据或 null。 */
+	type PlanApiMethods = { searchPlans: (params: UTSJSONObject, page: number, pageSize: number) => Promise<UTSJSONObject>, getPlanTemplates: () => Promise<UTSJSONObject[]>, getInspectTypeDict: () => Promise<UTSJSONObject[]>, updateFinishQuantity: (planId: string, quantity: string) => Promise<UTSJSONObject | null> }
 	type ReadyQuantityRow = { planId: string, productName: string, orderNo: string, goodsNo: string, orderQuantity: number, finishQuantity: string }
 	const nativePlanApi = planApi as PlanApiMethods
-	type ReportRepositoryMethods = { listPlans: () => Promise<UTSJSONObject[]>, savePlan: (plan: UTSJSONObject) => Promise<any> }
+	/** 本地计划仓库收窄视图；reportRepository.savePlan 的所有分支都返回传入的计划对象。 */
+	type ReportRepositoryMethods = { listPlans: () => Promise<UTSJSONObject[]>, savePlan: (plan: UTSJSONObject) => Promise<UTSJSONObject> }
 	const nativeReportRepository = reportRepository as ReportRepositoryMethods
-	type PlanOperationMethods = { copyPlan: (planId: string, payload: UTSJSONObject) => Promise<UTSJSONObject>, downloadToLocal: (planId: string, payload: UTSJSONObject, expectedIds?: string[], sourceItems?: UTSJSONObject[]) => Promise<any>, unlockPlan: (item: UTSJSONObject) => Promise<any>, resetPlan: (item: UTSJSONObject) => Promise<any> }
+	/** 计划操作服务收窄视图；downloadToLocal 返回落库后的本地计划数组，unlockPlan/resetPlan 走 releasePlan 返回结果对象。 */
+	type PlanOperationMethods = { copyPlan: (planId: string, payload: UTSJSONObject) => Promise<UTSJSONObject>, downloadToLocal: (planId: string, payload: UTSJSONObject, expectedIds?: string[], sourceItems?: UTSJSONObject[]) => Promise<UTSJSONObject[]>, unlockPlan: (item: UTSJSONObject) => Promise<UTSJSONObject>, resetPlan: (item: UTSJSONObject) => Promise<UTSJSONObject> }
 	const nativePlanOperation = planOperationService as PlanOperationMethods
-	type PlanDownloadMethods = { downloadToLocal: (planId: string, payload: UTSJSONObject, expectedIds: string[], sourceItems: UTSJSONObject[]) => Promise<any> }
+	/** 计划下载服务收窄视图；downloadToLocal 返回切分并补全后的本地计划数组。 */
+	type PlanDownloadMethods = { downloadToLocal: (planId: string, payload: UTSJSONObject, expectedIds: string[], sourceItems: UTSJSONObject[]) => Promise<UTSJSONObject[]> }
 	const nativePlanDownload = planDownloadService as PlanDownloadMethods
 
 	const props = defineProps({
@@ -234,21 +238,22 @@
 
 	/** 返回卡片使用的计划主体，兼容嵌套与平铺记录。 */
 	const plan = computed((): UTSJSONObject => (itemData.value['plan'] as UTSJSONObject | null) ?? itemData.value)
-	const status = computed(() => normalizePlanStatus(props.item))
+	/** 归一化计划状态码，与 H5 列表的状态判断保持一致。 */
+	const status = computed((): number => normalizePlanStatus(props.item))
 	/** 选择卡片展示的产品名称。 */
 	const productName = computed((): string => ((getMergePreviewRow(props.item) as UTSJSONObject)['productName'] ?? '-').toString())
 	/** 选择卡片展示的货号。 */
 	const goodsNo = computed((): string => firstNonEmptyText([plan.value['subGoodsNo'], plan.value['goodsNo'], itemData.value['subGoodsNo']], '-'))
 	/** 选择卡片展示的批次号。 */
 	const batchNo = computed((): string => firstNonEmptyText([plan.value['batchNo'], itemData.value['batchNo']], ''))
-	const goodsNoWithBatch = computed(() => batchNo.value !== '' ? `${goodsNo.value}#${batchNo.value}` : goodsNo.value)
+	const goodsNoWithBatch = computed((): string => batchNo.value !== '' ? `${goodsNo.value}#${batchNo.value}` : goodsNo.value)
 	/** 选择卡片展示的供应商。 */
 	const supplierName = computed((): string => firstNonEmptyText([plan.value['factoryName'], itemData.value['supplierName'], itemData.value['factoryName']], '-'))
 	/** 选择卡片分组使用的订单号。 */
 	const orderNo = computed((): string => firstNonEmptyText([plan.value['clientOrderNo'], plan.value['domeNo'], itemData.value['clientOrderNo'], itemData.value['orderNo']], '未分组'))
 	/** 按 H5 卡片的类型显示顺序，保留拆分计划平铺字段中的原验货类型。 */
 	const inspectType = computed((): string => getPlanInspectTypeLabel(props.item))
-	const inspectTypeShort = computed(() => inspectType.value.length > 2 ? inspectType.value.substring(0, 2) : inspectType.value)
+	const inspectTypeShort = computed((): string => inspectType.value.length > 2 ? inspectType.value.substring(0, 2) : inspectType.value)
 	const goodsFlagType = computed((): string => (plan.value['goodsFlag'] ?? itemData.value['goodsFlag'] ?? 1).toString() === '0' ? 'raw' : 'finished')
 	const produceNo = computed((): string => firstNonEmptyText([plan.value['produceNo'], itemData.value['produceNo']], '-'))
 	const modelNo = computed((): string => firstNonEmptyText([plan.value['modelNo'], itemData.value['modelNo']], '-'))
@@ -259,25 +264,30 @@
 	const inspectorName = computed((): string => firstNonEmptyText([plan.value['inspectorName'], itemData.value['inspectorName']], '验货员').trim())
 	const lockFlag = computed((): number => parseFloat((plan.value['lockFlag'] ?? itemData.value['lockFlag'] ?? 0).toString()))
 	const isMerged = computed((): boolean => (plan.value['mergeType'] ?? itemData.value['mergeType'] ?? 0).toString() === '2')
-		const resolvedDownloadState = computed(() => resolveDownloadState({
+		const resolvedDownloadState = computed((): string => resolveDownloadState({
 				isLocalDownloaded: props.isLocalDownloaded,
 				lockFlag: lockFlag.value,
 			inspectorId: inspectorId.value,
 			currentUserId: props.currentUserId
 		}))
-	const isDownloaded = computed(() => resolvedDownloadState.value === 'downloaded')
-	const isLockedByOther = computed(() => resolvedDownloadState.value === 'locked')
-	const downloadStateClass = computed(() => resolvedDownloadState.value)
+	/** 当前计划已下载到本机。 */
+	const isDownloaded = computed((): boolean => resolvedDownloadState.value === 'downloaded')
+	/** 当前计划已被其他验货员锁定。 */
+	const isLockedByOther = computed((): boolean => resolvedDownloadState.value === 'locked')
+	/** 下载图标使用的原生样式类名。 */
+	const downloadStateClass = computed((): string => resolvedDownloadState.value)
 	/** 将已报告计划的卡片状态显示为“报告”，其他计划沿用原状态文案。 */
-	const statusText = computed(() => status.value === 3 ? '报告' : (status.value === 1 ? '进行中' : '已定计划'))
-	const statusClass = computed(() => status.value === 3 ? 'completed' : (status.value === 1 ? 'in-progress' : 'planned'))
-	const canDownload = computed(() => props.showDownload && !isLockedByOther.value && !isDownloaded.value)
+	const statusText = computed((): string => status.value === 3 ? '报告' : (status.value === 1 ? '进行中' : '已定计划'))
+	const statusClass = computed((): string => status.value === 3 ? 'completed' : (status.value === 1 ? 'in-progress' : 'planned'))
+	/** 允许下载需要页面开启下载入口，且本机未下载、未被他人锁定。 */
+	const canDownload = computed((): boolean => props.showDownload && !isLockedByOther.value && !isDownloaded.value)
 	/** 将下载清单转换为复制验货选择弹层使用的选项。 */
 	type DownloadTemplateOption = { value: string, label: string, raw: UTSJSONObject }
 	type CardAction = { key: string, label: string, icon: string, disabled: boolean }
 	const downloadTemplateOptions = computed((): DownloadTemplateOption[] => downloadTemplates.value.map((item: UTSJSONObject): DownloadTemplateOption => ({ value: (item['id'] ?? '').toString(), label: (item['name'] ?? '').toString(), raw: item })))
 	/** 返回下载弹层当前清单显示名称。 */
-	const downloadTemplateDisplayName = computed(() => downloadTemplateName.value !== '' ? downloadTemplateName.value : '请选择清单')
+	const downloadTemplateDisplayName = computed((): string => downloadTemplateName.value !== '' ? downloadTemplateName.value : '请选择清单')
+		/** 按下载状态、计划状态和合并标记生成卡片“更多”操作项。 */
 		const cardActions = computed((): CardAction[] => (buildCardActions({
 			downloadState: resolvedDownloadState.value,
 			statusKey: props.statusKey !== '' ? props.statusKey : (status.value === 3 ? 'report' : (status.value === 1 ? 'progress' : 'planned')),
@@ -287,19 +297,19 @@
 		}) as UTSJSONObject[]).map((action: UTSJSONObject): CardAction => ({ key: (action['key'] ?? '').toString(), label: (action['label'] ?? '').toString(), icon: (action['icon'] ?? '').toString(), disabled: submitting.value })))
 
 		/** 在合并多选模式下通知页面切换当前计划的选中状态。 */
-		function toggleMergeSelection() { if (!props.selectionMode || props.selectionDisabled) return; emit('merge-toggle', props.item) }
+		function toggleMergeSelection(): void { if (!props.selectionMode || props.selectionDisabled) return; emit('merge-toggle', props.item) }
 
 		/**
 		 * 关闭卡片右侧“更多”操作菜单。
 		 */
-		function closeActionSheet() {
+		function closeActionSheet(): void {
 		showActionSheet.value = false
 	}
 
 		/**
 		 * 打开与 H5 可见性规则一致的卡片操作菜单。
 		 */
-		function openActionSheet() {
+		function openActionSheet(): void {
 			if (props.selectionMode) {
 				toggleMergeSelection()
 				return
@@ -311,14 +321,14 @@
 		/**
 		 * 关闭计划下载确认弹窗。
 		 */
-	function closeDownloadModal() {
+	function closeDownloadModal(): void {
 		showDownloadModal.value = false
 		showDownloadTemplateSheet.value = false
 		downloadMergedItems.value = []
 	}
 
 	/** 按旧版合并弹框查询同组成员，下载前展示并校验整组计划。 */
-	async function loadDownloadMergedItems() {
+	async function loadDownloadMergedItems(): Promise<void> {
 		downloadMergedItems.value = []
 		if (!isMerged.value) return
 		const mergedParentPlanId = getItemParentPlanId(props.item)
@@ -342,7 +352,7 @@
 		/**
 		 * 加载 H5 同源清单模板并打开下载确认弹层。
 		 */
-		async function openDownloadModal() {
+		async function openDownloadModal(): Promise<void> {
 			downloadTemplateId.value = firstNonEmptyText([plan.value['templateId'], itemData.value['templateId']], '')
 			downloadTemplateName.value = firstNonEmptyText([plan.value['templateName'], itemData.value['templateName']], '')
 			showDownloadModal.value = true
@@ -359,13 +369,13 @@
 		}
 
 		/** 打开与复制验货相同的底部清单选择弹层。 */
-		function openDownloadTemplateSheet() { if (!submitting.value) showDownloadTemplateSheet.value = true }
+		function openDownloadTemplateSheet(): void { if (!submitting.value) showDownloadTemplateSheet.value = true }
 
 		/** 取消清单选择且不改变当前下载参数。 */
-		function closeDownloadTemplateSheet() { showDownloadTemplateSheet.value = false }
+		function closeDownloadTemplateSheet(): void { showDownloadTemplateSheet.value = false }
 
 		/** 确认清单选项后同步下载参数及弹框回显。 */
-		function selectDownloadTemplate(option: UTSJSONObject) {
+		function selectDownloadTemplate(option: UTSJSONObject): void {
 			const template = (option['raw'] as UTSJSONObject | null) ?? option
 			downloadTemplateId.value = (template['id'] ?? '').toString()
 			downloadTemplateName.value = (template['name'] ?? '').toString()
@@ -375,21 +385,21 @@
 		/**
 		 * 关闭解锁二次确认弹层。
 		 */
-		function closeUnlockModal() {
+		function closeUnlockModal(): void {
 			showUnlockModal.value = false
 		}
 
 		/**
 		 * 关闭重置二次确认弹层。
 		 */
-		function closeResetModal() {
+		function closeResetModal(): void {
 			showResetModal.value = false
 		}
 
 		/** 更新内部复制流程选择的清单模板。 */
-		function setCopyTemplate(option: UTSJSONObject) { copyTemplateId.value = (option['id'] ?? '').toString(); copyTemplateName.value = (option['name'] ?? '').toString() }
+		function setCopyTemplate(option: UTSJSONObject): void { copyTemplateId.value = (option['id'] ?? '').toString(); copyTemplateName.value = (option['name'] ?? '').toString() }
 		/** 查询复制合并验货的全部成员，接口失败时至少展示当前卡片。 */
-		async function loadCopyMergedItems() {
+		async function loadCopyMergedItems(): Promise<void> {
 			const mergedParentPlanId = getItemParentPlanId(props.item)
 			const parentPlanId = mergedParentPlanId !== '' ? mergedParentPlanId : getPlanOperationId(props.item)
 			copyMergedLoading.value = true
@@ -402,7 +412,7 @@
 			finally { copyMergedLoading.value = false }
 		}
 		/** 加载检查类型和清单模板并打开内部复制弹层。 */
-		async function openCopySheet(mode: number) {
+		async function openCopySheet(mode: number): Promise<void> {
 			try {
 				const options = await Promise.all([nativePlanApi.getInspectTypeDict(), nativePlanApi.getPlanTemplates()])
 				copyInspectTypeOptions.value = options[0] ?? []
@@ -428,7 +438,7 @@
 		/**
 		 * 关闭内部复制弹层并清理复制结果状态。
 		 */
-		function closeCopySheet() {
+		function closeCopySheet(): void {
 			showCopySheet.value = false
 			copyCreated.value = false
 			copiedPlanId.value = ''
@@ -446,7 +456,7 @@
 		/**
 		 * 加载当前计划或合并组计划并打开备货数量弹层。
 		 */
-		async function openReadyQuantitySheet() {
+		async function openReadyQuantitySheet(): Promise<void> {
 			try {
 			let items: UTSJSONObject[] = [itemData.value]
 				if (isMerged.value) {
@@ -477,14 +487,14 @@
 		/**
 		 * 关闭备货数量弹层。
 		 */
-		function closeReadyQuantitySheet() {
+		function closeReadyQuantitySheet(): void {
 			showReadyQuantitySheet.value = false
 		}
 
 		/**
 		 * 更新备货数量弹层指定行的输入值。
 		 */
-		function updateReadyQuantity(payload: UTSJSONObject) {
+		function updateReadyQuantity(payload: UTSJSONObject): void {
 			const index = parseInt((payload['index'] ?? -1).toString())
 			if (index < 0 || index >= readyQuantityRows.value.length) return
 			readyQuantityRows.value = readyQuantityRows.value.map((row: ReadyQuantityRow, rowIndex: number): ReadyQuantityRow => rowIndex === index ? { ...row, finishQuantity: (payload['value'] ?? '').toString() } : row)
@@ -493,7 +503,7 @@
 		/**
 		 * 保存全部备货数量并同步更新已下载的本地计划。
 		 */
-		async function saveReadyQuantities() {
+		async function saveReadyQuantities(): Promise<void> {
 			if (submitting.value) return
 			submitting.value = true
 			try {
@@ -518,14 +528,14 @@
 		/**
 		 * 更新内部复制流程选择的检查类型。
 		 */
-		function setCopyInspectType(option: UTSJSONObject) {
+		function setCopyInspectType(option: UTSJSONObject): void {
 			copyInspectType.value = (option['value'] ?? '').toString()
 		}
 
 		/**
 		 * 创建当前验货或整个合并验货的副本。
 		 */
-		async function confirmCopy() {
+		async function confirmCopy(): Promise<void> {
 			if (submitting.value) return
 			const parentPlanId = getItemParentPlanId(props.item)
 			const sourcePlanId = copyMode.value === 2 && parentPlanId !== '' ? parentPlanId : getPlanOperationId(props.item)
@@ -561,7 +571,7 @@
 		/**
 		 * 下载复制成功的新计划并刷新本地列表状态。
 		 */
-		async function downloadCopiedPlan() {
+		async function downloadCopiedPlan(): Promise<void> {
 			if (copiedPlanId.value === '' || submitting.value) return
 			submitting.value = true
 			try {
@@ -579,14 +589,14 @@
 		/**
 		 * 关闭当前验货员信息弹窗。
 		 */
-		function closeInspectorModal() {
+		function closeInspectorModal(): void {
 		showInspectorModal.value = false
 	}
 
 		/**
 		 * 从卡片操作菜单进入下载确认流程。
 		 */
-		async function openDownloadModalFromMenu() {
+		async function openDownloadModalFromMenu(): Promise<void> {
 		closeActionSheet()
 		await openDownloadModal()
 	}
@@ -594,7 +604,7 @@
 		/**
 		 * 从卡片操作菜单查看锁定计划的当前验货员。
 		 */
-		function openInspectorModalFromMenu() {
+		function openInspectorModalFromMenu(): void {
 		closeActionSheet()
 		showInspectorModal.value = true
 	}
@@ -602,7 +612,7 @@
 		/** 提取当前卡片用于本地详情页导航的计划 ID。 */
 		function getDetailPlanId(): string { return getPlanOperationId(props.item).trim() }
 		/** 本机已下载才进入详情；未下载则提示锁定或打开下载确认弹框。 */
-		function openDetailPage() {
+		function openDetailPage(): void {
 			if (!props.isLocalDownloaded) {
 				if (resolvedDownloadState.value === 'locked') uni.showToast({ title: t('该计划已被其他验货员下载，当前账号不可操作'), icon: 'none' })
 				else openDownloadModal()
@@ -613,7 +623,7 @@
 			uni.navigateTo({ url: `/pages/report/detail?planId=${encodeURIComponent(planId)}` })
 		}
 		/** 从卡片操作菜单打开本地详情或报告摘要。 */
-		function openDetailPageFromMenu() {
+		function openDetailPageFromMenu(): void {
 			closeActionSheet()
 			openDetailPage()
 		}
@@ -621,7 +631,7 @@
 		/**
 		 * 分发卡片菜单操作，按当前页面配置执行或委托下载、解锁、重置、复制及拆分。
 		 */
-		function handleCardAction(action: UTSJSONObject) {
+		function handleCardAction(action: UTSJSONObject): void {
 			const actionKey = (action['key'] ?? '').toString()
 			if (actionKey === 'download') {
 				openDownloadModalFromMenu()
@@ -682,7 +692,7 @@
 		/**
 		 * 下载完整计划并事务性保存，同时传入原卡片字段供本地摘要补全。
 		 */
-		async function confirmDownload() {
+		async function confirmDownload(): Promise<void> {
 		const planId = firstNonEmptyText([plan.value['planId'], plan.value['id'], itemData.value['planId'], itemData.value['id']], '').trim()
 		if (planId === '') {
 			uni.showToast({ title: t('计划ID缺失'), icon: 'none' })
@@ -713,7 +723,7 @@
 		/**
 		 * 二次确认后解锁当前任务，并通知列表移除已释放的本地与远程缓存。
 		 */
-		async function confirmUnlock() {
+		async function confirmUnlock(): Promise<void> {
 		submitting.value = true
 		try {
 			await initializeRuntime()
@@ -732,7 +742,7 @@
 		/**
 		 * 二次确认后重置任务并删除云端报告，同时通知列表移除已释放的缓存。
 		 */
-		async function confirmReset() {
+		async function confirmReset(): Promise<void> {
 			submitting.value = true
 			try {
 				await initializeRuntime()
@@ -751,7 +761,7 @@
 		/**
 		 * 本机未下载的进行中任务先弹下载确认，已缓存才打开详情。
 		 */
-		function handleCardClick() {
+		function handleCardClick(): void {
 			if (!props.useInternalCardClick) {
 				emit('open', props.item)
 				return

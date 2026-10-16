@@ -2,14 +2,14 @@
 	<view v-if="visible" class="ready-overlay" @click="closeSheet">
 		<view class="ready-dialog" :style="{ maxHeight: dialogMaxHeight, paddingBottom: dialogBottomPadding }" @click.stop>
 			<text class="ready-title">{{ translateText('设置备货数量') }}</text>
-			<scroll-view class="ready-body" :scroll-y="true">
+			<scroll-view class="ready-body" direction="vertical">
 				<view v-for="(row, index) in displayRows" :key="row.planId" class="ready-item">
 					<text class="ready-product">{{ row.productName !== '' ? row.productName : row.planId }}</text>
 					<text class="ready-meta">{{ row.orderNo }} · {{ row.goodsNo !== '' ? row.goodsNo : row.planId }}</text>
 					<view class="ready-row"><text>{{ translateText('原始订单数量') }}</text><text>{{ row.orderQuantity }}</text></view>
 					<view class="ready-row">
 						<text>{{ translateText('新的备货数量') }}</text>
-						<input class="ready-input" type="number" :value="row.finishQuantity" :disabled="submitting" @input="updateQuantity(index, $event)" />
+						<input class="ready-input" type="number" :value="row.finishQuantity" :disabled="submitting" @input="updateQuantity(index, $event as UniInputEvent)" />
 					</view>
 				</view>
 				<text v-if="rows.length === 0" class="ready-empty">{{ translateText('暂无可设置的计划') }}</text>
@@ -45,21 +45,21 @@
 	/**
 	 * 关闭备货数量弹层。
 	 */
-	function closeSheet() {
+	function closeSheet(): void {
 		emit('close')
 	}
 
 	/**
 	 * 把指定行的新备货数量同步给父组件。
 	 */
-	function updateQuantity(index: number, event: any) {
-		emit('update-quantity', { index, value: (event as UniInputEvent).detail.value })
+	function updateQuantity(index: number, event: UniInputEvent): void {
+		emit('update-quantity', { index, value: event.detail.value })
 	}
 
 	/**
 	 * 提交全部备货数量修改。
 	 */
-	function saveRows() {
+	function saveRows(): void {
 		emit('save')
 	}
 </script>

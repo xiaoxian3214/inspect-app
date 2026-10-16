@@ -83,6 +83,6 @@ test('native SQLite reads list cards with a plan/report JOIN, not child-table sc
 
 test('switching tabs uses the already loaded local cards', async () => {
   const source = await readFile('pages/report/list.uvue', 'utf8')
-  const switchTab = source.split('async function switchTab(tabKey)')[1]?.split('\n\t}', 1)[0] ?? ''
+  const switchTab = source.split(/async function switchTab\(tabKey[^)]*\)/)[1]?.split('\n\t}', 1)[0] ?? ''
   assert.doesNotMatch(switchTab, /refreshLocalList\(\)/)
 })

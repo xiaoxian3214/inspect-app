@@ -1,8 +1,10 @@
 /**
  * 复制媒体列表并将 sortNo 归一化为从 1 开始的连续序号。
+ * @param items 待归一化的媒体列表，允许为空
+ * @returns 不修改原数组、sortNo 从 1 连续递增的新列表
  */
-export function normalizeMediaOrder(items) {
-  return (Array.isArray(items) ? items : []).map((item, index) => ({
+export function normalizeMediaOrder(items: UTSJSONObject[] | null): UTSJSONObject[] {
+  return (Array.isArray(items) ? items : ([] as UTSJSONObject[])).map((item, index) => ({
     ...(item ?? {}),
     sortNo: index + 1
   }))
@@ -10,9 +12,13 @@ export function normalizeMediaOrder(items) {
 
 /**
  * 将指定媒体移动到目标位置，返回不修改原数组且 sortNo 连续的新列表。
+ * @param items 当前媒体列表，允许为空
+ * @param fromIndex 被移动媒体的原下标
+ * @param toIndex 目标下标
+ * @returns 移动并重新编号后的新列表
  */
-export function moveMediaItem(items, fromIndex, toIndex) {
-  const normalizedItems = Array.isArray(items) ? items : []
+export function moveMediaItem(items: UTSJSONObject[] | null, fromIndex: number, toIndex: number): UTSJSONObject[] {
+  const normalizedItems = Array.isArray(items) ? items : ([] as UTSJSONObject[])
   const sourceIndex = parseInt(String(fromIndex))
   const targetIndex = parseInt(String(toIndex))
   if (!Number.isInteger(sourceIndex) || !Number.isInteger(targetIndex)) return normalizeMediaOrder(normalizedItems)
@@ -25,8 +31,16 @@ export function moveMediaItem(items, fromIndex, toIndex) {
   return normalizeMediaOrder(reordered)
 }
 
-/** 用三列原生网格的格宽和触摸位移求拖放目标，末行不足三格时收敛到最后一张。 */
-export function resolveMediaDragTarget(fromIndex, deltaX, deltaY, cellSize, itemCount) {
+/**
+ * 用三列原生网格的格宽和触摸位移求拖放目标，末行不足三格时收敛到最后一张。
+ * @param fromIndex 拖起媒体的下标
+ * @param deltaX 相对按下点的横向位移
+ * @param deltaY 相对按下点的纵向位移
+ * @param cellSize 单个网格的边长
+ * @param itemCount 当前媒体总数
+ * @returns 拖放落点下标
+ */
+export function resolveMediaDragTarget(fromIndex: number, deltaX: number, deltaY: number, cellSize: number, itemCount: number): number {
   const source = parseInt(String(fromIndex))
   const size = parseInt(String(cellSize))
   const count = parseInt(String(itemCount))

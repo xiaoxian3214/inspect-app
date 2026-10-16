@@ -1,7 +1,10 @@
 /**
  * 将服务端相对媒体路径补全为当前 API 域名下的绝对地址。
+ * @param value 可能是服务端相对路径或绝对地址的原始值
+ * @param apiBaseUrl 当前接口域名
+ * @returns 可直接用于 image/video 的绝对地址
  */
-function normalizeRemoteMediaUrl(value, apiBaseUrl) {
+function normalizeRemoteMediaUrl(value: string | number | null, apiBaseUrl: string): string {
   const path = String(value ?? '').trim()
   if (path === '') return ''
   if (/^(https?:|file:|blob:|data:|wxfile:|_doc\/|_downloads\/)/i.test(path)) return path
@@ -12,8 +15,12 @@ function normalizeRemoteMediaUrl(value, apiBaseUrl) {
 
 /**
  * 按 App 离线优先和 H5 fileId 规则返回缩略图或预览图地址。
+ * @param media 本地媒体记录对象或直接的媒体地址字符串
+ * @param mode 展示模式，preview 取预览图，其余取缩略图
+ * @param apiBaseUrl 当前接口域名，用于拼装 fileId 下载地址
+ * @returns 优先本地路径、其次 fileId 接口、最后回退远端地址的展示地址
  */
-export function getMediaDisplayUrl(media, mode = 'thumbnail', apiBaseUrl = '') {
+export function getMediaDisplayUrl(media: UTSJSONObject | null, mode: string = 'thumbnail', apiBaseUrl: string = ''): string {
   if (media == null) return ''
   if (typeof media === 'string') return normalizeRemoteMediaUrl(media, apiBaseUrl)
   const localPath = String(media?.localPath ?? '').trim()

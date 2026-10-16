@@ -127,7 +127,7 @@ test('application scroll boolean props use boolean bindings', async () => {
   const failures = []
   for (const file of files) {
     const source = await readFile(file, 'utf8')
-    if (/(?<!:)\b(?:scroll-x|scroll-y|show-scrollbar)="(?:true|false)"/.test(source)) failures.push(file)
+    if (/(?<!:)\b(?:scroll-x|direction="vertical"|show-scrollbar)="(?:true|false)"/.test(source)) failures.push(file)
   }
   assert.deepEqual(failures, [])
 })

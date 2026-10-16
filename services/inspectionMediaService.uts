@@ -13,7 +13,7 @@ export function createInspectionMediaService(options) {
   const createId = typeof options.createId === 'function'
     ? options.createId
     : () => `photo-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  const activeUploads = new Map()
+  const activeUploads = new Map<string, any>()
 
   /**
    * 将手机本地文件立即保存为 pending 照片记录，确保离线拍摄可恢复。
@@ -107,7 +107,7 @@ export function createInspectionMediaService(options) {
           }
         }
         const normalizedWorkerCount = Math.min(workerCount, photos.length)
-        const workers = []
+        const workers: Promise<void>[] = []
         for (let index = 0; index < normalizedWorkerCount; index += 1) {
           workers.push(runWorker())
         }

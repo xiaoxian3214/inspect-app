@@ -165,26 +165,6 @@ test('upload transport receives the H5 uni-channel fileType field', async () => 
   assert.equal(uploads[1].fileType, 'image')
   assert.equal(uploads[1].timeout, 120000)
 })
-
-test('camera page switches between photo and video capture modes', async () => {
-  const page = await readFile('pages/report/camera.uvue', 'utf8')
-
-  assert.match(page, /const captureMode = ref\('photo'\)/)
-  assert.match(page, /@onVideoTakenStart="handleVideoStarted"/)
-  assert.match(page, /@onVideoTakenEnd="handleNativeVideo"/)
-  assert.match(page, /nativeCameraRef\.value\?\.\$callMethod\('startVideo'/)
-  assert.match(page, /nativeCameraRef\.value\?\.\$callMethod\('stopVideo'/)
-  assert.match(page, /MAX_VIDEO_DURATION_SECONDS/)
-  assert.match(page, /videoElapsedSeconds/)
-  assert.match(page, /uni\.chooseVideo\(\{/)
-  assert.match(page, /validateVideoDuration/)
-  assert.match(page, /validateVideoSize/)
-  assert.match(page, /capturedMediaKinds/)
-  assert.match(page, /durationSeconds/)
-  assert.match(page, /uni\.\$emit\(buildCameraCaptureEventName\(requestId\.value\), \{ items:/)
-  assert.match(page, /formatVideoDurationLabel/)
-})
-
 test('detail page keeps generic media persistence while the active system camera returns images', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
 
@@ -201,7 +181,7 @@ test('media grid renders video cells with a play badge and duration label', asyn
   const editor = await readFile('components/detail/PhotoEditorSheet.uvue', 'utf8')
 
   assert.match(item, /import \{ isVideoMedia \} from '\.\.\/\.\.\/domain\/photoUploadPolicy\.uts'/)
-  assert.match(item, /const isVideo = computed\(\(\) => isVideoMedia\(props\.media\)\)/)
+  assert.match(item, /const isVideo = computed\(\(\): boolean => isVideoMedia\(mediaData\.value\)\)/)
   assert.match(item, /media-video-badge/)
   assert.match(item, /video-play-triangle/)
   assert.match(item, /videoDurationLabel/)

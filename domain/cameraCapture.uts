@@ -1,17 +1,21 @@
 /**
  * 为每次自定义相机调用生成隔离的结果事件名称，避免多个页面互相接收照片。
+ * @param requestId 本次相机调用的请求标识
+ * @returns 形如 inspection-camera-result:<requestId> 的结果事件名
  */
-export function buildCameraCaptureEventName(requestId) {
+export function buildCameraCaptureEventName(requestId: string): string {
   return `inspection-camera-result:${String(requestId ?? '').trim()}`
 }
 
 /**
  * 从相机页结果对象或路径数组中提取有效且不重复的本地文件路径。
+ * @param payload 相机页结果载荷，支持 { paths } 对象或纯路径数组
+ * @returns 去重保序的本地文件路径列表
  */
-export function normalizeCameraResultPaths(payload) {
-  const source = Array.isArray(payload) ? payload : (Array.isArray(payload?.paths) ? payload.paths : [])
-  const paths = []
-  const seen = new Set()
+export function normalizeCameraResultPaths(payload: UTSJSONObject | string[] | null): string[] {
+  const source = Array.isArray(payload) ? payload : (Array.isArray(payload?.paths) ? payload.paths : ([] as string[]))
+  const paths: string[] = []
+  const seen = new Set<string>()
   source.forEach((path) => {
     const normalizedPath = String(path ?? '').trim()
     if (normalizedPath === '' || seen.has(normalizedPath)) return
@@ -23,12 +27,16 @@ export function normalizeCameraResultPaths(payload) {
 
 /**
  * 将新拍摄或相册选择的路径追加到连拍列表，并按最大数量保持首次出现顺序。
+ * @param currentPaths 已拍摄的本地路径列表
+ * @param incomingPaths 本次新增的本地路径列表
+ * @param maxCount 连拍列表允许保留的最大路径数量
+ * @returns 合并去重并截断后的本地路径列表
  */
-export function appendCapturePaths(currentPaths, incomingPaths, maxCount = 9) {
+export function appendCapturePaths(currentPaths: string[], incomingPaths: string[], maxCount: number = 9): string[] {
   const normalizedMaxCount = Math.max(1, parseInt(String(maxCount ?? 9)))
   return normalizeCameraResultPaths([
-    ...(Array.isArray(currentPaths) ? currentPaths : []),
-    ...(Array.isArray(incomingPaths) ? incomingPaths : [])
+    ...(Array.isArray(currentPaths) ? currentPaths : ([] as string[])),
+    ...(Array.isArray(incomingPaths) ? incomingPaths : ([] as string[]))
   ]).slice(0, normalizedMaxCount)
 }
 
@@ -38,10 +46,10 @@ export function appendCapturePaths(currentPaths, incomingPaths, maxCount = 9) {
  * mediaKind 仅显式 'video' 被视为视频，其余（缺失或未知值）一律归一为 'image'，
  * 不按扩展名推断，避免把重命名文件误判为视频。
  * @param payload 相机页 uni.$emit 的结果载荷
- * @returns 去重保序的 {path, mediaKind} 列表
+ * @returns 去重保序的 {path, mediaKind} 媒体条目列表
  */
-export function normalizeCameraCaptureMedia(payload) {
-  const entries = []
+export function normalizeCameraCaptureMedia(payload: UTSJSONObject | string[] | null): UTSJSONObject[] {
+  const entries: UTSJSONObject[] = []
   if (Array.isArray(payload)) {
     payload.forEach((path) => entries.push({ path: path, mediaKind: '' }))
   } else if (Array.isArray(payload?.items)) {
@@ -53,13 +61,13 @@ export function normalizeCameraCaptureMedia(payload) {
       }
     })
   } else if (Array.isArray(payload?.paths)) {
-    const mediaKinds = Array.isArray(payload?.mediaKinds) ? payload.mediaKinds : []
+    const mediaKinds = Array.isArray(payload?.mediaKinds) ? payload.mediaKinds : ([] as string[])
     payload.paths.forEach((path, index) => {
       entries.push({ path: path, mediaKind: mediaKinds[index] })
     })
   }
-  const mediaList = []
-  const seen = new Set()
+  const mediaList: UTSJSONObject[] = []
+  const seen = new Set<string>()
   entries.forEach((entry) => {
     const normalizedPath = String(entry?.path ?? '').trim()
     if (normalizedPath === '' || seen.has(normalizedPath)) return
@@ -70,4 +78,58 @@ export function normalizeCameraCaptureMedia(payload) {
     })
   })
   return mediaList
+}
+
+/**
+ * 依据相机 initdone 上报的最大变焦倍数生成取景页的倍率档位。
+ * 档位固定为 1x / 2x / 3x，只保留相机真实支持的倍数，始终包含 1x；
+ * 不提供 0.5x：Android 相机插件把最小倍率钳制为 1x，小于 1 的档位点了不会生效。
+ * @param maxZoom 相机上报的最大变焦倍数；缺失或不支持变焦时按 1 处理
+ * @returns 升序排列的倍率档位列表（至少包含 1）
+ */
+export function buildCameraZoomOptions(maxZoom: number): number[] {
+  const limit = parseInt(String(maxZoom ?? 1))
+  if (Number.isNaN(limit) || limit <= 1) return [1]
+  const presets: number[] = [1, 2, 3]
+  const options: number[] = []
+  presets.forEach((preset: number) => {
+    if (preset <= limit) options.push(preset)
+  })
+  if (options.length === 0) options.push(1)
+  return options
+}
+
+/**
+ * 计算点击倍率按钮后应切换到的下一档倍率，供“单按钮循环切换”的取景页使用。
+ * 已到最后一档时回到第一档；当前倍率不在档位列表内（如相机重置过）时按第一档处理，
+ * 列表为空时兜底为 1x，保证按钮始终能给出一个可用倍率。
+ * @param options 相机支持的倍率档位列表（升序）
+ * @param current 当前生效的倍率
+ * @returns 下一个倍率档位；档位不可用时返回 1
+ */
+export function resolveNextCameraZoom(options: number[], current: number): number {
+  const levels: number[] = Array.isArray(options) ? options : ([] as number[])
+  if (levels.length === 0) return 1
+  let currentIndex = -1
+  for (let index = 0; index < levels.length; index++) {
+    if (levels[index] === current) {
+      currentIndex = index
+      break
+    }
+  }
+  if (currentIndex < 0) return levels[0]
+  return levels[(currentIndex + 1) % levels.length]
+}
+
+/**
+ * 将录像秒数格式化为 mm:ss 角标文案，供照片区视频缩略图展示时长。
+ * @param totalSeconds 录像时长（秒），非法值按 0 处理
+ * @returns 形如 01:05 的时长标签
+ */
+export function formatVideoDurationLabel(totalSeconds: number): string {
+  const parsedSeconds = parseInt(String(totalSeconds ?? 0))
+  const safeSeconds = Number.isNaN(parsedSeconds) ? 0 : Math.max(0, Math.round(parsedSeconds))
+  const minutes = Math.floor(safeSeconds / 60)
+  const seconds = safeSeconds % 60
+  return `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds}`
 }

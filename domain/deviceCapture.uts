@@ -1,0 +1,39 @@
+/**
+ * 归一化系统相机（uni.chooseImage）返回的临时文件路径数组。
+ * @param rawPaths 系统相机成功结果的 tempFilePaths 字段，可能为空或含空串
+ * @returns 去重保序的非空本地图片路径列表
+ */
+export function normalizeDeviceCapturePaths(rawPaths: string[] | null): string[] {
+  const source = Array.isArray(rawPaths) ? rawPaths : ([] as string[])
+  const paths: string[] = []
+  const seen = new Set<string>()
+  source.forEach((path) => {
+    const normalizedPath = String(path ?? '').trim()
+    if (normalizedPath === '' || seen.has(normalizedPath)) return
+    seen.add(normalizedPath)
+    paths.push(normalizedPath)
+  })
+  return paths
+}
+
+/**
+ * 判断系统相机或相册的失败信息是否属于用户主动取消（返回键或取消按钮）。
+ * 取消属于正常操作路径：调用方不应提示错误，也不应自动重新打开相机。
+ * @param message 失败回调的 errMsg 原文
+ * @returns 用户主动取消时返回 true
+ */
+export function isDeviceCaptureCancelledMessage(message: string): boolean {
+  return String(message ?? '').toLowerCase().includes('cancel')
+}
+
+/**
+ * 计算本次拍摄列表还能继续拍摄的数量。
+ * @param maxCount 单次拍摄允许保留的最大张数
+ * @param capturedCount 当前已拍张数
+ * @returns 剩余可拍张数，已达到或超过上限时返回 0
+ */
+export function resolveRemainingCaptureCount(maxCount: number, capturedCount: number): number {
+  const normalizedMaxCount = Math.max(1, parseInt(String(maxCount ?? 1)))
+  const normalizedCapturedCount = Math.max(0, parseInt(String(capturedCount ?? 0)))
+  return Math.max(0, normalizedMaxCount - normalizedCapturedCount)
+}

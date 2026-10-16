@@ -1,0 +1,92 @@
+<template>
+	<view class="setting-bar">
+		<view class="setting-action" @click="handleCancel">
+			<text class="setting-label">{{ translateText('取消') }}</text>
+		</view>
+		<view class="setting-action" @click="toggleFlash">
+			<image class="setting-icon" :src="flashIcon" mode="aspectFit" />
+		</view>
+		<view class="zoom-group">
+			<view v-if="zoomLevels.length > 1" class="zoom-chip" @click="cycleZoom">
+				<text class="zoom-chip-text">{{ zoomLabel(activeZoom) }}</text>
+			</view>
+		</view>
+		<view class="setting-action" @click="switchMode">
+			<image class="setting-icon" :src="modeIcon" mode="aspectFit" />
+			<text class="setting-label">{{ modeLabel }}</text>
+		</view>
+		<view class="setting-action" :class="{ disabled: recording }" @click="switchCamera">
+			<image class="setting-icon" src="/static/camera/flip.png" mode="aspectFit" />
+			<text class="setting-label">{{ translateText('翻转') }}</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+	import { resolveNextCameraZoom } from '../../domain/cameraCapture.uts'
+
+	const props = defineProps({
+		flashOn: { type: Boolean, default: false },
+		zoomOptions: { type: Array, default: () => [] as number[] },
+		activeZoom: { type: Number, default: 1 },
+		captureMode: { type: String, default: 'photo' },
+		recording: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera'])
+
+	/** 为原生模板提供可调用的翻译方法。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
+
+	/** 可用倍率档位；相机尚未上报能力时兜底为 1x，避免出现空档位。 */
+	const zoomLevels = computed((): number[] => {
+		const options = props.zoomOptions as number[]
+		return options.length > 0 ? options : ([1] as number[])
+	})
+	/** 闪光灯图标：开启时使用点亮图标，关闭时使用熄灭图标。 */
+	const flashIcon = computed((): string => props.flashOn ? '/static/camera/flashon.png' : '/static/camera/flashoff.png')
+	/** 模式切换按钮图标：当前为录像时显示录像图标，否则显示拍照图标。 */
+	const modeIcon = computed((): string => props.captureMode === 'video' ? '/static/camera/doing.png' : '/static/camera/snapshot.png')
+	/** 模式切换按钮文案，点击后进入另一模式。 */
+	const modeLabel = computed((): string => translateText(props.captureMode === 'video' ? '录像' : '拍照'))
+
+	/** 倍率档位文案，如 2x。 */
+	function zoomLabel(zoom: number): string {
+		return `${zoom}x`
+	}
+	/** 通知页面取消本次拍摄并退出取景页。 */
+	function handleCancel(): void {
+		emit('cancel-capture')
+	}
+	/** 通知页面切换闪光灯开关。 */
+	function toggleFlash(): void {
+		emit('toggle-flash')
+	}
+	/** 通知页面应用用户选中的倍率。 */
+	function selectZoom(zoom: number): void {
+		emit('change-zoom', zoom)
+	}
+	/** 通知页面在拍照与录像模式之间切换。 */
+	function switchMode(): void {
+		emit('switch-capture-mode', props.captureMode === 'video' ? 'photo' : 'video')
+	}
+	/** 通知页面翻转前后摄像头；录像过程中禁止翻转，避免中断录像会话。 */
+	function switchCamera(): void {
+		if (props.recording) return
+		emit('switch-camera')
+	}
+</script>
+
+<style>
+	.setting-bar { height: 76rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 0 16rpx; background-color: #0f172a; }
+	.setting-action { min-width: 80rpx; height: 68rpx; flex-direction: row; align-items: center; justify-content: center; }
+	.setting-action.disabled { opacity: 0.4; }
+	.setting-icon { width: 44rpx; height: 44rpx; }
+	.setting-label { color: #e2e8f0; font-size: 22rpx; }
+	.zoom-group { height: 68rpx; flex-direction: row; align-items: center; }
+	.zoom-chip { min-width: 56rpx; height: 44rpx; margin: 0 4rpx; padding: 0 8rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: rgba(148, 163, 184, 0.24); }
+	.zoom-chip.active { background-color: #facc15; }
+	.zoom-chip-text { color: #e2e8f0; font-size: 22rpx; }
+	.zoom-chip-text.active { color: #0f172a; }
+</style>

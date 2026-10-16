@@ -2,7 +2,7 @@
 	<view v-if="visible" class="overlay" @click="closeSheet">
 		<view class="dialog" :style="{ height: dialogHeight, maxHeight: dialogMaxHeight, paddingBottom: dialogBottomPadding }" @click.stop="stopEvent">
 			<view class="modal-header"><view class="modal-heading"><text class="title">{{ translateText('总结并提交') }}</text><text v-if="productTitle !== ''" class="product-title">{{ productTitle }}</text></view><text class="close-button" @click="closeSheet">×</text></view>
-			<scroll-view class="modal-content" scroll-y :style="{ maxHeight: contentMaxHeight }">
+			<scroll-view class="modal-content" direction="vertical" :style="{ maxHeight: contentMaxHeight }">
 				<text class="notice">{{ translateText('最终提交需要联网，并等待全部图片上传完成。离线时只能保存草稿，系统不会自动完成最终提交。') }}</text>
 				<text class="section-title">{{ translateText('数量') }}</text>
 				<view class="info-row"><text class="info-label">{{ translateText('订单数量') }}</text><text class="info-value">{{ displayQuantities.orderQuantity }}</text></view>

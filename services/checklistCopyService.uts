@@ -65,7 +65,7 @@ export function createChecklistCopyService(options) {
     const successfulPlanIds = results.length > 0
       ? targetPlanIds.filter((id) => results.some((result) => String(result?.targetPlanId ?? '') === String(id) && result?.success === true))
       : (failCount === 0 ? targetPlanIds : [])
-    const staleLocalPlanIds = []
+    const staleLocalPlanIds: any[] = []
     for (const targetPlanId of successfulPlanIds) {
       try {
         const localTarget = await reportRepository.getPlanById(targetPlanId)

@@ -33,7 +33,7 @@
 				<text class="sync-card-tip">{{ translateText(cardTip) }}</text>
 				<view class="sync-detail">
 					<text class="sync-detail-title">{{ queueTitle }}</text>
-					<scroll-view v-if="queueItems.length > 0" class="sync-detail-list" :scroll-y="true">
+					<scroll-view v-if="queueItems.length > 0" class="sync-detail-list" direction="vertical">
 						<view v-for="(item, index) in displayQueueItems" :key="item.id !== '' ? item.id : index.toString()" class="sync-detail-item" :class="{ failed: isFailedItem(item) }">
 							<text class="sync-detail-tag">[{{ item.syncType }}]</text>
 							<view class="sync-detail-info">
@@ -70,12 +70,17 @@
 	let autoHideTimer: number | null = null
 	let uploadAnimationTimer: number | null = null
 
-	/** 上传接口运行期间定时交替箭头亮度，停止时立即释放计时器。 */
+	/**
+	 * 上传接口运行期间定时交替箭头亮度，停止时只释放计时器。
+	 * 停止方向不再改写 arrowLit：箭头所在子树会随 isUploading 变为 false 被销毁，
+	 * 此时写入会驱动已销毁的渲染子树在 vapor 原生渲染线程重新渲染并闪退。
+	 */
 	function handleUploadingChange(uploading: boolean) {
 		const timer = uploadAnimationTimer
 		if (timer != null) { clearInterval(timer); uploadAnimationTimer = null }
+		if (!uploading) return
 		arrowLit.value = true
-		if (uploading) uploadAnimationTimer = setInterval(() => { arrowLit.value = !arrowLit.value }, 450)
+		uploadAnimationTimer = setInterval(() => { arrowLit.value = !arrowLit.value }, 450)
 	}
 
 	/**

@@ -13,7 +13,7 @@ export function createAutomaticSyncService(options) {
   let activeSync = null
   let retryTimer = null
   let state = { phase: 'idle', planId: '' }
-  const listeners = new Set()
+  const listeners = new Set<any>()
 
   /** 向正在展示的页面发布自动同步阶段及当前图片归属计划。 */
   function publishState(phase, planId = '') {

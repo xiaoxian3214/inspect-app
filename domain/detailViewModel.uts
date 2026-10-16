@@ -1,27 +1,36 @@
 /**
- * 安全解析可能来自服务端字符串字段的 JSON 数组。
+ * 检查项定位结果：本地数据键、命中的检查项行与服务端业务 ID。
  */
-function parseRows(value) {
+type ChecklistTarget = { key: string, item: UTSJSONObject | null, bizId: string }
+
+/**
+ * 安全解析可能来自服务端字符串字段的 JSON 数组。
+ * value 为服务端多态字段（JSON 字符串、对象或数组）；返回解析出的动态行数组，无法解析时返回空数组。
+ */
+function parseRows(value: any): any[] {
   if (Array.isArray(value)) return value
   if (value != null && typeof value === 'object') return [value]
-  if (typeof value !== 'string' || value.trim() === '') return []
+  if (typeof value !== 'string' || value.trim() === '') return [] as any[]
   try {
     const parsed = JSON.parse(value)
     if (Array.isArray(parsed)) return parsed
-    return parsed != null && typeof parsed === 'object' ? [parsed] : []
+    return parsed != null && typeof parsed === 'object' ? [parsed] : ([] as any[])
   } catch (_) {
-    return []
+    return [] as any[]
   }
 }
 
-/** 按 H5 的条码结果格式还原名称、码值与扫码格式，供本地和在线详情统一回显。 */
-function parseBarcodeItems(value) {
+/**
+ * 按 H5 的条码结果格式还原名称、码值与扫码格式，供本地和在线详情统一回显。
+ * value 为服务端 barcodeValue 字段（JSON 字符串、数组或对象）；返回过滤空行后的条码项数组。
+ */
+function parseBarcodeItems(value: any): UTSJSONObject[] {
   let rows = value
   if (typeof value === 'string' && value.trim() !== '') {
     try { rows = JSON.parse(value) }
     catch (_) { rows = [{ code: value }] }
   }
-  return (Array.isArray(rows) ? rows : []).map((row) => typeof row === 'string'
+  return (Array.isArray(rows) ? rows : ([] as any[])).map((row) => typeof row === 'string'
     ? { name: '', code: row.trim(), format: '' }
     : { name: String(row?.name ?? row?.label ?? ''), code: String(row?.code ?? row?.value ?? row?.barcode ?? '').trim(), format: String(row?.format ?? row?.scanType ?? '') })
     .filter((row) => row.name !== '' || row.code !== '' || row.format !== '')
@@ -29,8 +38,9 @@ function parseBarcodeItems(value) {
 
 /**
  * 从服务端多语言字段中选择当前详情页可展示的文本。
+ * value 为字符串或含 zh/en/vi 的多语言对象；返回首个可用文案，缺省返回空串。
  */
-function pickLocalizedText(value) {
+function pickLocalizedText(value: any): string {
   if (!value) return ''
   if (typeof value === 'string') return value
   if (typeof value === 'object') return (value?.zh || value?.en || value?.vi) ?? ''
@@ -39,9 +49,10 @@ function pickLocalizedText(value) {
 
 /**
  * 将 H5 检查项规格属性转换为弹层统一使用的 attrId、attrName 结构。
+ * specAttributes 为服务端规格属性数组；返回补齐 attrId、attrName 的新数组，非数组时返回空数组。
  */
-function normalizeSpecAttributes(specAttributes) {
-  if (!Array.isArray(specAttributes)) return []
+function normalizeSpecAttributes(specAttributes: any): UTSJSONObject[] {
+  if (!Array.isArray(specAttributes)) return [] as UTSJSONObject[]
   return specAttributes.map((attribute) => ({
     ...attribute,
     attrId: attribute?.attrId ?? '',
@@ -51,19 +62,21 @@ function normalizeSpecAttributes(specAttributes) {
 
 /**
  * 按服务端 sortOrder 对检查项节点排序。
+ * left、right 为待比较的检查项节点；返回两者 sortOrder 的升序差值，缺省按 0 处理。
  */
-function sortByOrder(left, right) {
+function sortByOrder(left: UTSJSONObject, right: UTSJSONObject): number {
   return parseInt(String(left?.sortOrder ?? 0)) - parseInt(String(right?.sortOrder ?? 0))
 }
 
 /**
  * 按 H5 规则从 itemResults 重建章节树，兼容 parentItemId 指向行 ID 或 standardItemId。
+ * itemResults 为服务端检查结果行；返回按 sortOrder 排序的章节树，无有效行时返回空数组。
  */
-export function buildStandardItemsFromItemResults(itemResults: any[] = []) {
-  const rows = (Array.isArray(itemResults) ? itemResults : []).filter((row) => !row?.sonPlanId)
-  if (rows.length === 0) return []
-  const nodeMap = new Map()
-  const nodeByStandardItemId = new Map()
+export function buildStandardItemsFromItemResults(itemResults: UTSJSONObject[] = []): UTSJSONObject[] {
+  const rows = (Array.isArray(itemResults) ? itemResults : ([] as UTSJSONObject[])).filter((row) => !row?.sonPlanId)
+  if (rows.length === 0) return [] as UTSJSONObject[]
+  const nodeMap = new Map<string, any>()
+  const nodeByStandardItemId = new Map<string, any>()
   rows.forEach((row) => {
     const rowId = String(row?.id ?? row?.itemResultId ?? '')
     const standardItemId = String(row?.standardItemId ?? row?.itemId ?? row?.standardId ?? '')
@@ -81,12 +94,12 @@ export function buildStandardItemsFromItemResults(itemResults: any[] = []) {
       isPhotoRequired: parseInt(String(row?.isPhotoRequired ?? 0)),
       sortOrder: parseInt(String(row?.sortOrder ?? 0)),
       specAttributes: normalizeSpecAttributes(row?.specAttributes),
-      children: []
+      children: [] as UTSJSONObject[]
     }
     nodeMap.set(nodeId, node)
     if (standardItemId !== '' && !nodeByStandardItemId.has(standardItemId)) nodeByStandardItemId.set(standardItemId, node)
   })
-  const roots = []
+  const roots: UTSJSONObject[] = []
   nodeMap.forEach((node) => {
     const parentId = String(node?.parentItemId ?? '')
     if (parentId === '') { roots.push(node); return }
@@ -94,8 +107,8 @@ export function buildStandardItemsFromItemResults(itemResults: any[] = []) {
     if (parent && parent.id !== node.id) parent.children.push(node)
     else roots.push(node)
   })
-  /** 递归排序章节及其检查项，保持 H5 服务端顺序。 */
-  function sortNodes(nodes) {
+  /** 递归排序章节及其检查项，保持 H5 服务端顺序；nodes 为待排序的章节或检查项数组。 */
+  function sortNodes(nodes: UTSJSONObject[]): void {
     nodes.sort(sortByOrder)
     nodes.forEach((node) => { if (Array.isArray(node?.children) && node.children.length > 0) sortNodes(node.children) })
   }
@@ -103,14 +116,17 @@ export function buildStandardItemsFromItemResults(itemResults: any[] = []) {
   return roots
 }
 
-/** 将模板树中的检查点 ID 对齐到结果行主键，保留章节和模板展示字段。 */
-function alignStandardItemsWithResults(standardItems, itemResults) {
-  const rows = (Array.isArray(itemResults) ? itemResults : []).filter((row) => !row?.sonPlanId)
+/**
+ * 将模板树中的检查点 ID 对齐到结果行主键，保留章节和模板展示字段。
+ * standardItems 为模板章节树，itemResults 为服务端结果行；返回对齐后的章节树数组。
+ */
+function alignStandardItemsWithResults(standardItems: UTSJSONObject[], itemResults: UTSJSONObject[]): UTSJSONObject[] {
+  const rows = (Array.isArray(itemResults) ? itemResults : ([] as UTSJSONObject[])).filter((row) => !row?.sonPlanId)
   const byId = new Map(rows.map((row) => [String(row?.id ?? row?.itemResultId ?? ''), row]))
   const byTemplate = new Map(rows.filter((row) => String(row?.standardItemId ?? '') !== '')
     .map((row) => [String(row.standardItemId), row]))
-  /** 章节保留原 ID；模板检查点才需要映射到结果 ID。 */
-  function alignNode(node) {
+  /** 章节保留原 ID；模板检查点才需要映射到结果 ID；node 为待对齐的章节或检查点。 */
+  function alignNode(node: UTSJSONObject): UTSJSONObject {
     if (Array.isArray(node?.children) && node.children.length > 0) return { ...node, children: node.children.map(alignNode) }
     const nodeId = String(node?.id ?? node?.itemId ?? '')
     if (byId.has(nodeId)) return node
@@ -122,13 +138,14 @@ function alignStandardItemsWithResults(standardItems, itemResults) {
       specAttributes: node?.specAttributes ?? normalizeSpecAttributes(result?.specAttributes)
     }
   }
-  return (Array.isArray(standardItems) ? standardItems : []).map(alignNode)
+  return (Array.isArray(standardItems) ? standardItems : ([] as UTSJSONObject[])).map(alignNode)
 }
 
 /**
  * 将本地检查结果转换为 H5 使用的服务端状态枚举。
+ * result 为本地检查结果值（pass/fail/pending/na）；返回对应服务端枚举，无法识别时返回 null。
  */
-export function mapResultStatus(result) {
+export function mapResultStatus(result: string): string | null {
   if (result === 'pass') return 'APPROVED'
   if (result === 'fail') return 'REJECTED'
   if (result === 'pending') return 'PENDING'
@@ -138,8 +155,9 @@ export function mapResultStatus(result) {
 
 /**
  * 将服务端结果状态转换为详情页本地编辑值。
+ * resultStatus 为服务端状态文本（兼容历史 PASS/FAIL 写法）；返回 pass/fail/pending/na，无法识别时返回空串。
  */
-export function parseResultStatus(resultStatus) {
+export function parseResultStatus(resultStatus: string): string {
   const status = String(resultStatus ?? '').toUpperCase()
   if (status === 'APPROVED' || status === 'PASS') return 'pass'
   if (status === 'REJECTED' || status === 'FAIL') return 'fail'
@@ -150,8 +168,9 @@ export function parseResultStatus(resultStatus) {
 
 /**
  * 生成 H5 清单本地数据键；合并验货子行使用双下划线隔离子计划。
+ * itemId 为检查项或结果行 ID，sonPlanId 为合并子计划 ID；返回本地数据键。
  */
-export function makeChecklistDataKey(itemId, sonPlanId: string = '') {
+export function makeChecklistDataKey(itemId: string, sonPlanId: string = ''): string {
   const baseId = String(itemId ?? '').trim()
   const childPlanId = String(sonPlanId ?? '').trim()
   return childPlanId === '' ? baseId : `${baseId}__${childPlanId}`
@@ -159,8 +178,9 @@ export function makeChecklistDataKey(itemId, sonPlanId: string = '') {
 
 /**
  * 生成 H5 提交到服务端的 itemResult 行 ID；合并子行使用单下划线。
+ * itemId 为检查项或结果行 ID，sonPlanId 为合并子计划 ID；返回服务端行 ID。
  */
-export function makeItemResultId(itemId, sonPlanId: string = '') {
+export function makeItemResultId(itemId: string, sonPlanId: string = ''): string {
   const baseId = String(itemId ?? '').trim()
   const childPlanId = String(sonPlanId ?? '').trim()
   return childPlanId === '' ? baseId : `${baseId}_${childPlanId}`
@@ -168,8 +188,9 @@ export function makeItemResultId(itemId, sonPlanId: string = '') {
 
 /**
  * 将服务端或中文严重等级统一为 H5 使用的 CRITICAL、MAJOR、MINOR。
+ * rawValue 为等级编码，rawLabel 为等级中文或英文名；返回归一化等级，无法识别时回退 MINOR。
  */
-export function normalizeDefectSeverity(rawValue, rawLabel: string = '') {
+export function normalizeDefectSeverity(rawValue: any, rawLabel: string = ''): string {
   const text = `${String(rawValue ?? '').toLowerCase()} ${String(rawLabel ?? '').toLowerCase()}`
   if (text.includes('critical') || text.includes('致命') || text.includes('极严重')) return 'CRITICAL'
   if (text.includes('major') || text.includes('主要') || text.includes('严重') || text.includes('大')) return 'MAJOR'
@@ -180,12 +201,13 @@ export function normalizeDefectSeverity(rawValue, rawLabel: string = '') {
 
 /**
  * 构建 H5 疵点页使用的等级数量和按配置顺序排列的分组。
+ * defects 为疵点行，severityOptions 为服务端等级字典；返回 counts 计数与 groups 分组视图。
  */
-export function buildDefectViewModel(defects, severityOptions: any[] = []) {
-  const rows = Array.isArray(defects) ? defects : []
-  const optionRows = Array.isArray(severityOptions) ? severityOptions : []
+export function buildDefectViewModel(defects: UTSJSONObject[], severityOptions: UTSJSONObject[] = []): UTSJSONObject {
+  const rows = Array.isArray(defects) ? defects : ([] as UTSJSONObject[])
+  const optionRows = Array.isArray(severityOptions) ? severityOptions : ([] as UTSJSONObject[])
   const defaultLabels = { CRITICAL: '致命缺陷', MAJOR: '主要缺陷', MINOR: '次要缺陷' }
-  const groupMap = new Map()
+  const groupMap = new Map<string, any>()
   optionRows.forEach((option) => {
     const key = normalizeDefectSeverity(option?.value, option?.label)
     groupMap.set(key, {
@@ -193,7 +215,7 @@ export function buildDefectViewModel(defects, severityOptions: any[] = []) {
       label: option?.label || defaultLabels[key],
       order: parseInt(String(option?.sortOrder ?? 999)),
       affectedTotal: 0,
-      items: []
+      items: [] as UTSJSONObject[]
     })
   })
   const counts = { critical: 0, major: 0, minor: 0 }
@@ -201,7 +223,7 @@ export function buildDefectViewModel(defects, severityOptions: any[] = []) {
     const key = normalizeDefectSeverity(defect?.type || defect?.defectType || defect?.defectLevel, defect?.typeLabel || defect?.defectLevel)
     counts[key.toLowerCase()] += 1
     if (!groupMap.has(key)) {
-      groupMap.set(key, { key, label: defaultLabels[key], order: key === 'CRITICAL' ? 1 : (key === 'MAJOR' ? 2 : 3), affectedTotal: 0, items: [] })
+      groupMap.set(key, { key, label: defaultLabels[key], order: key === 'CRITICAL' ? 1 : (key === 'MAJOR' ? 2 : 3), affectedTotal: 0, items: [] as UTSJSONObject[] })
     }
     const group = groupMap.get(key)
     group.items.push(defect)
@@ -216,8 +238,9 @@ export function buildDefectViewModel(defects, severityOptions: any[] = []) {
 
 /**
  * 将空值格式化为订单信息页统一占位符，同时保留数字零。
+ * value 为原始计划字段（任意动态值），fallback 为占位文本；返回原值、数字零或占位文本。
  */
-function formatPlanValue(value, fallback: string = '-') {
+function formatPlanValue(value: any, fallback: string = '-'): any {
   if (value === 0) return 0
   if (value === null || value === undefined || value === '') return fallback
   return value
@@ -225,8 +248,9 @@ function formatPlanValue(value, fallback: string = '-') {
 
 /**
  * 构建与 H5 完全一致的十八个订单详情字段及显示值。
+ * plan 为计划 JSON；返回 label、value 字段数组，供订单信息页直接渲染。
  */
-export function buildPlanInfoFields(plan) {
+export function buildPlanInfoFields(plan: UTSJSONObject): UTSJSONObject[] {
   const source = plan != null && typeof plan === 'object' ? plan : {}
   const inspectionLevel = formatPlanValue(source?.inspectionLevel, '-')
   const criticalAql = formatPlanValue(source?.criticalAql, '-')
@@ -256,20 +280,24 @@ export function buildPlanInfoFields(plan) {
 
 /**
  * 汇总合并验货所有子计划的需验数量和样品数量。
+ * inspectionPlans 为合并成员计划行；返回 requiredQuantity、sampleSize 汇总值。
  */
-export function buildMergedPlanSummary(inspectionPlans) {
-  const rows = Array.isArray(inspectionPlans) ? inspectionPlans : []
+export function buildMergedPlanSummary(inspectionPlans: UTSJSONObject[]): UTSJSONObject {
+  const rows = Array.isArray(inspectionPlans) ? inspectionPlans : ([] as UTSJSONObject[])
   return rows.reduce((totals, row) => ({
     requiredQuantity: totals.requiredQuantity + (parseInt(String(row?.requiredQuantity)) ?? 0),
     sampleSize: totals.sampleSize + (parseInt(String(row?.sampleSize)) ?? 0)
   }), { requiredQuantity: 0, sampleSize: 0 })
 }
 
-/** 按 H5 口径汇总报告的订单、已备好与预计抽样数量，合并验货按成员计划去重。 */
-export function buildFinishQuantityTotals(detail) {
+/**
+ * 按 H5 口径汇总报告的订单、已备好与预计抽样数量，合并验货按成员计划去重。
+ * detail 为详情 JSON；返回 orderQuantity、readyQuantity、sampleQuantity 汇总值。
+ */
+export function buildFinishQuantityTotals(detail: UTSJSONObject): UTSJSONObject {
   const members = Array.isArray(detail?.inspectionPlans) && detail.inspectionPlans.length > 1
     ? detail.inspectionPlans : [detail?.plan ?? detail]
-  const seen = new Set()
+  const seen = new Set<string>()
   return members.reduce((totals, plan) => {
     const planId = String(plan?.id ?? plan?.planId ?? '')
     if (planId !== '' && seen.has(planId)) return totals
@@ -284,12 +312,13 @@ export function buildFinishQuantityTotals(detail) {
 
 /**
  * 将 H5 的章节树或已有扁平检查项转换为页面使用的一维列表。
+ * standardItems 为章节树，fallbackItems 为兜底扁平检查项；返回带 sectionId、sectionName 的一维列表。
  */
-export function flattenStandardItems(standardItems, fallbackItems: any[] = []) {
-  const rows = []
-  const sections = Array.isArray(standardItems) ? standardItems : []
+export function flattenStandardItems(standardItems: UTSJSONObject[], fallbackItems: UTSJSONObject[] = []): UTSJSONObject[] {
+  const rows: UTSJSONObject[] = []
+  const sections = Array.isArray(standardItems) ? standardItems : ([] as UTSJSONObject[])
   sections.forEach((section) => {
-    const children = Array.isArray(section?.children) ? section.children : []
+    const children = Array.isArray(section?.children) ? section.children : ([] as UTSJSONObject[])
     if (children.length > 0) {
       children.forEach((item) => rows.push({
         ...item,
@@ -301,13 +330,14 @@ export function flattenStandardItems(standardItems, fallbackItems: any[] = []) {
     }
   })
   if (rows.length > 0) return rows
-  return Array.isArray(fallbackItems) ? fallbackItems : []
+  return Array.isArray(fallbackItems) ? fallbackItems : ([] as UTSJSONObject[])
 }
 
 /**
  * 将对象中有意义的字段覆盖到基础对象，避免空字符串覆盖远程产品信息。
+ * base 为基础对象，overlay 为覆盖对象；返回合并后的新对象，不修改入参。
  */
-function mergeNonEmptyFields(base, overlay) {
+function mergeNonEmptyFields(base: UTSJSONObject, overlay: UTSJSONObject): UTSJSONObject {
   const result = { ...(base ?? {}) }
   Object.keys(overlay ?? {}).forEach((key) => {
     const value = overlay[key]
@@ -318,10 +348,11 @@ function mergeNonEmptyFields(base, overlay) {
 
 /**
  * 按当前计划 ID 从 H5 inspectionPlans 详情包中选中产品计划，并合并显式 plan 字段。
+ * detail 为详情 JSON，requestedPlanId 为请求的计划 ID；返回选中计划，缺失时回退首个成员或空对象。
  */
-function resolveDetailPlan(detail, requestedPlanId) {
+function resolveDetailPlan(detail: UTSJSONObject, requestedPlanId: string): UTSJSONObject {
   const explicitPlan = detail?.plan != null && typeof detail.plan === 'object' ? detail.plan : {}
-  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : []
+  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : ([] as UTSJSONObject[])
   const normalizedPlanId = String(requestedPlanId ?? explicitPlan?.id ?? explicitPlan?.planId ?? '').trim()
   const matchedPlan = plans.find((plan) => {
     return String(plan?.id ?? plan?.planId ?? plan?.reportId ?? '').trim() === normalizedPlanId
@@ -332,9 +363,10 @@ function resolveDetailPlan(detail, requestedPlanId) {
 
 /**
  * 将服务端文件列表转换为 App 可直接展示和同步的照片记录。
+ * fileList 为服务端文件行或路径数组，ownerId、ownerType 为归属信息；返回过滤空路径后的照片记录数组。
  */
-function normalizeFileList(fileList, ownerId: string = '', ownerType: string = 'checklist') {
-  return (Array.isArray(fileList) ? fileList : []).map((file, index) => {
+function normalizeFileList(fileList: any, ownerId: string = '', ownerType: string = 'checklist'): UTSJSONObject[] {
+  return (Array.isArray(fileList) ? fileList : ([] as any[])).map((file, index) => {
     if (typeof file === 'string') {
       return {
         photoId: `${ownerId}-remote-${index}`,
@@ -360,10 +392,11 @@ function normalizeFileList(fileList, ownerId: string = '', ownerType: string = '
 
 /**
  * 根据 H5 itemResults 构建详情页可编辑的 checklistData。
+ * itemResults 为服务端检查结果行；返回以本地数据键索引的检查项编辑数据对象。
  */
-function buildChecklistData(itemResults) {
+function buildChecklistData(itemResults: UTSJSONObject[]): UTSJSONObject {
   const data = {}
-  ;(Array.isArray(itemResults) ? itemResults : []).forEach((row) => {
+  ;(Array.isArray(itemResults) ? itemResults : ([] as UTSJSONObject[])).forEach((row) => {
     const rowId = String(row?.id ?? row?.itemResultId ?? '').trim()
     if (rowId === '') return
     const sonPlanId = String(row?.sonPlanId ?? '').trim()
@@ -395,8 +428,9 @@ function buildChecklistData(itemResults) {
 
 /**
  * 统一检查项草稿中的照片结构并补充所属检查项信息。
+ * checklistData 为本地检查项编辑数据对象；返回照片结构归一化后的新对象。
  */
-function normalizeChecklistData(checklistData) {
+function normalizeChecklistData(checklistData: UTSJSONObject): UTSJSONObject {
   const normalized = {}
   Object.keys(checklistData ?? {}).forEach((itemId) => {
     const data = checklistData[itemId] ?? {}
@@ -410,9 +444,10 @@ function normalizeChecklistData(checklistData) {
 
 /**
  * 统一服务端和本地疵点结构，并还原疵点关联媒体。
+ * defects 为疵点行；返回补齐 id、严重等级、数量与照片字段的疵点数组。
  */
-function normalizeDefects(defects) {
-  return (Array.isArray(defects) ? defects : []).map((defect, index) => {
+function normalizeDefects(defects: UTSJSONObject[]): UTSJSONObject[] {
+  return (Array.isArray(defects) ? defects : ([] as UTSJSONObject[])).map((defect, index) => {
     const defectId = String(defect?.defectId ?? defect?.id ?? `local-defect-${index}`)
     const sonPlanId = String(defect?.sonPlanId ?? '').trim()
     const checkItemResultId = String(defect?.checkItemResultId ?? defect?.itemResultId ?? '').trim()
@@ -436,11 +471,12 @@ function normalizeDefects(defects) {
 
 /**
  * 汇总检查项和疵点中的全部媒体记录并按稳定标识去重。
+ * checklistData 为检查项编辑数据，defects 为疵点行，directPhotos 为详情直属媒体；返回按稳定标识去重后的媒体数组。
  */
-export function collectDetailPhotos(checklistData, defects, directPhotos: any[] = []) {
-  const photos = []
-  const seen = new Set()
-  const append = (photo, ownerId = '', ownerType = '') => {
+export function collectDetailPhotos(checklistData: UTSJSONObject, defects: UTSJSONObject[], directPhotos: UTSJSONObject[] = []): UTSJSONObject[] {
+  const photos: UTSJSONObject[] = []
+  const seen = new Set<string>()
+  const append = (photo: UTSJSONObject, ownerId: string = '', ownerType: string = '') => {
     if (photo == null || typeof photo !== 'object') return
     const normalized = {
       ...photo,
@@ -452,22 +488,23 @@ export function collectDetailPhotos(checklistData, defects, directPhotos: any[] 
     seen.add(key)
     photos.push(normalized)
   }
-  ;(Array.isArray(directPhotos) ? directPhotos : []).forEach((photo) => append(photo))
+  ;(Array.isArray(directPhotos) ? directPhotos : ([] as UTSJSONObject[])).forEach((photo) => append(photo))
   Object.keys(checklistData ?? {}).forEach((itemId) => {
-    ;(Array.isArray(checklistData[itemId]?.photos) ? checklistData[itemId].photos : []).forEach((photo) => append(photo, itemId, 'checklist'))
+    ;(Array.isArray(checklistData[itemId]?.photos) ? checklistData[itemId].photos : ([] as UTSJSONObject[])).forEach((photo) => append(photo, itemId, 'checklist'))
   })
-  ;(Array.isArray(defects) ? defects : []).forEach((defect) => {
+  ;(Array.isArray(defects) ? defects : ([] as UTSJSONObject[])).forEach((defect) => {
     const defectId = String(defect?.defectId ?? defect?.id ?? '')
-    ;(Array.isArray(defect?.photos) ? defect.photos : []).forEach((photo) => append(photo, defectId, 'defect'))
+    ;(Array.isArray(defect?.photos) ? defect.photos : ([] as UTSJSONObject[])).forEach((photo) => append(photo, defectId, 'defect'))
   })
   return photos
 }
 
 /**
  * 按已完成检查项数量计算 0 到 100 的验货进度。
+ * checklistItems 为检查项列表，checklistData 为本地编辑数据；返回 0-100 的整数进度，无检查项时为 0。
  */
-export function calculateDetailProgress(checklistItems, checklistData) {
-  const items = (Array.isArray(checklistItems) ? checklistItems : []).filter((item) => String(item?.sonPlanId ?? '') === '')
+export function calculateDetailProgress(checklistItems: UTSJSONObject[], checklistData: UTSJSONObject): number {
+  const items = (Array.isArray(checklistItems) ? checklistItems : ([] as UTSJSONObject[])).filter((item) => String(item?.sonPlanId ?? '') === '')
   if (items.length === 0) return 0
   const completed = items.filter((item) => {
     const itemId = String(item?.itemId ?? item?.id ?? '')
@@ -477,14 +514,17 @@ export function calculateDetailProgress(checklistItems, checklistData) {
   return Math.round((completed / items.length) * 100)
 }
 
-/** 按 H5 的普通、锁定、待验/在验条件筛选复制目标，同时排除当前合并组的全部成员。 */
-export function filterCopyTargetPlans(plans, currentDetail) {
+/**
+ * 按 H5 的普通、锁定、待验/在验条件筛选复制目标，同时排除当前合并组的全部成员。
+ * plans 为候选计划行，currentDetail 为当前详情；返回可用于复制的目标计划数组。
+ */
+export function filterCopyTargetPlans(plans: UTSJSONObject[], currentDetail: UTSJSONObject): UTSJSONObject[] {
   const ownPlan = currentDetail?.plan ?? {}
   const excludedIds = new Set([
     currentDetail?.planId, ownPlan?.id, ownPlan?.parentPlanId,
-    ...(Array.isArray(currentDetail?.inspectionPlans) ? currentDetail.inspectionPlans.map((row) => row?.id ?? row?.planId) : [])
+    ...(Array.isArray(currentDetail?.inspectionPlans) ? currentDetail.inspectionPlans.map((row) => row?.id ?? row?.planId) : ([] as any[]))
   ].map((id) => String(id ?? '').trim()).filter((id) => id !== ''))
-  return (Array.isArray(plans) ? plans : []).filter((row) => {
+  return (Array.isArray(plans) ? plans : ([] as UTSJSONObject[])).filter((row) => {
     const plan = row?.plan ?? row
     const id = String(plan?.id ?? plan?.planId ?? '').trim()
     const parentId = String(plan?.parentPlanId ?? row?.parentPlanId ?? '').trim()
@@ -497,13 +537,16 @@ export function filterCopyTargetPlans(plans, currentDetail) {
   })
 }
 
-/** 联网原样展示搜索接口记录；离线才筛选当前验货员已锁定的本地普通计划。 */
-export function selectCopyTargetPlans(remotePlans, localPlans, currentDetail, inspectorId, remoteAuthoritative) {
-  if (remoteAuthoritative) return Array.isArray(remotePlans) ? remotePlans : []
+/**
+ * 联网原样展示搜索接口记录；离线才筛选当前验货员已锁定的本地普通计划。
+ * remotePlans、localPlans 为远程与本地候选，currentDetail 为当前详情，inspectorId 为当前验货员，remoteAuthoritative 表示以远程为准。
+ */
+export function selectCopyTargetPlans(remotePlans: UTSJSONObject[], localPlans: UTSJSONObject[], currentDetail: UTSJSONObject, inspectorId: string, remoteAuthoritative: boolean): UTSJSONObject[] {
+  if (remoteAuthoritative) return Array.isArray(remotePlans) ? remotePlans : ([] as UTSJSONObject[])
   const userId = String(inspectorId ?? '').trim()
   const candidates = filterCopyTargetPlans(localPlans, currentDetail)
-  const seen = new Set()
-  const selected = []
+  const seen = new Set<string>()
+  const selected: UTSJSONObject[] = []
   for (const row of candidates) {
     const plan = row?.plan ?? row
     const id = String(plan?.id ?? plan?.planId ?? '').trim()
@@ -516,14 +559,17 @@ export function selectCopyTargetPlans(remotePlans, localPlans, currentDetail, in
   return selected
 }
 
-/** 仅展示有真实结果主键的主检查点及合并子检查点，并排除当前来源。 */
-export function buildBatchMoveTargets(detail, sourceItemId: string = '') {
-  const baseItems = (Array.isArray(detail?.checklistItems) ? detail.checklistItems : [])
+/**
+ * 仅展示有真实结果主键的主检查点及合并子检查点，并排除当前来源。
+ * detail 为详情 JSON，sourceItemId 为当前来源检查项键；返回可批量移动的目标检查项数组。
+ */
+export function buildBatchMoveTargets(detail: UTSJSONObject, sourceItemId: string = ''): UTSJSONObject[] {
+  const baseItems = (Array.isArray(detail?.checklistItems) ? detail.checklistItems : ([] as UTSJSONObject[]))
     .filter((item) => String(item?.sonPlanId ?? '').trim() === '')
-  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : []
-  const results = Array.isArray(detail?.itemResults) ? detail.itemResults : []
+  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : ([] as UTSJSONObject[])
+  const results = Array.isArray(detail?.itemResults) ? detail.itemResults : ([] as UTSJSONObject[])
   const sourceKey = String(sourceItemId ?? '').trim()
-  const targets = []
+  const targets: UTSJSONObject[] = []
   for (const item of baseItems) {
     const baseId = String(item?.baseItemId ?? item?.itemId ?? item?.id ?? '').trim()
     if (baseId === '') continue
@@ -564,12 +610,13 @@ export function buildBatchMoveTargets(detail, sourceItemId: string = '') {
 
 /**
  * 将远程或本地报告详情归一化为 App 详情页统一数据结构。
+ * source 为远程或本地详情 JSON，requestedPlanId 为请求的计划 ID；返回含检查项、疵点、照片与进度的统一详情对象。
  */
-export function normalizeInspectionDetail(source, requestedPlanId: string = '') {
+export function normalizeInspectionDetail(source: UTSJSONObject, requestedPlanId: string = ''): UTSJSONObject {
   const detail = source != null && typeof source === 'object' ? source : {}
   const plan = resolveDetailPlan(detail, requestedPlanId)
   const planId = String(requestedPlanId ?? plan?.id ?? detail?.planId ?? detail?.id ?? '').trim()
-  const itemResults = Array.isArray(detail?.itemResults) ? detail.itemResults : []
+  const itemResults = Array.isArray(detail?.itemResults) ? detail.itemResults : ([] as UTSJSONObject[])
   const standardItems = Array.isArray(detail?.standardItems) && detail.standardItems.length > 0
     ? alignStandardItemsWithResults(detail.standardItems, itemResults)
     : buildStandardItemsFromItemResults(itemResults)
@@ -580,8 +627,8 @@ export function normalizeInspectionDetail(source, requestedPlanId: string = '') 
   const checklistData = normalizeChecklistData(rawChecklistData)
   const defects = normalizeDefects(Array.isArray(detail?.defects)
     ? detail.defects
-    : (Array.isArray(detail?.defectRecords) ? detail.defectRecords : []))
-  const itemsWithData = []
+    : (Array.isArray(detail?.defectRecords) ? detail.defectRecords : ([] as UTSJSONObject[])))
+  const itemsWithData: UTSJSONObject[] = []
   baseChecklistItems.forEach((item) => {
     const baseItemId = String(item?.baseItemId ?? item?.itemId ?? item?.id ?? '')
     itemsWithData.push({ ...item, itemId: baseItemId, baseItemId, sonPlanId: '', data: checklistData?.[baseItemId] ?? {} })
@@ -607,10 +654,13 @@ export function normalizeInspectionDetail(source, requestedPlanId: string = '') 
   }
 }
 
-/** 判断下载记录是否具备离线验货所需的产品信息和可渲染清单定义。 */
-export function isInspectionDetailComplete(detail) {
+/**
+ * 判断下载记录是否具备离线验货所需的产品信息和可渲染清单定义。
+ * detail 为本地详情 JSON；返回同时具备清单定义与产品信息时为 true。
+ */
+export function isInspectionDetailComplete(detail: UTSJSONObject): boolean {
   if (detail == null || typeof detail !== 'object') return false
-  const rebuilt = buildStandardItemsFromItemResults(detail?.itemResults ?? [])
+  const rebuilt = buildStandardItemsFromItemResults(detail?.itemResults ?? ([] as UTSJSONObject[]))
   const hasChecklist = (Array.isArray(detail?.standardItems) && detail.standardItems.length > 0)
     || (Array.isArray(detail?.checklistItems) && detail.checklistItems.length > 0)
     || rebuilt.some((section) => Array.isArray(section?.children) && section.children.length > 0)
@@ -620,8 +670,11 @@ export function isInspectionDetailComplete(detail) {
     .some((value) => value !== undefined && value !== null && String(value).trim() !== '')
 }
 
-/** 根据照片 ID、服务端文件 ID 或本地/服务端路径识别同一张媒体。 */
-function isSameDetailPhoto(left, right) {
+/**
+ * 根据照片 ID、服务端文件 ID 或本地/服务端路径识别同一张媒体。
+ * left、right 为待比较的两张媒体记录；返回任一稳定标识相同即为 true。
+ */
+function isSameDetailPhoto(left: UTSJSONObject, right: UTSJSONObject): boolean {
   const leftId = String(left?.photoId ?? left?.id ?? '').trim()
   const rightId = String(right?.photoId ?? right?.id ?? '').trim()
   const leftFileId = String(left?.fileId ?? '').trim()
@@ -636,8 +689,11 @@ function isSameDetailPhoto(left, right) {
     || (leftFilePath !== '' && leftFilePath === rightFilePath)
 }
 
-/** 为同一照片的本地 ID、服务端 ID 与路径建立可复用的合并键。 */
-function detailPhotoKeys(photo) {
+/**
+ * 为同一照片的本地 ID、服务端 ID 与路径建立可复用的合并键。
+ * photo 为媒体记录；返回形如 photo:xx、file:xx、local:xx、remote:xx 的非空键数组。
+ */
+function detailPhotoKeys(photo: UTSJSONObject): string[] {
   return [
     ['photo', photo?.photoId ?? photo?.id],
     ['file', photo?.fileId],
@@ -647,12 +703,15 @@ function detailPhotoKeys(photo) {
     .map((entry) => `${entry[0]}:${String(entry[1]).trim()}`)
 }
 
-/** 保留详情快照中的原有媒体，并按稳定键线性回填照片表的上传状态。 */
-function mergeDetailPhotoLists(existingPhotos, storedPhotos) {
-  const merged = Array.isArray(existingPhotos) ? [...existingPhotos] : []
-  const indexes = new Map()
+/**
+ * 保留详情快照中的原有媒体，并按稳定键线性回填照片表的上传状态。
+ * existingPhotos 为详情内已有媒体，storedPhotos 为照片表最新记录；返回合并后的媒体数组。
+ */
+function mergeDetailPhotoLists(existingPhotos: UTSJSONObject[], storedPhotos: UTSJSONObject[]): UTSJSONObject[] {
+  const merged = Array.isArray(existingPhotos) ? [...existingPhotos] : ([] as UTSJSONObject[])
+  const indexes = new Map<string, number>()
   merged.forEach((photo, index) => detailPhotoKeys(photo).forEach((key) => indexes.set(key, index)))
-  ;(Array.isArray(storedPhotos) ? storedPhotos : []).forEach((photo) => {
+  ;(Array.isArray(storedPhotos) ? storedPhotos : ([] as UTSJSONObject[])).forEach((photo) => {
     const keys = detailPhotoKeys(photo)
     const matchedKey = keys.find((key) => indexes.has(key))
     const index = matchedKey != null ? indexes.get(matchedKey) : merged.length
@@ -664,20 +723,21 @@ function mergeDetailPhotoLists(existingPhotos, storedPhotos) {
 
 /**
  * 将照片仓库中的最新上传状态合并回检查项、疵点和详情媒体集合，同时保留旧详情中未拆表的图片。
+ * detail 为详情 JSON，photos 为照片表最新记录；返回合并媒体状态后的详情对象。
  */
-export function mergeDetailPhotos(detail, photos) {
+export function mergeDetailPhotos(detail: UTSJSONObject, photos: UTSJSONObject[]): UTSJSONObject {
   const normalized = Array.isArray(detail?.checklistItems) && detail?.checklistData != null
     ? detail : normalizeInspectionDetail(detail, detail?.planId)
-  const sourcePhotos = Array.isArray(photos) ? photos : []
-  const checklistPhotos = new Map()
-  const defectPhotos = new Map()
+  const sourcePhotos = Array.isArray(photos) ? photos : ([] as UTSJSONObject[])
+  const checklistPhotos = new Map<string, any[]>()
+  const defectPhotos = new Map<string, any[]>()
   sourcePhotos.forEach((photo) => {
     const ownerType = String(photo?.ownerType ?? '')
     const ownerId = ownerType === 'checklist'
       ? String(photo?.dataKey ?? photo?.ownerId ?? '') : String(photo?.ownerId ?? '')
     const owners = ownerType === 'checklist' ? checklistPhotos : defectPhotos
     if (ownerType !== 'checklist' && ownerType !== 'defect') return
-    if (!owners.has(ownerId)) owners.set(ownerId, [])
+    if (!owners.has(ownerId)) owners.set(ownerId, [] as UTSJSONObject[])
     owners.get(ownerId).push(photo)
   })
   const checklistData = { ...(normalized?.checklistData ?? {}) }
@@ -685,12 +745,12 @@ export function mergeDetailPhotos(detail, photos) {
     if (checklistData[itemId] == null) return
     checklistData[itemId] = { ...checklistData[itemId], photos: mergeDetailPhotoLists(checklistData[itemId]?.photos, owned) }
   })
-  const defects = (normalized?.defects ?? []).map((defect) => {
+  const defects = (normalized?.defects ?? ([] as UTSJSONObject[])).map((defect) => {
     const defectId = String(defect?.defectId ?? defect?.id ?? '')
     const owned = defectPhotos.get(defectId)
     return owned == null ? defect : { ...defect, photos: mergeDetailPhotoLists(defect?.photos, owned) }
   })
-  const checklistItems = (normalized?.checklistItems ?? []).map((item) => {
+  const checklistItems = (normalized?.checklistItems ?? ([] as UTSJSONObject[])).map((item) => {
     const itemId = String(item?.itemId ?? '')
     return checklistPhotos.has(itemId) ? { ...item, data: checklistData[itemId] } : item
   })
@@ -699,14 +759,15 @@ export function mergeDetailPhotos(detail, photos) {
 
 /**
  * 更新单个检查项编辑数据并重新计算详情进度和媒体集合。
+ * detail 为详情 JSON，itemId 为本地数据键，patch 为本次编辑字段；返回更新后的详情对象。
  */
-export function updateChecklistItem(detail, itemId, patch) {
+export function updateChecklistItem(detail: UTSJSONObject, itemId: string, patch: UTSJSONObject): UTSJSONObject {
   const normalized = Array.isArray(detail?.checklistItems) && detail?.checklistData != null
     ? detail : normalizeInspectionDetail(detail, detail?.planId)
   const normalizedItemId = String(itemId ?? '').trim()
   const current = normalized?.checklistData?.[normalizedItemId] ?? {}
   const nextData = { ...current, ...(patch ?? {}) }
-  const currentPhotos = Array.isArray(current?.photos) ? current.photos : []
+  const currentPhotos = Array.isArray(current?.photos) ? current.photos : ([] as UTSJSONObject[])
   const patchedPhotos = Array.isArray(patch?.photos) ? patch.photos : currentPhotos
   const photosChanged = currentPhotos.length !== patchedPhotos.length
     || patchedPhotos.some((photo, index) => !isSameDetailPhoto(currentPhotos[index], photo))
@@ -722,7 +783,7 @@ export function updateChecklistItem(detail, itemId, patch) {
   const checklistItems = normalized.checklistItems.map((item) => {
     return item.itemId === normalizedItemId ? { ...item, data: nextData } : item
   })
-  const retainedDirectPhotos = photosChanged ? (normalized.photos ?? []).filter((photo) => {
+  const retainedDirectPhotos = photosChanged ? (normalized.photos ?? ([] as UTSJSONObject[])).filter((photo) => {
     return !(photo?.ownerType === 'checklist' && String(photo?.ownerId ?? '') === normalizedItemId)
   }) : normalized.photos
   return {
@@ -736,14 +797,15 @@ export function updateChecklistItem(detail, itemId, patch) {
 
 /**
  * 快速更新已加载检查项的四态结果和进度；不重建未改变的照片、疵点或章节树。
+ * detail 为详情 JSON，itemId 为本地数据键，result 为新的四态结果值；返回更新后的详情对象。
  */
-export function updateChecklistResult(detail, itemId, result) {
+export function updateChecklistResult(detail: UTSJSONObject, itemId: string, result: string): UTSJSONObject {
   const key = String(itemId ?? '').trim()
   const checklistData = {
     ...(detail?.checklistData ?? {}),
     [key]: { ...(detail?.checklistData?.[key] ?? {}), result, completed: result !== 'pending' }
   }
-  const checklistItems = (detail?.checklistItems ?? []).map((item) => {
+  const checklistItems = (detail?.checklistItems ?? ([] as UTSJSONObject[])).map((item) => {
     return item.itemId === key ? { ...item, data: checklistData[key] } : item
   })
   return { ...detail, checklistData, checklistItems, progress: calculateDetailProgress(checklistItems, checklistData) }
@@ -751,31 +813,33 @@ export function updateChecklistResult(detail, itemId, result) {
 
 /**
  * 深拷贝可序列化的检查项字段，避免复制后源计划与目标计划共享可变引用。
+ * value 为任意可序列化值；返回深拷贝结果，无法序列化时原样返回。
  */
-function cloneSerializableValue(value) {
+function cloneSerializableValue(value: any): any {
   if (value === undefined) return undefined
   try { return JSON.parse(JSON.stringify(value)) } catch (_) { return value }
 }
 
 /**
  * 按检查项 ID、标准项 ID 和合并子计划 ID 解析目标详情中的本地数据键及服务端业务 ID。
+ * detail 为目标详情，requestedItemId 为请求的检查项 ID，sonPlanId 为合并子计划 ID；返回 key、item、bizId 定位结果。
  */
-function resolveChecklistTarget(detail, requestedItemId, sonPlanId: string = '') {
+function resolveChecklistTarget(detail: UTSJSONObject, requestedItemId: string, sonPlanId: string = ''): ChecklistTarget {
   const normalizedItemId = String(requestedItemId ?? '').trim()
   const normalizedSonPlanId = String(sonPlanId ?? '').trim()
   /** 判断一个主行或合并子行是否对应请求的检查项。 */
-  const matchesItem = (row) => {
+  const matchesItem = (row: UTSJSONObject) => {
     const candidates = [row?.itemId, row?.id, row?.baseItemId, row?.standardItemId]
       .map((value) => String(value ?? '').trim())
       .filter((value) => value !== '')
     return candidates.includes(normalizedItemId)
   }
-  const items = detail?.checklistItems ?? []
+  const items = detail?.checklistItems ?? ([] as UTSJSONObject[])
   const exact = items.find((row) => String(row?.sonPlanId ?? '').trim() === normalizedSonPlanId && matchesItem(row)) || null
   const item = exact ?? (normalizedSonPlanId !== '' ? items.find((row) => String(row?.sonPlanId ?? '').trim() === '' && matchesItem(row)) : null)
   const baseItemId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? normalizedItemId).split('__')[0]
   const key = exact != null ? String(exact?.itemId ?? makeChecklistDataKey(baseItemId, normalizedSonPlanId)) : makeChecklistDataKey(baseItemId, normalizedSonPlanId)
-  const sourceRow = (detail?.itemResults ?? []).find((row) => {
+  const sourceRow = (detail?.itemResults ?? ([] as UTSJSONObject[])).find((row) => {
     const rowSonPlanId = String(row?.sonPlanId ?? '').trim()
     if (rowSonPlanId !== normalizedSonPlanId) return false
     const candidates = [row?.id, row?.itemResultId, row?.standardItemId, row?.baseItemResultId]
@@ -792,8 +856,9 @@ function resolveChecklistTarget(detail, requestedItemId, sonPlanId: string = '')
 
 /**
  * 为目标检查项克隆一张本地媒体记录；无服务端文件 ID 时重新进入图片上传队列。
+ * photo 为源媒体，target 为目标检查项定位结果，targetPlan 为目标计划，index 为序号，createPhotoId 为可选的照片 ID 生成器；返回克隆后的媒体记录。
  */
-function cloneChecklistPhotoForTarget(photo, target, targetPlan, index, createPhotoId) {
+function cloneChecklistPhotoForTarget(photo: UTSJSONObject, target: ChecklistTarget, targetPlan: UTSJSONObject, index: number, createPhotoId: any): UTSJSONObject {
   const fileId = String(photo?.fileId ?? '').trim()
   const generatedId = typeof createPhotoId === 'function'
     ? createPhotoId(photo, target.key, index)
@@ -815,24 +880,25 @@ function cloneChecklistPhotoForTarget(photo, target, targetPlan, index, createPh
 
 /**
  * 将 H5 支持的检查结果、规格、文本、条码、备注和图片字段复制到目标检查项数据。
+ * sourceData 为源检查项数据，targetData 为目标检查项数据，target 为目标定位结果，targetPlan 为目标计划，payload 为复制选项，createPhotoId 为可选的照片 ID 生成器。
  */
-function applyCopiedChecklistFields(sourceData, targetData, target, targetPlan, payload, createPhotoId) {
+function applyCopiedChecklistFields(sourceData: UTSJSONObject, targetData: UTSJSONObject, target: ChecklistTarget, targetPlan: UTSJSONObject, payload: UTSJSONObject, createPhotoId: any): UTSJSONObject {
   const nextData = { ...(targetData ?? {}) }
   if (payload?.copyPhotos === true) {
-    nextData.photos = (Array.isArray(sourceData?.photos) ? sourceData.photos : []).map((photo, index) => {
+    nextData.photos = (Array.isArray(sourceData?.photos) ? sourceData.photos : ([] as UTSJSONObject[])).map((photo, index) => {
       return cloneChecklistPhotoForTarget(photo, target, targetPlan, index, createPhotoId)
     })
   }
   if (payload?.copyStatus === true) nextData.result = sourceData?.result ?? ''
-  if (payload?.copySpecs === true) nextData.measurements = cloneSerializableValue(sourceData?.measurements ?? [])
+  if (payload?.copySpecs === true) nextData.measurements = cloneSerializableValue(sourceData?.measurements ?? ([] as any[]))
   if (payload?.copyText === true) {
     nextData.textData = cloneSerializableValue(sourceData?.textData ?? {})
-    nextData.textGroups = cloneSerializableValue(sourceData?.textGroups ?? [])
+    nextData.textGroups = cloneSerializableValue(sourceData?.textGroups ?? ([] as any[]))
   }
   if (payload?.copyBarcode === true) {
     nextData.barcode = sourceData?.barcode ?? ''
-    nextData.barcodeList = cloneSerializableValue(sourceData?.barcodeList ?? [])
-    nextData.barcodeItems = cloneSerializableValue(sourceData?.barcodeItems ?? [])
+    nextData.barcodeList = cloneSerializableValue(sourceData?.barcodeList ?? ([] as any[]))
+    nextData.barcodeItems = cloneSerializableValue(sourceData?.barcodeItems ?? ([] as any[]))
   }
   if (payload?.copyRemarks === true) nextData.comment = sourceData?.comment ?? ''
   nextData.completed = String(nextData?.result ?? '') !== ''
@@ -845,8 +911,9 @@ function applyCopiedChecklistFields(sourceData, targetData, target, targetPlan, 
 
 /**
  * 将源详情中的检查项内容复制到目标本地详情，调用方随后持久化即可离线恢复和自动同步。
+ * sourceDetail 为源详情，targetDetail 为目标详情，payload 为复制选项，options 可注入 createPhotoId；返回复制后的目标详情。
  */
-export function copyChecklistItemToDetail(sourceDetail, targetDetail, payload: any = {}, options: any = {}) {
+export function copyChecklistItemToDetail(sourceDetail: UTSJSONObject, targetDetail: UTSJSONObject, payload: any = {}, options: any = {}): UTSJSONObject {
   const source = normalizeInspectionDetail(sourceDetail, sourceDetail?.planId)
   let targetDetailState = normalizeInspectionDetail(targetDetail, targetDetail?.planId)
   const sourceTarget = resolveChecklistTarget(source, payload?.sourceItemId, payload?.sourceSonPlanId ?? '')
@@ -873,14 +940,17 @@ export function copyChecklistItemToDetail(sourceDetail, targetDetail, payload: a
   return targetDetailState
 }
 
-/** 按标准检查项 ID 找到每个目标计划自己的结果主键；缺少真实结果行时阻止复用源计划主键。 */
-export function resolveCopyTargetItemIds(sourceDetail, targetDetail, selectedItemIds) {
-  const sourceRows = Array.isArray(sourceDetail?.itemResults) ? sourceDetail.itemResults : []
-  const targetRows = Array.isArray(targetDetail?.itemResults) ? targetDetail.itemResults : []
-  const requested = Array.isArray(selectedItemIds) ? selectedItemIds : []
+/**
+ * 按标准检查项 ID 找到每个目标计划自己的结果主键；缺少真实结果行时阻止复用源计划主键。
+ * sourceDetail 为源详情，targetDetail 为目标详情，selectedItemIds 为勾选的源结果行 ID；返回与源顺序一致的目标结果主键数组。
+ */
+export function resolveCopyTargetItemIds(sourceDetail: UTSJSONObject, targetDetail: UTSJSONObject, selectedItemIds: string[]): string[] {
+  const sourceRows = Array.isArray(sourceDetail?.itemResults) ? sourceDetail.itemResults : ([] as UTSJSONObject[])
+  const targetRows = Array.isArray(targetDetail?.itemResults) ? targetDetail.itemResults : ([] as UTSJSONObject[])
+  const requested = Array.isArray(selectedItemIds) ? selectedItemIds : ([] as string[])
   return [...new Set(requested.map((id) => String(id ?? '').trim()).filter((id) => id !== ''))].map((sourceId) => {
     const sourceRow = sourceRows.find((row) => String(row?.id ?? row?.itemResultId ?? '') === sourceId && !row?.sonPlanId)
-    const sourceItem = (sourceDetail?.checklistItems ?? []).find((item) => String(item?.itemId ?? item?.id ?? '') === sourceId && !item?.sonPlanId)
+    const sourceItem = (sourceDetail?.checklistItems ?? ([] as UTSJSONObject[])).find((item) => String(item?.itemId ?? item?.id ?? '') === sourceId && !item?.sonPlanId)
     const standardItemId = String(sourceRow?.standardItemId ?? sourceItem?.standardItemId ?? '').trim()
     if (standardItemId === '') throw new Error(`源检查项 ${sourceId} 缺少模板 ID，无法匹配目标`)
     const targetRow = targetRows.find((row) => String(row?.standardItemId ?? '').trim() === standardItemId && !row?.sonPlanId)
@@ -890,17 +960,20 @@ export function resolveCopyTargetItemIds(sourceDetail, targetDetail, selectedIte
   })
 }
 
-/** 按照片实际来源检查结果分组，为 H5 图片复制接口生成持久任务参数。 */
-export function buildBatchPhotoCopyRequests(detail, fileIds, targetItems) {
+/**
+ * 按照片实际来源检查结果分组，为 H5 图片复制接口生成持久任务参数。
+ * detail 为详情 JSON，fileIds 为选中的服务端文件 ID，targetItems 为目标检查项；返回按来源与目标分组的复制请求数组。
+ */
+export function buildBatchPhotoCopyRequests(detail: UTSJSONObject, fileIds: string[], targetItems: UTSJSONObject[]): UTSJSONObject[] {
   const planId = String(detail?.planId ?? detail?.plan?.id ?? '').trim()
-  const requested = new Set((Array.isArray(fileIds) ? fileIds : []).map((id) => String(id ?? '').trim()).filter((id) => id !== ''))
-  const targets = Array.isArray(targetItems) ? targetItems : []
-  const groups = new Map()
-  for (const photo of (detail?.photos ?? [])) {
+  const requested = new Set((Array.isArray(fileIds) ? fileIds : ([] as string[])).map((id) => String(id ?? '').trim()).filter((id) => id !== ''))
+  const targets = Array.isArray(targetItems) ? targetItems : ([] as UTSJSONObject[])
+  const groups = new Map<string, any>()
+  for (const photo of (detail?.photos ?? ([] as UTSJSONObject[]))) {
     const fileId = String(photo?.fileId ?? '').trim()
     if (!requested.has(fileId) || photo?.ownerType !== 'checklist') continue
     const ownerKey = String(photo?.dataKey ?? photo?.ownerId ?? '').trim()
-    const sourceRow = (detail?.itemResults ?? []).find((row) => {
+    const sourceRow = (detail?.itemResults ?? ([] as UTSJSONObject[])).find((row) => {
       const rowId = String(row?.id ?? row?.itemResultId ?? '').trim()
       const sonPlanId = String(row?.sonPlanId ?? '').trim()
       return rowId === ownerKey || (sonPlanId !== '' && makeChecklistDataKey(String(row?.baseItemResultId ?? rowId.split(`_${sonPlanId}`)[0]), sonPlanId) === ownerKey)
@@ -909,7 +982,7 @@ export function buildBatchPhotoCopyRequests(detail, fileIds, targetItems) {
     const targetItemIds = [...new Set(targets.map((target) => String(target?.bizId ?? '').trim()).filter((id) => id !== '' && id !== sourceItemId))]
     if (sourceItemId === '' || targetItemIds.length === 0) continue
     const groupKey = `${sourceItemId}:${targetItemIds.join(',')}`
-    if (!groups.has(groupKey)) groups.set(groupKey, { sourcePlanId: planId, sourceItemId, targetPlanIds: [planId], targetItemIds, fileIds: [] })
+    if (!groups.has(groupKey)) groups.set(groupKey, { sourcePlanId: planId, sourceItemId, targetPlanIds: [planId], targetItemIds, fileIds: [] as string[] })
     if (!groups.get(groupKey).fileIds.includes(fileId)) groups.get(groupKey).fileIds.push(fileId)
   }
   return [...groups.values()]
@@ -917,8 +990,9 @@ export function buildBatchPhotoCopyRequests(detail, fileIds, targetItems) {
 
 /**
  * 将一张已上传图片复制到目标本地检查项，并按服务端文件 ID 防止重复记录。
+ * detail 为详情 JSON，photo 为待复制媒体，targetItem 为目标检查项，options 可注入 createPhotoId；返回更新后的详情对象。
  */
-export function copyChecklistPhotoToItem(detail, photo, targetItem, options: any = {}) {
+export function copyChecklistPhotoToItem(detail: UTSJSONObject, photo: UTSJSONObject, targetItem: UTSJSONObject, options: any = {}): UTSJSONObject {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
   const target = resolveChecklistTarget(
     normalized,
@@ -927,7 +1001,7 @@ export function copyChecklistPhotoToItem(detail, photo, targetItem, options: any
   )
   if (target.key === '' || String(photo?.ownerId ?? photo?.dataKey ?? '') === target.key) return normalized
   const current = normalized?.checklistData?.[target.key] ?? {}
-  const currentPhotos = Array.isArray(current?.photos) ? current.photos : []
+  const currentPhotos = Array.isArray(current?.photos) ? current.photos : ([] as UTSJSONObject[])
   const fileId = String(photo?.fileId ?? '').trim()
   const duplicated = fileId !== '' && currentPhotos.some((item) => String(item?.fileId ?? '').trim() === fileId)
   if (duplicated) return normalized
@@ -941,13 +1015,16 @@ export function copyChecklistPhotoToItem(detail, photo, targetItem, options: any
   return updateChecklistItem(normalized, target.key, { ...current, photos: [...currentPhotos, copiedPhoto] })
 }
 
-/** 一次解析当前详情，把选中已上传媒体复制到多个检查项并按目标文件 ID 去重。 */
-export function copyChecklistPhotosToItems(detail, fileIds, targetItems, options: any = {}) {
-  const requestedIds = new Set((Array.isArray(fileIds) ? fileIds : []).map((id) => String(id ?? '').trim()).filter((id) => id !== ''))
+/**
+ * 一次解析当前详情，把选中已上传媒体复制到多个检查项并按目标文件 ID 去重。
+ * detail 为详情 JSON，fileIds 为选中的服务端文件 ID，targetItems 为目标检查项，options 可注入 createPhotoId；返回更新后的详情对象。
+ */
+export function copyChecklistPhotosToItems(detail: UTSJSONObject, fileIds: string[], targetItems: UTSJSONObject[], options: any = {}): UTSJSONObject {
+  const requestedIds = new Set((Array.isArray(fileIds) ? fileIds : ([] as string[])).map((id) => String(id ?? '').trim()).filter((id) => id !== ''))
   if (requestedIds.size === 0 || !Array.isArray(targetItems) || targetItems.length === 0) return detail
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
-  const photosById = new Map()
-  for (const photo of (normalized?.photos ?? [])) {
+  const photosById = new Map<string, any>()
+  for (const photo of (normalized?.photos ?? ([] as UTSJSONObject[]))) {
     const id = String(photo?.fileId ?? '').trim()
     if (requestedIds.has(id) && !photosById.has(id)) photosById.set(id, photo)
   }
@@ -957,9 +1034,9 @@ export function copyChecklistPhotosToItems(detail, fileIds, targetItems, options
     const target = resolveChecklistTarget(updated, targetItem?.standardItemId ?? targetItem?.itemId ?? targetItem?.id, targetItem?.sonPlanId ?? '')
     if (target.key === '') continue
     const current = updated?.checklistData?.[target.key] ?? {}
-    const currentPhotos = Array.isArray(current?.photos) ? current.photos : []
+    const currentPhotos = Array.isArray(current?.photos) ? current.photos : ([] as UTSJSONObject[])
     const existing = new Set(currentPhotos.map((photo) => String(photo?.fileId ?? '').trim()))
-    const additional = []
+    const additional: any[] = []
     for (const id of requestedIds) {
       const photo = photosById.get(id)
       if (photo == null || existing.has(id) || String(photo?.ownerId ?? photo?.dataKey ?? '') === target.key) continue
@@ -975,10 +1052,11 @@ export function copyChecklistPhotosToItems(detail, fileIds, targetItems, options
 
 /**
  * 将备货或完工数量写入当前计划及合并验货计划行，供普通草稿队列统一同步。
+ * detail 为详情 JSON，rows 为含计划 ID 与完工数量的行；返回写回数量后的标准化详情对象。
  */
-export function applyFinishQuantityRows(detail, rows) {
+export function applyFinishQuantityRows(detail: UTSJSONObject, rows: UTSJSONObject[]): UTSJSONObject {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
-  const quantityByPlanId = new Map((Array.isArray(rows) ? rows : []).map((row) => [
+  const quantityByPlanId = new Map((Array.isArray(rows) ? rows : ([] as UTSJSONObject[])).map((row) => [
     String(row?.id ?? row?.planId ?? '').trim(),
     parseInt(String(row?.finishQuantity ?? 0))
   ]))
@@ -986,7 +1064,7 @@ export function applyFinishQuantityRows(detail, rows) {
   const plan = quantityByPlanId.has(currentPlanId)
     ? { ...(normalized?.plan ?? {}), finishQuantity: quantityByPlanId.get(currentPlanId) }
     : normalized?.plan
-  const inspectionPlans = (Array.isArray(normalized?.inspectionPlans) ? normalized.inspectionPlans : []).map((row) => {
+  const inspectionPlans = (Array.isArray(normalized?.inspectionPlans) ? normalized.inspectionPlans : ([] as UTSJSONObject[])).map((row) => {
     const rowId = String(row?.id ?? row?.planId ?? '').trim()
     return quantityByPlanId.has(rowId) ? { ...row, finishQuantity: quantityByPlanId.get(rowId) } : row
   })
@@ -995,12 +1073,13 @@ export function applyFinishQuantityRows(detail, rows) {
 
 /**
  * 将当前计划抽样数量写入本地详情及对应合并验货计划行。
+ * detail 为详情 JSON，value 为新的抽样数量；返回写回数量后的标准化详情对象。
  */
-export function applySampleQuantity(detail, value) {
+export function applySampleQuantity(detail: UTSJSONObject, value: number): UTSJSONObject {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
   const quantity = parseInt(String(value ?? 0))
   const currentPlanId = String(normalized?.plan?.id ?? normalized?.plan?.planId ?? normalized?.planId ?? '').trim()
-  const inspectionPlans = (Array.isArray(normalized?.inspectionPlans) ? normalized.inspectionPlans : []).map((row) => {
+  const inspectionPlans = (Array.isArray(normalized?.inspectionPlans) ? normalized.inspectionPlans : ([] as UTSJSONObject[])).map((row) => {
     const rowId = String(row?.id ?? row?.planId ?? '').trim()
     return rowId === currentPlanId ? { ...row, sampleQuantity: quantity } : row
   })
@@ -1013,9 +1092,10 @@ export function applySampleQuantity(detail, value) {
 
 /**
  * 仅保留已经上传成功并可提交到服务端的文件字段。
+ * photos 为检查项媒体记录；返回仅含服务端文件 ID 的提交字段数组。
  */
-function buildUploadedFileList(photos) {
-  return (Array.isArray(photos) ? photos : []).filter((photo) => String(photo?.fileId ?? '').trim() !== '')
+function buildUploadedFileList(photos: UTSJSONObject[]): UTSJSONObject[] {
+  return (Array.isArray(photos) ? photos : ([] as UTSJSONObject[])).filter((photo) => String(photo?.fileId ?? '').trim() !== '')
     .map((photo) => ({
       fileId: String(photo?.fileId ?? ''),
       filePath: photo?.filePath ?? '',
@@ -1034,22 +1114,26 @@ function buildUploadedFileList(photos) {
 
 /**
  * 将条码编辑数据转换为服务端 barcodeValue JSON 字符串。
+ * data 为检查项编辑数据；返回 barcodeValue JSON 文本，无有效条码时返回 null。
  */
-function buildBarcodeValue(data) {
-  const items = (Array.isArray(data?.barcodeItems) ? data.barcodeItems : []).map((row) => typeof row === 'string'
+function buildBarcodeValue(data: UTSJSONObject): string | null {
+  const items = (Array.isArray(data?.barcodeItems) ? data.barcodeItems : ([] as any[])).map((row) => typeof row === 'string'
     ? { name: '', code: row.trim(), format: '' }
     : { name: String(row?.name ?? row?.label ?? '').trim(), code: String(row?.code ?? row?.value ?? row?.barcode ?? '').trim(), format: String(row?.format ?? row?.scanType ?? '').trim() })
     .filter((row) => row.name !== '' || row.code !== '' || row.format !== '')
   if (items.length > 0) return JSON.stringify(items)
-  const codes = Array.isArray(data?.barcodeList) ? data.barcodeList : []
+  const codes = Array.isArray(data?.barcodeList) ? data.barcodeList : ([] as any[])
   if (codes.length > 0) return JSON.stringify(codes.map((code) => ({ name: '', code: String(code ?? ''), format: '' })))
   const barcode = String(data?.barcode ?? '').trim()
   return barcode === '' ? null : JSON.stringify([{ name: '', code: barcode, format: '' }])
 }
 
-/** 判断合并子检查点是否有实际输入，避免仅有空白占位行时生成服务端结果。 */
-function hasFilledChildItemData(data) {
-  const hasFilledRows = (rows) => Array.isArray(rows) && rows.some((row) => Object.keys(row ?? {}).some((key) => String(row[key] ?? '').trim() !== ''))
+/**
+ * 判断合并子检查点是否有实际输入，避免仅有空白占位行时生成服务端结果。
+ * data 为检查项编辑数据；返回存在结果、备注、图片或已填写规格/文本/条码时为 true。
+ */
+function hasFilledChildItemData(data: UTSJSONObject): boolean {
+  const hasFilledRows = (rows: any) => Array.isArray(rows) && rows.some((row) => Object.keys(row ?? {}).some((key) => String(row[key] ?? '').trim() !== ''))
   return String(data?.result ?? '').trim() !== ''
     || String(data?.comment ?? '').trim() !== ''
     || (Array.isArray(data?.photos) && data.photos.length > 0)
@@ -1060,13 +1144,16 @@ function hasFilledChildItemData(data) {
     || String(data?.barcode ?? '').trim() !== ''
 }
 
-/** 从本地 JSON 结果和当前编辑值生成 H5 字段形状的报告 payload，已上传图片保留供原生端同步。 */
-export function buildGeneratePayload(detail) {
+/**
+ * 从本地 JSON 结果和当前编辑值生成 H5 字段形状的报告 payload，已上传图片保留供原生端同步。
+ * detail 为详情 JSON；返回含 itemResults、defectRecords 与数量字段的报告提交 payload。
+ */
+export function buildGeneratePayload(detail: UTSJSONObject): UTSJSONObject {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
   const planId = normalized.planId
-  const sourceRows = Array.isArray(normalized?.itemResults) ? normalized.itemResults : []
-  const sourceById = new Map()
-  const baseIdByTemplate = new Map()
+  const sourceRows = Array.isArray(normalized?.itemResults) ? normalized.itemResults : ([] as UTSJSONObject[])
+  const sourceById = new Map<string, any>()
+  const baseIdByTemplate = new Map<string, string>()
   sourceRows.forEach((row) => {
     const rowId = String(row?.id ?? row?.itemResultId ?? '')
     if (rowId === '') return
@@ -1143,9 +1230,10 @@ export function buildGeneratePayload(detail) {
 
 /**
  * 校验最终提交必需的总结结果、检查项完成状态和失败项图片。
- * 校验顺序与 H5 一致：先必填检查项、再必传图片、最后总结结果；返回 reason 供页面区分提示场景。
+ * 校验顺序与 H5 一致：先必填检查项、再必传图片、最后总结结果；detail 为详情 JSON，summary 为总结草稿。
+ * 返回 valid、reason、message，reason 供页面区分提示场景。
  */
-export function validateFinalSubmission(detail, summary: any = {}) {
+export function validateFinalSubmission(detail: UTSJSONObject, summary: any = {}): UTSJSONObject {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
   const requiredItems = normalized.checklistItems.filter((item) => String(item?.sonPlanId ?? '') === '' && Boolean(item?.isRequired))
   const incomplete = requiredItems.filter((item) => {
@@ -1166,8 +1254,9 @@ export function validateFinalSubmission(detail, summary: any = {}) {
 
 /**
  * 将历史 PASS/FAIL 与 H5 的 APPROVED/REJECTED/PENDING 总结结果值统一为服务端值域，无法识别时返回空串。
+ * rawValue 为本地或服务端的总结结果值；返回服务端值域文本。
  */
-export function normalizeOverallResult(rawValue) {
+export function normalizeOverallResult(rawValue: any): string {
   const value = String(rawValue ?? '').trim().toUpperCase()
   if (value === 'APPROVED' || value === 'PASS') return 'APPROVED'
   if (value === 'REJECTED' || value === 'FAIL') return 'REJECTED'
@@ -1177,8 +1266,9 @@ export function normalizeOverallResult(rawValue) {
 
 /**
  * 按 H5 normalizeSeverityValue 语义解析疵点严重等级为小写桶键；无法识别时返回空串（统计时跳过，不回退 MINOR）。
+ * rawValue 为等级编码，rawLabel 为等级中文或英文名；返回 critical/major/minor 之一或空串。
  */
-function resolveFinishSeverityKey(rawValue, rawLabel: string = '') {
+function resolveFinishSeverityKey(rawValue: any, rawLabel: string = ''): string {
   const text = `${String(rawValue ?? '').toLowerCase()} ${String(rawLabel ?? '').toLowerCase()}`
   if (text.includes('critical') || text.includes('致命') || text.includes('极严重')) return 'critical'
   if (text.includes('major') || text.includes('主要') || text.includes('严重') || text.includes('大')) return 'major'
@@ -1189,8 +1279,9 @@ function resolveFinishSeverityKey(rawValue, rawLabel: string = '') {
 /**
  * 构建总结弹窗所需的统计视图：AQL 疵点统计（实际发现 vs 计划 Ac 阈值）、失败检查点与截断后的总结评语。
  * 与 H5 一致：疵点数量按归一化严重等级聚合（quantity 优先，未知等级跳过），超出 AQL 阈值仅作警示，不阻断提交。
+ * detail 为详情 JSON，summary 为总结草稿；返回 defectStats、exceedsAql、failedCheckpoints 与截断后的 remarks。
  */
-export function buildFinishSummary(detail, summary: any = {}) {
+export function buildFinishSummary(detail: UTSJSONObject, summary: any = {}): UTSJSONObject {
   const normalized = normalizeInspectionDetail(detail, detail?.planId)
   const plan = normalized?.plan ?? {}
   const totals = { critical: 0, major: 0, minor: 0 }

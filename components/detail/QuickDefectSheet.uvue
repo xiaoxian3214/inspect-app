@@ -7,13 +7,13 @@
 					<text class="dialog-title">{{ translateText(isEditing ? '编辑疵点' : '新增疵点') }}</text>
 					<AppButton class="header-camera" variant="icon" icon-type="camera" :icon-size="28" icon-color="#1a5f3f" :disabled="atPhotoLimit" @press="addPhoto" />
 				</view>
-				<scroll-view class="dialog-body" :scroll-y="true">
+				<scroll-view class="dialog-body" direction="vertical">
 					<view class="section media-section"><text class="label">{{ translateText('媒体库') }}</text><InspectionMediaGrid :photos="draft.photos" add-label="拍照" @capture-media="addPhoto" @remove-media="removePhoto" @preview-media="previewPhoto" @retry-media="retryPhoto" /></view>
 						<view class="section"><text class="label">{{ translateText('严重性') }}</text><view class="severity-row"><AppButton v-for="option in levels" :key="option.value" class="severity-option" :selected="draft.type === option.value" :label-color="draft.type === option.value ? '#16a34a' : '#334155'" @press="selectSeverity(option.value)">{{ translateText(option.label) }}</AppButton></view></view>
-						<view class="section"><text class="label">{{ translateText('受影响的产品数量') }}</text><scroll-view class="quantity-scroll" direction="horizontal"><view class="quantity-row" :class="{ disabled: draft.commonFlag === 1 }"><AppButton v-for="quantity in 19" :key="quantity" class="qty-item" :selected="draft.quantity === quantity" :label-color="draft.quantity === quantity ? '#1d4ed8' : '#334155'" @press="selectQuantity(quantity)">{{ quantity }}</AppButton><AppButton class="qty-other" :selected="draft.quantity === 'other'" :label-color="draft.quantity === 'other' ? '#1d4ed8' : '#334155'" @press="selectQuantity('other')">{{ translateText('其他') }}</AppButton></view></scroll-view><input v-if="draft.quantity === 'other' && draft.commonFlag !== 1" class="other-input" type="number" :value="draft.customQuantity" :placeholder="translateText('请输入数量')" @input="updateField('customQuantity', $event)" /></view>
+						<view class="section"><text class="label">{{ translateText('受影响的产品数量') }}</text><scroll-view class="quantity-scroll" direction="horizontal"><view class="quantity-row" :class="{ disabled: draft.commonFlag === 1 }"><AppButton v-for="quantity in 19" :key="quantity" class="qty-item" :selected="draft.quantity === quantity" :label-color="draft.quantity === quantity ? '#1d4ed8' : '#334155'" @press="selectQuantity(quantity)">{{ quantity }}</AppButton><AppButton class="qty-other" :selected="draft.quantity === 'other'" :label-color="draft.quantity === 'other' ? '#1d4ed8' : '#334155'" @press="selectQuantity('other')">{{ translateText('其他') }}</AppButton></view></scroll-view><input v-if="draft.quantity === 'other' && draft.commonFlag !== 1" class="other-input" type="number" :value="draft.customQuantity" :placeholder="translateText('请输入数量')" @input="updateField('customQuantity', $event as UniInputEvent)" /></view>
 					<view class="section"><view class="common-row" @click="toggleCommon"><text class="common-title">{{ translateText('普遍性疵点') }}</text><view class="common-switch" :class="{ active: draft.commonFlag === 1 }"><view class="common-dot"></view></view></view></view>
 						<view class="section"><view class="label-row"><text class="label category-label">{{ translateText('疵点类别') }}</text><text class="required">{{ translateText('必选') }}</text></view><view class="category-trigger" @click="openCategorySheet"><text :class="draft.defectCode ? 'category-value' : 'placeholder'">{{ selectedCategoryLabel }}</text><text>›</text></view></view>
-					<view class="section"><text class="label">{{ translateText('写评论') }}</text><textarea class="comment-input" :value="draft.description" :placeholder="translateText('写评论')" @input="updateField('description', $event)" /></view>
+					<view class="section"><text class="label">{{ translateText('写评论') }}</text><textarea class="comment-input" :value="draft.description" :placeholder="translateText('写评论')" @input="updateField('description', $event as UniInputEvent)" /></view>
 						<view v-if="selectedItemLabel" class="section"><text class="label">{{ translateText('检查点') }}</text><view class="checkpoint"><text class="checkpoint-text">{{ selectedItemLabel }}</text></view></view>
 				</scroll-view><view class="actions"><AppButton class="footer-button cancel" label-color="#334155" @press="requestDelete">{{ translateText(isEditing ? '删除疵点' : '取消') }}</AppButton><AppButton class="footer-button save" label-color="#ffffff" @press="saveDefect">{{ translateText(isEditing ? '保存修改' : '报告疵点') }}</AppButton></view>
 			</view>
@@ -31,7 +31,8 @@
 	import DefectCategorySheet from './DefectCategorySheet.uvue'
 	import InspectionMediaGrid from './InspectionMediaGrid.uvue'
 	import { createDefectDraft, getDefectQuantity, selectDefectQuantity, setDefectCommon, validateDefectDraft } from '../../domain/quickDefectForm.uts'
-	type DefectDraft = { type: string, photos: UTSJSONObject[], quantity: any, customQuantity: string, commonFlag: number, defectCode: string, defectDesc: string, checkItemName: string, checkItemId: string, description: string, tier1Code: string, tier2Code: string, tier3Code: string }
+	/** 疵点编辑草稿；quantity 按 domain/quickDefectForm.uts 的 createDefectDraft/selectDefectQuantity 取值：1-19 的数字、'other' 文案，普遍性疵点为 null。 */
+	type DefectDraft = { type: string, photos: UTSJSONObject[], quantity: number | string | null, customQuantity: string, commonFlag: number, defectCode: string, defectDesc: string, checkItemName: string, checkItemId: string, description: string, tier1Code: string, tier2Code: string, tier3Code: string }
 	const props = defineProps({ visible: { type: Boolean, default: false }, editing: { type: Boolean, default: false }, defect: { type: Object, default: () => ({}) }, items: { type: Array, default: () => [] }, levelOptions: { type: Array, default: () => [] }, categoryTree: { type: Array, default: () => [] } })
 	const emit = defineEmits(['close', 'save', 'delete', 'add-photo', 'remove-photo', 'preview-photo', 'retry-photo'])
 	const draft = ref<DefectDraft>(createDefectDraft({}) as DefectDraft)
@@ -47,51 +48,68 @@
 	/** 以窗口实际高度为底部弹层计算最大高度。 */
 	const dialogMaxHeight = computed((): string => windowHeightPx(0.9))
 	/** 使用打开弹层时的业务状态，不因新疵点拍照生成本地 ID 而误判编辑。 */
-	const isEditing = computed(() => props.editing)
+	const isEditing = computed((): boolean => props.editing)
 	/** 达到媒体数量上限时停用顶部拍照入口。 */
-	const atPhotoLimit = computed(() => draft.value.photos.length >= 30)
+	const atPhotoLimit = computed((): boolean => draft.value.photos.length >= 30)
 	/** 优先显示带入的检查点名称，老数据仅有 ID 时从清单中回填。 */
-	const selectedItemLabel = computed(() => {
+	const selectedItemLabel = computed((): string => {
 		if (draft.value.checkItemName) return draft.value.checkItemName
 		const item = (props.items as UTSJSONObject[]).find((candidate: UTSJSONObject) => firstNonEmptyText([candidate['baseItemId'], candidate['itemId'], candidate['id']], '') === draft.value.checkItemId)
 		return item != null ? firstNonEmptyText([item['itemName'], item['name']], '') : ''
 	})
 	/** 返回已选疵点类别的编码和名称。 */
-	const selectedCategoryLabel = computed(() => draft.value.defectCode ? `${draft.value.defectCode}: ${draft.value.defectDesc}` : '点击以选择疵点类别')
+	const selectedCategoryLabel = computed((): string => draft.value.defectCode ? `${draft.value.defectCode}: ${draft.value.defectDesc}` : '点击以选择疵点类别')
 	/** 用传入疵点重置编辑草稿，保留只读的检查项关联。 */
-	function resetDraft(defect: UTSJSONObject) { draft.value = createDefectDraft(defect) as DefectDraft }
+	function resetDraft(defect: UTSJSONObject): void { draft.value = createDefectDraft(defect) as DefectDraft }
 	/** 选择疵点严重等级。 */
-	function selectSeverity(value: string) { draft.value = { ...draft.value, type: value } }
+	function selectSeverity(value: string): void { draft.value = { ...draft.value, type: value } }
 	/** 更新评论或其他数量的输入值。 */
-	function updateField(field: string, event: any) { const value = (event as UniInputEvent).detail.value; if (field === 'description') draft.value = { ...draft.value, description: value }; else if (field === 'customQuantity') draft.value = { ...draft.value, customQuantity: value } }
+	function updateField(field: string, event: UniInputEvent): void { const value = event.detail.value; if (field === 'description') draft.value = { ...draft.value, description: value }; else if (field === 'customQuantity') draft.value = { ...draft.value, customQuantity: value } }
 	/** 选择预置或自定义数量；普遍性状态在选择数量时自动关闭。 */
-	function selectQuantity(quantity: any) { draft.value = selectDefectQuantity(draft.value, quantity) as DefectDraft }
+	function selectQuantity(quantity: number | string): void { draft.value = selectDefectQuantity(draft.value, quantity) as DefectDraft }
 	/** 切换普遍性疵点和互斥的数量状态。 */
-	function toggleCommon() { draft.value = setDefectCommon(draft.value, draft.value.commonFlag !== 1) as DefectDraft }
+	function toggleCommon(): void { draft.value = setDefectCommon(draft.value, draft.value.commonFlag !== 1) as DefectDraft }
 	/** 打开三级疵点分类选择弹层。 */
-	function openCategorySheet() { showCategorySheet.value = true }
+	function openCategorySheet(): void { showCategorySheet.value = true }
 	/** 关闭三级疵点分类选择弹层。 */
-	function closeCategorySheet() { showCategorySheet.value = false }
+	function closeCategorySheet(): void { showCategorySheet.value = false }
 	/** 将分类组件返回的三级编码和名称写入疵点草稿。 */
-	function applyCategory(category: UTSJSONObject) { draft.value = { ...draft.value, tier1Code: (category['tier1Code'] ?? '').toString(), tier2Code: (category['tier2Code'] ?? '').toString(), tier3Code: (category['tier3Code'] ?? '').toString(), defectCode: (category['defectCode'] ?? '').toString(), defectDesc: (category['defectDesc'] ?? '').toString() }; closeCategorySheet() }
+	function applyCategory(category: UTSJSONObject): void { draft.value = { ...draft.value, tier1Code: (category['tier1Code'] ?? '').toString(), tier2Code: (category['tier2Code'] ?? '').toString(), tier3Code: (category['tier3Code'] ?? '').toString(), defectCode: (category['defectCode'] ?? '').toString(), defectDesc: (category['defectDesc'] ?? '').toString() }; closeCategorySheet() }
 	/** 请求页面使用原生相机给当前疵点添加本地图片。 */
-	function addPhoto() { if (draft.value.photos.length < 30) emit('add-photo', draft.value) }
+	function addPhoto(): void { if (draft.value.photos.length < 30) emit('add-photo', draft.value) }
 	/** 请求页面删除当前疵点图片。 */
-	function removePhoto(photo: UTSJSONObject) { emit('remove-photo', { defect: draft.value, photo }) }
+	function removePhoto(photo: UTSJSONObject): void { emit('remove-photo', { defect: draft.value, photo }) }
 	/** 请求页面预览当前疵点图片。 */
-	function previewPhoto(photo: UTSJSONObject) { emit('preview-photo', { defect: draft.value, photo, photos: draft.value.photos }) }
+	function previewPhoto(photo: UTSJSONObject): void { emit('preview-photo', { defect: draft.value, photo, photos: draft.value.photos }) }
 	/** 请求页面重新上传失败的疵点图片。 */
-	function retryPhoto(photo: UTSJSONObject) { emit('retry-photo', { defect: draft.value, photo }) }
+	function retryPhoto(photo: UTSJSONObject): void { emit('retry-photo', { defect: draft.value, photo }) }
 	/** 校验类别和有效数量，保存数值型数量或普遍性 null。 */
-	function saveDefect() { const error = validateDefectDraft(draft.value); if (error) { uni.showToast({ title: t(error), icon: 'none' }); return }; emit('save', { ...draft.value, quantity: getDefectQuantity(draft.value) }) }
-	/** 关闭疵点编辑弹层。 */
-	function closeSheet() { showCategorySheet.value = false; emit('close') }
+	function saveDefect(): void { const error = validateDefectDraft(draft.value); if (error) { uni.showToast({ title: t(error), icon: 'none' }); return }; emit('save', { ...draft.value, quantity: getDefectQuantity(draft.value) }) }
+	/** 关闭疵点编辑弹层；只通知父页面，关闭阶段不再改写内部状态。 */
+	function closeSheet(): void { emit('close') }
 	/** 编辑时请求二次确认删除，新增时关闭弹层。 */
-	function requestDelete() { if (isEditing.value) emit('delete', draft.value); else closeSheet() }
+	function requestDelete(): void { if (isEditing.value) emit('delete', draft.value); else closeSheet() }
 	/** 阻止点击内容区域关闭弹层。 */
-	function stopEvent() {}
-	/** 传入的疵点切换时更新可编辑草稿。 */
-	watch((): UTSJSONObject => props.defect as UTSJSONObject, (defect: UTSJSONObject) => resetDraft(defect), { immediate: true, deep: true })
+	function stopEvent(): void {}
+	/**
+	 * 判断疵点弹层当前是否可见。
+	 * 弹层关闭后父页面仍会更新疵点数据，弹层内部的状态写入必须先以此守卫。
+	 */
+	function isSheetVisible(): boolean { return props.visible === true }
+
+	/**
+	 * 传入的疵点切换时更新可编辑草稿。
+	 * 弹层关闭期间禁止写入草稿：本组件实例仍然挂载，此时写入会驱动已经销毁的弹层渲染子树
+	 * 在 vapor 原生渲染线程重新渲染，触发共享数据字段追踪的野指针崩溃。
+	 * 疵点每次更新都会生成新对象，因此按身份变化监听即可，无需深度监听。
+	 */
+	watch((): UTSJSONObject => props.defect as UTSJSONObject, (defect: UTSJSONObject) => { if (isSheetVisible()) resetDraft(defect) })
+
+	/**
+	 * 每次打开弹层时按最新疵点重建草稿并收起分类弹层。
+	 * 分类弹层的复位从关闭阶段移到打开阶段，避免关闭瞬间写入已经销毁的渲染子树。
+	 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (visible) { showCategorySheet.value = false; resetDraft(props.defect as UTSJSONObject) } }, { immediate: true })
 </script>
 
 <style>

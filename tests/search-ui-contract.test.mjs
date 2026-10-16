@@ -103,7 +103,7 @@ test('search split download forwards its original card', async () => {
 /** 搜索页也必须在打开预览和真正拆分前阻止离线调用。 */
 test('search split workflow rejects offline operations', async () => {
   const source = await readFile('pages/report/search.uvue', 'utf8')
-  assert.match(source, /async function openSplitPreview\(item\)[\s\S]*?await isNetworkOnline\(\)/)
+  assert.match(source, /async function openSplitPreview\(item: UTSJSONObject\)[\s\S]*?await isNetworkOnline\(\)/)
   assert.match(source, /async function confirmSplit\(\)[\s\S]*?await isNetworkOnline\(\)[\s\S]*?planOperationService\.splitPlan/)
 })
 
@@ -136,7 +136,7 @@ test('copy sheet matches H5 details and uses selection sheets', async () => {
   assert.match(card, /:selected-template-name="copyTemplateName"/)
   assert.match(search, /:selected-template-name="copyTemplateName"/)
   assert.doesNotMatch(source, /<picker\b/)
-  assert.match(selector, /scroll-view[\s\S]*?v-for="option in options"/)
+  assert.match(selector, /scroll-view[\s\S]*?v-for="option in optionRows"/)
   assert.match(selector, /defineEmits\(\['close', 'confirm'\]\)/)
   assert.match(card, /:merged-items="copyMergedItems"/)
   assert.match(card, /loadCopyMergedItems\(\)/)

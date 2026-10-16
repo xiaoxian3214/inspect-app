@@ -119,7 +119,7 @@ function writeSharedState(transaction, groupPlanId, shared) {
 
 /** 将服务端文件列表及汇总照片映射成绑定检查项或疵点的本地媒体元数据。 */
 function collectRemotePhotos(detail) {
-  const photos = new Map()
+  const photos = new Map<string, any>()
   const append = (file, ownerId, ownerType, index) => {
     const source = typeof file === 'string' ? { filePath: file } : file
     if (source == null || typeof source !== 'object') return
@@ -235,7 +235,7 @@ function restoreItemLocalData(item) {
 function restoreSparseItemLocalData(item, localData) {
   const original = restoreItemLocalData(item)
   if (localData == null || typeof localData !== 'object') return original
-  const photos = new Map()
+  const photos = new Map<string, any>()
   ;[...original.photos, ...(Array.isArray(localData?.photos) ? localData.photos : [])].forEach((photo, index) => {
     const key = String(photo?.fileId ?? photo?.photoId ?? photo?.localPath ?? photo?.filePath ?? index)
     photos.set(key, photo)
@@ -262,7 +262,7 @@ function writeItemResults(transaction, groupPlanId, detail) {
     const item = parseJson(row.jsonData)
     return [String(item?.id ?? item?.itemResultId ?? ''), item]
   }))
-  const ids = new Set()
+  const ids = new Set<string>()
   source.forEach((item) => {
     const rowId = String(item?.id ?? item?.itemResultId ?? '').trim()
     if (rowId === '') return
@@ -715,7 +715,7 @@ export function createReportRepository(database) {
         migrated += 1
       }
       const oldReports = transaction.read('report').filter((row) => !row?.planId)
-      const counts = new Map()
+      const counts = new Map<string, number>()
       oldReports.forEach((row) => {
         const groupId = getMergedGroupId(parseJson(row.jsonData))
         if (groupId !== '') counts.set(groupId, parseInt(String(counts.get(groupId) ?? 0)) + 1)
@@ -754,7 +754,7 @@ export function createReportRepository(database) {
     let migrated = 0
     let conflicts = 0
     await database.transaction(async (transaction) => {
-      const byGroup = new Map()
+      const byGroup = new Map<string, any[]>()
       transaction.read('report').forEach((row) => {
         const record = parseJson(row?.jsonData)
         const groupId = getMergedGroupId(record)
@@ -778,13 +778,13 @@ export function createReportRepository(database) {
           status: groupStatus
         }))
         const storageId = getSharedPlanId(records[0])
-        const memberIds = new Set()
+        const memberIds = new Set<string>()
         entries.forEach(({ row, record }) => {
           memberIds.add(String(row.reportId))
         })
         for (const tableName of ['checklist', 'defect', 'photo']) {
           const primaryKey = tableName === 'checklist' ? 'itemId' : (tableName === 'defect' ? 'defectId' : 'photoId')
-          const chosen = new Map()
+          const chosen = new Map<string, any>()
           transaction.read(tableName).filter((row) => memberIds.has(String(row?.reportId ?? ''))).forEach((row) => {
             const sourceId = String(row?.[tableName === 'photo' ? 'sourcePhotoId' : (tableName === 'checklist' ? 'sourceItemId' : 'sourceDefectId')] ?? row?.[primaryKey] ?? '')
             const existing = chosen.get(sourceId)
@@ -954,7 +954,7 @@ export function createReportRepository(database) {
     const groupId = String(members[0]?.groupPlanId ?? normalizedPlanId)
     let removedCount = 0
     await database.transaction(async (transaction) => {
-      const obsolete = new Set()
+      const obsolete = new Set<string>()
       const groupRows = transaction.read('item_result').filter((row) => String(row?.planId ?? '') === groupId)
       const reportRow = transaction.read('report').find((row) => String(row?.reportId ?? '') === groupId)
       const shared = readSharedState({ app_setting: transaction.read('app_setting') }, groupId, reportRow)
@@ -1098,7 +1098,7 @@ export function createReportRepository(database) {
   async function savePlans(plans) {
     const source = Array.isArray(plans) ? plans : []
     await database.transaction(async (transaction) => {
-      const grouped = new Map()
+      const grouped = new Map<string, any[]>()
       for (const plan of source) {
         const planKey = getPlanKey(plan)
         if (planKey === '') throw new Error('计划ID缺失，无法保存到本地')
@@ -1124,7 +1124,7 @@ export function createReportRepository(database) {
       && !database.readTable('report').some((row) => String(row?.reportId ?? '') === normalizedPlanId)
     const storageId = String(normalizedMember?.groupPlanId ?? groupMember?.groupId
       ?? (isNewRelational ? getSharedPlanId({ ...snapshot, planId: normalizedPlanId }) : normalizedPlanId))
-    const persistedPhotoMap = new Map()
+    const persistedPhotoMap = new Map<string, any>()
     database.readTable('photo')
       .filter((row) => String(row?.reportId ?? '') === storageId)
       .forEach((row) => {

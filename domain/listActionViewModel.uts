@@ -19,21 +19,23 @@ const CARD_ACTIONS = {
 
 /**
  * 根据当前列表页签返回与 H5 顺序一致的浮动菜单操作。
+ * statusKey 为当前页签标识（planned/report）；返回对应浮动菜单项数组，其他页签返回空数组。
  */
-export function buildFabActions(statusKey) {
+export function buildFabActions(statusKey: string): UTSJSONObject[] {
   if (statusKey === 'planned') {
     return [FAB_ACTIONS.merge, FAB_ACTIONS.scan, FAB_ACTIONS.search, FAB_ACTIONS.quick]
   }
   if (statusKey === 'report') {
     return [FAB_ACTIONS.scan, FAB_ACTIONS.search]
   }
-  return []
+  return [] as UTSJSONObject[]
 }
 
 /**
  * 根据本机缓存、锁状态和当前用户计算下载状态，忽略线上下载时间。
+ * options 含 isLocalDownloaded、lockFlag、inspectorId、currentUserId；返回 downloaded/locked/available。
  */
-export function resolveDownloadState(options: any = {}) {
+export function resolveDownloadState(options: any = {}): string {
   if (options?.isLocalDownloaded === true) return 'downloaded'
   if (parseInt(String(options?.lockFlag ?? 0)) !== 1) return 'available'
 
@@ -46,9 +48,10 @@ export function resolveDownloadState(options: any = {}) {
 
 /**
  * 按 H5 的可见性与顺序生成卡片右侧“更多”菜单操作。
+ * options 含 downloadState、statusKey、manageActionsInCard 等；返回按顺序排列的卡片操作项数组。
  */
-export function buildCardActions(options: any = {}) {
-  const actions = []
+export function buildCardActions(options: any = {}): UTSJSONObject[] {
+  const actions: UTSJSONObject[] = []
   const downloadState = String(options?.downloadState ?? 'available')
   const statusKey = String(options?.statusKey ?? 'planned')
   const manageActionsInCard = options?.manageActionsInCard === true
@@ -70,8 +73,9 @@ export function buildCardActions(options: any = {}) {
 
 /**
  * 优先处理合并和报告；非本机下载的任务不得绕过下载确认进入详情。
+ * options 含 selectionMode、status、downloadState、isLocalDownloaded、manageActionsInCard；返回点击动作标识。
  */
-export function resolveCardClickAction(options: any = {}) {
+export function resolveCardClickAction(options: any = {}): string {
   if (options?.selectionMode === true) return 'toggle-merge'
   if (parseInt(String(options?.status ?? 0)) === 3) return 'open-actions'
   const downloadState = String(options?.downloadState ?? 'available')
@@ -84,8 +88,9 @@ export function resolveCardClickAction(options: any = {}) {
 
 /**
  * 判断当前状态是否允许启动一次新的离线数据同步。
+ * options 含 isSyncing、isOnline、pendingCount；返回联网且有待同步项时为 true。
  */
-export function canStartSync(options: any = {}) {
+export function canStartSync(options: any = {}): boolean {
   return options?.isSyncing !== true
     && options?.isOnline === true
     && parseInt(String(options?.pendingCount ?? 0)) > 0

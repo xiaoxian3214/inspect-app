@@ -3,9 +3,14 @@
 	"appid": "__UNI__1FFA0B1",
 	"description": "支持 Android 与 iOS 的离线验货应用",
 	"versionName": "1.0.1",
-	"versionCode": "100",
+	"versionCode": "101",
 	"uni-app-x": {
-		"styleIsolationVersion": "2"
+		"styleIsolationVersion": "2",
+		"vapor": true,
+		/* 蒸汽渲染目标：bytecode 走字节码解释器（12 次 SIGSEGV 全部发生在 TemplateRender::RenderInstructionRange），
+		   改用 nativecode 把模板编译为原生渲染指令，保留蒸汽模式同时绕开该解释器。
+		   若 nativecode 无法编译/基座不支持，改回 "bytecode" 即可。 */
+		"vapor-render-target": "nativecode"
 	},
 	/* 快应用特有相关 */
 	"quickapp": {},

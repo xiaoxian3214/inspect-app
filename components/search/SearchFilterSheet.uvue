@@ -20,7 +20,7 @@
 					<text class="section-title">{{ translateText('验货类型') }}</text>
 					<text v-if="loadingTypes" class="loading-text">{{ translateText('加载中...') }}</text>
 				</view>
-				<scroll-view class="type-scroll" :scroll-x="true">
+				<scroll-view class="type-scroll" direction="horizontal">
 					<view class="chip-list nowrap">
 						<view v-for="option in displayInspectTypes" :key="option.value" class="chip" :class="{ active: filterDraft.inspectType === option.value }" @click="selectInspectType(option.value)">
 							<text class="chip-text">{{ option.label }}</text>

@@ -1,0 +1,61 @@
+<template>
+	<view class="capture-toolbar">
+		<view class="toolbar-action" @click="pickAlbum">
+			<image class="toolbar-icon" src="/static/camera/xiangce.png" mode="aspectFit" />
+			<text class="toolbar-label">{{ translateText('相册') }}</text>
+		</view>
+		<view class="shutter-wrap" :class="{ disabled: disabled }" @click="pressShutter">
+			<image class="shutter-icon" :src="shutterIcon" mode="aspectFit" />
+		</view>
+		<view class="toolbar-action" :class="{ disabled: !finishEnabled }" @click="finishCapture">
+			<text class="toolbar-label">{{ translateText('完成') }}</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+
+	const props = defineProps({
+		captureMode: { type: String, default: 'photo' },
+		recording: { type: Boolean, default: false },
+		disabled: { type: Boolean, default: false },
+		finishEnabled: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['pick-album', 'press-shutter', 'finish-capture'])
+
+	/** 为原生模板提供可调用的翻译方法。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
+
+	/** 快门图标：拍照用相机图标，录像待录制用录像图标，录制中用停止图标。 */
+	const shutterIcon = computed((): string => {
+		if (props.captureMode === 'video') return props.recording ? '/static/camera/stop.png' : '/static/camera/doing.png'
+		return '/static/camera/shutter.png'
+	})
+
+	/** 通知页面从系统相册补充照片。 */
+	function pickAlbum(): void {
+		emit('pick-album')
+	}
+	/** 通知页面按下快门；录像进行中即使限流也可停止。 */
+	function pressShutter(): void {
+		if (props.disabled && !props.recording) return
+		emit('press-shutter')
+	}
+	/** 通知页面完成拍摄并回传已拍媒体；没有媒体时由页面给出提示。 */
+	function finishCapture(): void {
+		emit('finish-capture')
+	}
+</script>
+
+<style>
+	.capture-toolbar { height: 124rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 0 32rpx; background-color: #0f172a; }
+	.toolbar-action { min-width: 120rpx; height: 112rpx; flex-direction: row; align-items: center; justify-content: center; }
+	.toolbar-action.disabled { opacity: 0.4; }
+	.toolbar-icon { width: 56rpx; height: 56rpx; }
+	.toolbar-label { margin-left: 6rpx; color: #e2e8f0; font-size: 24rpx; }
+	.shutter-wrap { width: 112rpx; height: 112rpx; align-items: center; justify-content: center; }
+	.shutter-wrap.disabled { opacity: 0.4; }
+	.shutter-icon { width: 104rpx; height: 104rpx; }
+</style>

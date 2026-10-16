@@ -6,7 +6,7 @@
 				<view class="top-icon-button" @click="showUserMenu">
 					<AppIcon type="bars" :size="24" color="#ffffff" />
 				</view>
-				<text class="title">{{ t('验货') }}</text>
+				<text class="title">{{ translateText('验货') }}</text>
 				<OfflineSyncStatus
 					class="sync-entry"
 					:is-online="online"
@@ -25,7 +25,7 @@
 					@click="switchTab(tab.key)"
 				>
 					<text class="tab-icon">{{ tab.icon }}</text>
-					<text class="tab-text">{{ t(tab.label) }}</text>
+					<text class="tab-text">{{ translateText(tab.label) }}</text>
 					<text v-if="counts[tab.key] > 0" class="tab-badge">{{ counts[tab.key] }}</text>
 					<view v-if="activeTab === tab.key" class="tab-indicator"></view>
 				</view>
@@ -33,38 +33,38 @@
 		</view>
 		<scroll-view
 			class="content"
-			:scroll-y="true"
+			direction="vertical"
 		>
 			<view v-if="activeTab === 'local'" class="group-list">
 				<view v-if="loading && localPlanRows.length === 0" class="loading">
 					<text class="loading-icon">⟳</text>
-					<text>{{ t('读取本地数据中...') }}</text>
+					<text>{{ translateText('读取本地数据中...') }}</text>
 				</view>
 				<view v-else-if="localPlanRows.length === 0" class="tip-card">
-					<view class="tip-title">{{ t(errorMessage !== '' ? '读取本地数据失败' : '暂无本地下载数据') }}</view>
-					<view class="tip-sub">{{ t(errorMessage !== '' ? errorMessage : '下载的验货计划、报告、检查项与疵点会关联保存到本机 SQLite。') }}</view>
-					<button class="retry-btn" @click="refreshLocalList">{{ t('重新读取') }}</button>
+					<view class="tip-title">{{ translateText(errorMessage !== '' ? '读取本地数据失败' : '暂无本地下载数据') }}</view>
+					<view class="tip-sub">{{ translateText(errorMessage !== '' ? errorMessage : '下载的验货计划、报告、检查项与疵点会关联保存到本机 SQLite。') }}</view>
+					<button class="retry-btn" @click="refreshLocalList">{{ translateText('重新读取') }}</button>
 				</view>
 				<view v-else>
-					<view v-if="errorMessage !== ''" class="inline-notice">{{ t(errorMessage) }}</view>
-					<view class="inline-notice">{{ t('本机 SQLite · 验货计划表 · 共 {count} 条（包含所有状态）', { count: localPlanRows.length }) }}</view>
-					<button class="local-refresh-btn" @click="refreshLocalList">{{ t('重新读取本地数据') }}</button>
+					<view v-if="errorMessage !== ''" class="inline-notice">{{ translateText(errorMessage) }}</view>
+					<view class="inline-notice">{{ translateText('本机 SQLite · 验货计划表 · 共 {count} 条（包含所有状态）', { count: localPlanRows.length }) }}</view>
+					<button class="local-refresh-btn" @click="refreshLocalList">{{ translateText('重新读取本地数据') }}</button>
 					<LocalReportRecord v-for="row in localPlanRows" :key="row.planId" :row="row" />
 				</view>
 			</view>
 			<view v-else-if="loading && groups.length === 0" class="loading">
 				<text class="loading-icon">⟳</text>
-				<text>{{ t('加载中...') }}</text>
+				<text>{{ translateText('加载中...') }}</text>
 			</view>
 
 			<view v-else-if="groups.length === 0" class="tip-card">
-				<view class="tip-title">{{ t(emptyTitle) }}</view>
-				<view class="tip-sub">{{ t(emptySubtitle) }}</view>
-				<button v-if="errorMessage !== ''" class="retry-btn" @click="refreshList">{{ t('重新加载') }}</button>
+				<view class="tip-title">{{ translateText(emptyTitle) }}</view>
+				<view class="tip-sub">{{ translateText(emptySubtitle) }}</view>
+				<button v-if="errorMessage !== ''" class="retry-btn" @click="refreshList">{{ translateText('重新加载') }}</button>
 			</view>
 
 			<view v-else class="group-list">
-				<view v-if="errorMessage !== ''" class="inline-notice">{{ t(errorMessage) }}</view>
+				<view v-if="errorMessage !== ''" class="inline-notice">{{ translateText(errorMessage) }}</view>
 				<view v-for="group in groups" :key="group.groupKey" class="plan-group">
 					<view class="order-header">
 						<text class="order-no">{{ group.clientOrderNo }}</text>
@@ -77,10 +77,10 @@
 					</view>
 					<view class="supplier-row">
 						<text class="supplier-name">{{ group.supplierName }}</text>
-						<text class="order-date">{{ formatDate(group.orderDate) }}</text>
+						<text class="order-date">{{ formatDate(group.orderDate as string) }}</text>
 					</view>
 					<InspectionPlanCard
-						v-for="item in group.items"
+						v-for="item in (group.items as UTSJSONObject[])"
 						:key="getPlanUniqueId(item)"
 						:item="item"
 						:show-download="true"
@@ -104,21 +104,21 @@
 
 			<view v-if="activeTab !== 'local' && !loading" class="pagination-bar">
 				<button class="load-more-btn" :disabled="loadingMore" @click="loadMore">
-					{{ t(loadingMore ? '加载中...' : '加载更多') }}
+					{{ translateText(loadingMore ? '加载中...' : '加载更多') }}
 				</button>
 				<view v-if="shouldShowPagination" class="pagination-info">
-					{{ t('第 {page} / {pages} 页，共 {total} 条', { page: currentPage, pages: totalPages, total }) }}
+					{{ translateText('第 {page} / {pages} 页，共 {total} 条', { page: currentPage, pages: totalPages, total }) }}
 				</view>
 				<view v-if="shouldShowPagination" class="pagination-actions">
-					<button class="page-nav-btn" :disabled="loadingMore || currentPage <= 1" @click="loadPrevPage">{{ t('上一页') }}</button>
-					<button class="page-nav-btn" :disabled="loadingMore || currentPage >= totalPages" @click="loadNextPage">{{ t('下一页') }}</button>
+					<button class="page-nav-btn" :disabled="loadingMore || currentPage <= 1" @click="loadPrevPage">{{ translateText('上一页') }}</button>
+					<button class="page-nav-btn" :disabled="loadingMore || currentPage >= totalPages" @click="loadNextPage">{{ translateText('下一页') }}</button>
 				</view>
 			</view>
 			<view class="content-space"></view>
 		</scroll-view>
 		<view v-if="mergeMode" class="merge-action-bar">
-			<button class="merge-action-btn cancel" @click="cancelMergeMode">{{ t('取消') }}</button>
-			<button class="merge-action-btn confirm" :class="{ disabled: mergeSelectedItems.length < 2 || operationSubmitting }" :disabled="mergeSelectedItems.length < 2 || operationSubmitting" @click="openMergeConfirm">{{ t('合并验货') }}（{{ mergeSelectedItems.length }}）</button>
+			<button class="merge-action-btn cancel" @click="cancelMergeMode">{{ translateText('取消') }}</button>
+			<button class="merge-action-btn confirm" :class="{ disabled: mergeSelectedItems.length < 2 || operationSubmitting }" :disabled="mergeSelectedItems.length < 2 || operationSubmitting" @click="openMergeConfirm">{{ translateText('合并验货') }}（{{ mergeSelectedItems.length }}）</button>
 		</view>
 
 		<view v-if="fabActions.length > 0 && !mergeMode" class="fab" @click="showActionMenu">
@@ -193,6 +193,9 @@
 	import AppIcon from '../../components/icons/AppIcon.uvue'
 	import OfflineSyncStatus from '../../components/sync/OfflineSyncStatus.uvue'
 	import { applyLocale, t } from '../../i18n/index.uts'
+
+	/** 为 Android 原生模板提供可调用的翻译方法，保留占位符参数。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
 	import { buildFabActions } from '../../domain/listActionViewModel.uts'
 	import { filterReleasedPlans, getPlanUniqueId, groupPlans, isPlanInTab, mergePlansLocalFirst } from '../../domain/planViewModel.uts'
 	import { buildSplitPreview, getMergeGroupTargets, getMergedPlanId, getItemInspectType, getItemParentPlanId, getPlanOperationId, isBaseMergeEligible, isMergeSelectable, isSplitAvailable, markMergedSourcePlans, markSplitSourcePlans } from '../../domain/searchViewModel.uts'
@@ -212,85 +215,89 @@
 			syncOfflineDataAutomatically
 		} from '../../runtime/appRuntime.uts'
 
-	const pageSize = 100
-	const tabs = [
+	/** 列表状态页签的固定字段，模板和脚本都按静态字段访问而不是动态属性。 */
+	type TabItem = { key: string, label: string, icon: string }
+
+	const pageSize: number = 100
+	const tabs: TabItem[] = [
 		{ key: 'planned', label: '已定计划', icon: 'Ⅱ' },
 		{ key: 'progress', label: '进行中', icon: '▶' },
 		{ key: 'report', label: '报告', icon: '✓' },
 		{ key: 'local', label: '本地下载', icon: '↓' }
 	]
 
-	const activeTab = ref('planned')
-	const localPlans = ref([])
-	const localPlanRows = ref([])
-	const remoteListMap = reactive({ planned: [], progress: [], report: [] })
+	const activeTab = ref<string>('planned')
+	const localPlans = ref<UTSJSONObject[]>([])
+	const localPlanRows = ref<UTSJSONObject[]>([])
+	/** 远程页签缓存按页签键保存计划卡片数组，空数组显式标注元素类型。 */
+	const remoteListMap = reactive({ planned: [] as UTSJSONObject[], progress: [] as UTSJSONObject[], report: [] as UTSJSONObject[] })
 	const pageMap = reactive({ planned: 0, progress: 0, report: 0 })
 	const totalMap = reactive({ planned: 0, progress: 0, report: 0 })
-	const loading = ref(false)
-	const loadingMore = ref(false)
-	const isSyncingData = ref(false)
-	const failedSyncCount = ref(0)
-	const online = ref(true)
-	const errorMessage = ref('')
-	const showMenu = ref(false)
-	const showUserDrawer = ref(false)
-	const displayName = ref('验货员')
-	const userCode = ref('')
-	const userEmail = ref('')
-	const currentUserId = ref('')
-	const supportedLocales = ['zh', 'en', 'vi']
-	const currentLanguage = ref('zh')
-	const inviteGenerating = ref(false)
-	const isClearingLocalCache = ref(false)
-	const localTotal = ref(0)
-	const pendingSyncCount = ref(0)
-	const pendingSyncItems = ref([])
-	const latestDownloadedAt = ref('')
-	const inspectTypeOptions = ref([])
-	const templateOptions = ref([])
-	const mergeMode = ref(false)
-	const showMergeSheet = ref(false)
-	const mergeSheetStage = ref('type')
-	const mergeInspectType = ref('')
-	const mergeSelectedItems = ref([])
-	const mergeTemplateId = ref('')
-	const mergeTemplateName = ref('')
-	const mergedPlanId = ref('')
-	const showSplitSheet = ref(false)
-	const splitTargetPlanId = ref('')
-	const splitPreviewItems = ref([])
-	const splitResultItems = ref([])
-	const splitDownloadedIds = ref([])
-	const operationSubmitting = ref(false)
+	const loading = ref<boolean>(false)
+	const loadingMore = ref<boolean>(false)
+	const isSyncingData = ref<boolean>(false)
+	const failedSyncCount = ref<number>(0)
+	const online = ref<boolean>(true)
+	const errorMessage = ref<string>('')
+	const showMenu = ref<boolean>(false)
+	const showUserDrawer = ref<boolean>(false)
+	const displayName = ref<string>('验货员')
+	const userCode = ref<string>('')
+	const userEmail = ref<string>('')
+	const currentUserId = ref<string>('')
+	const supportedLocales: string[] = ['zh', 'en', 'vi']
+	const currentLanguage = ref<string>('zh')
+	const inviteGenerating = ref<boolean>(false)
+	const isClearingLocalCache = ref<boolean>(false)
+	const localTotal = ref<number>(0)
+	const pendingSyncCount = ref<number>(0)
+	const pendingSyncItems = ref<UTSJSONObject[]>([])
+	const latestDownloadedAt = ref<string>('')
+	const inspectTypeOptions = ref<UTSJSONObject[]>([])
+	const templateOptions = ref<UTSJSONObject[]>([])
+	const mergeMode = ref<boolean>(false)
+	const showMergeSheet = ref<boolean>(false)
+	const mergeSheetStage = ref<string>('type')
+	const mergeInspectType = ref<string>('')
+	const mergeSelectedItems = ref<UTSJSONObject[]>([])
+	const mergeTemplateId = ref<string>('')
+	const mergeTemplateName = ref<string>('')
+	const mergedPlanId = ref<string>('')
+	const showSplitSheet = ref<boolean>(false)
+	const splitTargetPlanId = ref<string>('')
+	const splitPreviewItems = ref<UTSJSONObject[]>([])
+	const splitResultItems = ref<UTSJSONObject[]>([])
+	const splitDownloadedIds = ref<string[]>([])
+	const operationSubmitting = ref<boolean>(false)
 
 	/**
 	 * 使用 H5 的本地优先规则合并当前页签的本地摘要和远程缓存。
 	 */
-	const visiblePlans = computed(() => mergePlansLocalFirst(
+	const visiblePlans = computed((): UTSJSONObject[] => (mergePlansLocalFirst(
 		localPlans.value,
 		remoteListMap[activeTab.value] ?? []
-	).filter((item) => isPlanInTab(item, activeTab.value)))
+	) as UTSJSONObject[]).filter((item: UTSJSONObject): boolean => isPlanInTab(item, activeTab.value)))
 
 	/**
 	 * 按订单号分组当前可见计划，供列表模板直接渲染。
 	 */
-	const groups = computed(() => groupPlans(visiblePlans.value))
+	const groups = computed((): UTSJSONObject[] => groupPlans(visiblePlans.value) as UTSJSONObject[])
 
 	/** 仅根据 SQLite 已读取的计划摘要判断卡片是否存在本地缓存。 */
-	function isStoredLocally(item) {
+	function isStoredLocally(item: UTSJSONObject): boolean {
 		const planId = String(getPlanUniqueId(item) ?? '').trim()
-		return planId !== '' && localPlans.value.some((plan) => String(getPlanUniqueId(plan) ?? '').trim() === planId)
+		return planId !== '' && localPlans.value.some((plan: UTSJSONObject): boolean => String(getPlanUniqueId(plan) ?? '').trim() === planId)
 	}
 
 	/**
 	 * 合并状态页签的本地和远程数量，并单独统计 SQLite 中的全部验货计划行。
 	 */
-	const counts = computed(() => {
-		const result = { planned: 0, progress: 0, report: 0, local: localPlanRows.value.length }
+	const counts = computed((): UTSJSONObject => {
+		const result: UTSJSONObject = { planned: 0, progress: 0, report: 0, local: localPlanRows.value.length }
 		for (const tab of tabs) {
 			if (tab.key === 'local') continue
-			const merged = mergePlansLocalFirst(localPlans.value, remoteListMap[tab.key] ?? [])
-			const visibleCount = merged.filter((item) => isPlanInTab(item, tab.key)).length
+			const merged = mergePlansLocalFirst(localPlans.value, remoteListMap[tab.key] ?? []) as UTSJSONObject[]
+			const visibleCount = merged.filter((item: UTSJSONObject): boolean => isPlanInTab(item, tab.key)).length
 			result[tab.key] = Math.max(visibleCount, parseInt(String(totalMap[tab.key] ?? 0)))
 		}
 		return result
@@ -299,32 +306,32 @@
 	/**
 	 * 返回当前页签已加载的远程页码，尚未加载时按第一页展示。
 	 */
-	const currentPage = computed(() => parseInt(String(pageMap[activeTab.value] ?? 1)))
+	const currentPage = computed((): number => parseInt(String(pageMap[activeTab.value] ?? 1)))
 
 	/**
 	 * 返回当前页签本地可见数量与远程接口总数的较大值。
 	 */
-	const total = computed(() => Math.max(visiblePlans.value.length, parseInt(String(totalMap[activeTab.value] ?? 0))))
+	const total = computed((): number => Math.max(visiblePlans.value.length, parseInt(String(totalMap[activeTab.value] ?? 0))))
 
 	/**
 	 * 判断当前页签是否已经加载过云端列表。
 	 */
-	const hasRemoteLoaded = computed(() => parseInt(String(pageMap[activeTab.value] ?? 0)) > 0)
+	const hasRemoteLoaded = computed((): boolean => parseInt(String(pageMap[activeTab.value] ?? 0)) > 0)
 
 	/**
 	 * 计算当前远程结果对应的总页数。
 	 */
-	const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+	const totalPages = computed((): number => Math.max(1, Math.ceil(total.value / pageSize)))
 
 	/**
 	 * 判断是否需要展示上一页和下一页操作。
 	 */
-	const shouldShowPagination = computed(() => total.value > pageSize)
+	const shouldShowPagination = computed((): boolean => total.value > pageSize)
 
 	/**
 	 * 根据当前页签返回空状态标题。
 	 */
-	const emptyTitle = computed(() => {
+	const emptyTitle = computed((): string => {
 		if (activeTab.value === 'progress') return '暂无进行中的验货'
 		if (activeTab.value === 'report') return '暂无验货报告'
 		return '暂无已定计划'
@@ -333,7 +340,7 @@
 	/**
 	 * 根据联网状态和当前页签返回空状态说明。
 	 */
-	const emptySubtitle = computed(() => {
+	const emptySubtitle = computed((): string => {
 		if (!online.value) return '当前离线，仅展示本机已缓存验货数据。'
 		if (activeTab.value === 'progress') return '从已定计划开始验货后，会自动进入进行中列表。'
 		if (activeTab.value === 'report') return '完成并保存的报告会显示在这里。'
@@ -343,15 +350,15 @@
 	/**
 	 * 按 H5 页签规则生成右下角浮动菜单操作。
 	 */
-	const fabActions = computed(() => buildFabActions(activeTab.value))
+	const fabActions = computed((): UTSJSONObject[] => buildFabActions(activeTab.value) as UTSJSONObject[])
 
 	onLoad((options) => {
 		const requestedTab = String(options?.tab ?? '')
-		if (tabs.some((tab) => tab.key === requestedTab)) activeTab.value = requestedTab
+		if (tabs.some((tab: TabItem): boolean => tab.key === requestedTab)) activeTab.value = requestedTab
 	})
 
 	/** 进入列表时先展示本地数据，再在后台同步完成后刷新一次状态。 */
-	async function refreshListWithAutomaticSync() {
+	async function refreshListWithAutomaticSync(): Promise<void> {
 		try {
 			await initializeRuntime()
 			currentLanguage.value = String(getAppSetting('qcm_language') ?? 'zh')
@@ -368,7 +375,7 @@
 	/**
 	 * 将 ISO 时间格式化为列表抽屉使用的分钟精度文本。
 	 */
-	function formatDateTime(value) {
+	function formatDateTime(value: string): string {
 		const text = String(value ?? '')
 		if (text.length < 16) return text
 		return text.substring(0, 16).replace('T', ' ')
@@ -377,7 +384,7 @@
 	/**
 	 * 将日期值格式化为年月日。
 	 */
-	function formatDate(value) {
+	function formatDate(value: string): string {
 		const text = String(value ?? '')
 		return text.length >= 10 ? text.substring(0, 10) : text
 	}
@@ -385,33 +392,35 @@
 	/**
 	 * 重新统计用户、本地计划和待同步数据概览。
 	 */
-	async function refreshOverview() {
+	async function refreshOverview(): Promise<void> {
 		const session = getCurrentSession()
-		displayName.value = (session?.realName || session?.userName) ?? '验货员'
-		userCode.value = (session?.userName || session?.userId) ?? ''
-		userEmail.value = session?.email ?? ''
-		currentUserId.value = session?.userId ?? ''
+		displayName.value = String((session?.realName || session?.userName) ?? '验货员')
+		userCode.value = String((session?.userName || session?.userId) ?? '')
+		userEmail.value = String(session?.email ?? '')
+		currentUserId.value = String(session?.userId ?? '')
 		const overview = await planListService.getOverview()
 		const syncOverview = await getOfflineSyncOverview()
 		localTotal.value = parseInt(String(overview?.total ?? 0))
 		pendingSyncCount.value = parseInt(String(syncOverview?.pendingCount ?? 0))
 		failedSyncCount.value = parseInt(String(syncOverview?.failedCount ?? 0))
-		pendingSyncItems.value = Array.isArray(syncOverview?.queueItems) ? syncOverview.queueItems : []
-		latestDownloadedAt.value = formatDateTime(overview?.latestDownloadedAt ?? '')
+		const queueItems = syncOverview?.queueItems
+		pendingSyncItems.value = Array.isArray(queueItems) ? queueItems as UTSJSONObject[] : []
+		latestDownloadedAt.value = formatDateTime(String(overview?.latestDownloadedAt ?? ''))
 	}
 
 	/**
 	 * 对远程单页结果按计划 ID 去重，保持 H5 首次出现顺序。
+	 * records 为接口返回的计划 JSON 行数组，逐行按对象读取，避免动态元素类型。
 	 */
-	function normalizeRemoteRecords(records) {
-		const source = Array.isArray(records) ? records : []
-		const normalized = []
-		const seenIds = new Set()
+	function normalizeRemoteRecords(records: UTSJSONObject[]): UTSJSONObject[] {
+		const source: UTSJSONObject[] = Array.isArray(records) ? records : []
+		const normalized: UTSJSONObject[] = [] as UTSJSONObject[]
+		const seenIds = new Set<string>()
 		for (const item of source) {
 			const planId = String(getPlanUniqueId(item) ?? '').trim()
 			if (planId !== '' && seenIds.has(planId)) continue
 			if (planId !== '') seenIds.add(planId)
-			normalized.push(item)
+			normalized.push(item as UTSJSONObject)
 		}
 		return normalized
 	}
@@ -419,15 +428,15 @@
 	/**
 	 * 从本地数据库读取计划摘要与计划表原始行，不清除远程页签缓存。
 	 */
-	async function loadLocalPlanSummaries() {
-		localPlans.value = await planListService.listPlanSummaries()
-		localPlanRows.value = await reportRepository.listStoredInspectionPlanRows()
+	async function loadLocalPlanSummaries(): Promise<void> {
+		localPlans.value = ((await planListService.listPlanSummaries()) ?? []) as UTSJSONObject[]
+		localPlanRows.value = ((await reportRepository.listStoredInspectionPlanRows()) ?? []) as UTSJSONObject[]
 	}
 
 	/**
 	 * 加载指定页数据；加载更多可仅显示按钮状态，远程失败时保留本地列表。
 	 */
-	async function loadPage(page, options: any = {}) {
+	async function loadPage(page: number, options: UTSJSONObject = {}): Promise<void> {
 		const shouldFetchRemote = options?.remote === true
 		const appendMessage = options?.appendMessage === true
 		const useLoadingMore = options?.loadingMore === true || (page !== 1 && groups.value.length > 0)
@@ -449,7 +458,8 @@
 						page,
 						pageSize
 					})
-					remoteListMap[activeTab.value] = normalizeRemoteRecords(result?.records ?? [])
+					const remoteRecords = result?.records
+					remoteListMap[activeTab.value] = normalizeRemoteRecords(Array.isArray(remoteRecords) ? remoteRecords as UTSJSONObject[] : [])
 					pageMap[activeTab.value] = page
 					totalMap[activeTab.value] = parseInt(String(result?.total ?? 0))
 				} catch (error) {
@@ -469,7 +479,7 @@
 	/**
 	 * 只从本地数据库重新加载当前页签。
 	 */
-	async function refreshLocalList() {
+	async function refreshLocalList(): Promise<void> {
 		const showLoading = activeTab.value === 'local' ? localPlanRows.value.length === 0 : groups.value.length === 0
 		if (showLoading) loading.value = true
 		errorMessage.value = ''
@@ -486,11 +496,11 @@
 	}
 
 	/** 接收卡片释放结果，立即移除本地、远程页签缓存和合并多选中的计划。 */
-	function handleCardReleased(payload) {
+	function handleCardReleased(payload: UTSJSONObject | null): void {
 		const removedIds = payload?.removedIds ?? []
-		const parentPlanId = payload?.parentPlanId ?? ''
-		localPlans.value = filterReleasedPlans(localPlans.value, removedIds, parentPlanId)
-		mergeSelectedItems.value = filterReleasedPlans(mergeSelectedItems.value, removedIds, parentPlanId)
+		const parentPlanId = String(payload?.parentPlanId ?? '')
+		localPlans.value = filterReleasedPlans(localPlans.value, removedIds, parentPlanId) as UTSJSONObject[]
+		mergeSelectedItems.value = filterReleasedPlans(mergeSelectedItems.value, removedIds, parentPlanId) as UTSJSONObject[]
 		for (const tab of tabs) {
 			if (tab.key === 'local') continue
 			remoteListMap[tab.key] = filterReleasedPlans(remoteListMap[tab.key], removedIds, parentPlanId)
@@ -500,7 +510,7 @@
 	/**
 	 * 手动刷新状态页签的云端列表；本地下载页签仅重新读取 SQLite。
 	 */
-	async function refreshList() {
+	async function refreshList(): Promise<void> {
 		if (activeTab.value === 'local') {
 			await refreshLocalList()
 			return
@@ -511,7 +521,7 @@
 	/**
 	 * 同步本地脏报告；防止重复点击启动并发或循环同步。
 	 */
-	async function syncData() {
+	async function syncData(): Promise<void> {
 		if (isSyncingData.value) return
 		await initializeRuntime()
 		online.value = await isNetworkOnline()
@@ -547,7 +557,7 @@
 	}
 
 	/** 切换状态页签时复用已加载的本地摘要与远程缓存。 */
-	async function switchTab(tabKey) {
+	async function switchTab(tabKey: string): Promise<void> {
 		if (activeTab.value === tabKey) return
 		if (mergeMode.value) cancelMergeMode()
 		activeTab.value = tabKey
@@ -556,7 +566,7 @@
 	/**
 	 * 与 H5 一致重新请求远程第一页，并只显示加载更多按钮的 loading 状态。
 	 */
-	async function loadMore() {
+	async function loadMore(): Promise<void> {
 		if (loadingMore.value) return
 		await loadPage(1, { remote: true, appendMessage: true, loadingMore: true })
 	}
@@ -564,7 +574,7 @@
 	/**
 	 * 加载远程上一页。
 	 */
-	async function loadPrevPage() {
+	async function loadPrevPage(): Promise<void> {
 		if (!hasRemoteLoaded.value || currentPage.value <= 1) return
 		await loadPage(currentPage.value - 1, { remote: true, appendMessage: true })
 	}
@@ -572,7 +582,7 @@
 	/**
 	 * 加载远程下一页。
 	 */
-	async function loadNextPage() {
+	async function loadNextPage(): Promise<void> {
 		if (!hasRemoteLoaded.value || currentPage.value >= totalPages.value) return
 		await loadPage(currentPage.value + 1, { remote: true, appendMessage: true })
 	}
@@ -580,21 +590,21 @@
 	/**
 	 * 打开用户信息抽屉。
 	 */
-	function showUserMenu() {
+	function showUserMenu(): void {
 		showUserDrawer.value = true
 	}
 
 	/**
 	 * 关闭用户信息抽屉。
 	 */
-	function closeUserDrawer() {
+	function closeUserDrawer(): void {
 		showUserDrawer.value = false
 	}
 
 	/**
 	 * 保存 H5 同源语言代码并让后续接口请求立即使用该语言。
 	 */
-	async function setLanguage(languageCode) {
+	async function setLanguage(languageCode: string): Promise<void> {
 		const normalizedLanguage = supportedLocales.includes(String(languageCode)) ? String(languageCode) : 'zh'
 		try {
 			await setAppSetting('qcm_language', normalizedLanguage)
@@ -607,7 +617,7 @@
 	/**
 	 * 生成供应商邀请链接并复制到系统剪贴板。
 	 */
-	async function handleInviteVendor() {
+	async function handleInviteVendor(): Promise<void> {
 		if (inviteGenerating.value) return
 		inviteGenerating.value = true
 		try {
@@ -629,12 +639,12 @@
 	 */
 	/** 关闭用户抽屉并跳转到自定义拍照页面。 */
 	/** 关闭用户抽屉并跳转到自定义拍照页面（对标 takePhoto.nvue 单拍模式）。 */
-	function handleOpenCustomCamera() {
+	function handleOpenCustomCamera(): void {
 		closeUserDrawer()
 		uni.navigateTo({ url: '/pages/report/simple-camera' })
 	}
 	/** 接收自定义拍照页面回传的照片路径（对标 takePhoto.nvue 的 setImage 模式）。 */
-	function setImage(result: UTSJSONObject) {
+	function setImage(result: UTSJSONObject): void {
 		const path = String(result?.path ?? '').trim()
 		if (path !== '') {
 			console.log('[list] custom camera photo saved:', path)
@@ -648,7 +658,7 @@
 	/**
 	 * 展示本地计划、待同步数量和最近更新时间摘要。
 	 */
-	async function handleViewLocalData() {
+	async function handleViewLocalData(): Promise<void> {
 		uni.navigateTo({ url: '/pages/debug/database' })
 	}
 
@@ -658,14 +668,14 @@
 	/**
 	 * 使用原生确认框返回布尔结果，供危险操作串联多次确认。
 	 */
-	function showDrawerConfirm(options) {
-		return new Promise((resolve) => {
+	function showDrawerConfirm(options: UTSJSONObject): Promise<boolean> {
+		return new Promise<boolean>((resolve) => {
 			uni.showModal({
-				title: t(options?.title ?? '提示'),
-				content: t(options?.content ?? ''),
-				confirmText: t(options?.confirmText ?? '确定'),
-				cancelText: t(options?.cancelText ?? '取消'),
-				confirmColor: options?.confirmColor ?? '#ef4444',
+				title: t(String(options?.title ?? '提示')),
+				content: t(String(options?.content ?? '')),
+				confirmText: t(String(options?.confirmText ?? '确定')),
+				cancelText: t(String(options?.cancelText ?? '取消')),
+				confirmColor: String(options?.confirmColor ?? '#ef4444'),
 				success: (result) => resolve(result.confirm === true),
 				fail: () => resolve(false)
 			})
@@ -675,7 +685,7 @@
 	/**
 	 * 按 H5 流程执行两次确认后清空全部本地验货缓存。
 	 */
-	async function handleClearLocalCache() {
+	async function handleClearLocalCache(): Promise<void> {
 		if (isClearingLocalCache.value) return
 		closeUserDrawer()
 		const firstConfirmed = await showDrawerConfirm({
@@ -695,9 +705,9 @@
 		isClearingLocalCache.value = true
 		try {
 			await reportRepository.clearPlans()
-			localPlans.value = []
+			localPlans.value = [] as UTSJSONObject[]
 			for (const tab of tabs) {
-				remoteListMap[tab.key] = []
+				remoteListMap[tab.key] = [] as UTSJSONObject[]
 				pageMap[tab.key] = 0
 				totalMap[tab.key] = 0
 			}
@@ -713,7 +723,7 @@
 	/**
 	 * 打开与当前页签匹配的浮动操作菜单。
 	 */
-	function showActionMenu() {
+	function showActionMenu(): void {
 		if (fabActions.value.length === 0) return
 		showMenu.value = true
 	}
@@ -721,14 +731,14 @@
 	/**
 	 * 关闭右下角浮动操作菜单。
 	 */
-	function hideActionMenu() {
+	function hideActionMenu(): void {
 		showMenu.value = false
 	}
 
 	/**
 	 * 根据 H5 菜单操作键执行对应导航或功能提示。
 	 */
-	function handleFabAction(action) {
+	function handleFabAction(action: UTSJSONObject): void {
 		hideActionMenu()
 		const actionKey = String(action?.key ?? '')
 		if (actionKey === 'scan') {
@@ -749,38 +759,38 @@
 	/**
 	 * 跳转搜索页并请求页面自动打开扫码入口。
 	 */
-	function goScanSearch() {
+	function goScanSearch(): void {
 		uni.navigateTo({ url: '/pages/report/search?autoScan=1' })
 	}
 
 	/**
 	 * 跳转到验货计划搜索页。
 	 */
-	function goSearch() {
+	function goSearch(): void {
 		hideActionMenu()
 		closeUserDrawer()
 		uni.navigateTo({ url: '/pages/report/search' })
 	}
 
 	/** 懒加载验货类型字典，接口失败时使用当前已定计划中的类型兜底。 */
-	async function loadInspectTypeOptions() {
+	async function loadInspectTypeOptions(): Promise<void> {
 		if (inspectTypeOptions.value.length > 0) return
 		try {
-			inspectTypeOptions.value = await planApi.getInspectTypeDict()
+			inspectTypeOptions.value = ((await planApi.getInspectTypeDict()) ?? []) as UTSJSONObject[]
 		} catch (error) {
-			const values = Array.from(new Set(visiblePlans.value.map((item) => getItemInspectType(item)).filter((value) => value !== '')))
-			inspectTypeOptions.value = values.map((value, index) => ({ value, label: value, sortOrder: index + 1 }))
+			const values = Array.from(new Set<string>(visiblePlans.value.map((item: UTSJSONObject): string => String(getItemInspectType(item))).filter((value: string): boolean => value !== ''))) as string[]
+			inspectTypeOptions.value = values.map((value: string, index: number): UTSJSONObject => ({ value, label: value, sortOrder: index + 1 }))
 		}
 	}
 
 	/** 懒加载合并计划下载时可选的清单模板。 */
-	async function loadTemplateOptions() {
+	async function loadTemplateOptions(): Promise<void> {
 		if (templateOptions.value.length > 0) return
-		templateOptions.value = await planApi.getPlanTemplates()
+		templateOptions.value = ((await planApi.getPlanTemplates()) ?? []) as UTSJSONObject[]
 	}
 
 	/** 从 FAB 菜单打开 H5 同款验货类型选择弹层。 */
-	async function openMergeFlow() {
+	async function openMergeFlow(): Promise<void> {
 		try {
 			if (!(await isNetworkOnline())) throw new Error('合并验货需要联网，请连接网络后重试')
 			await loadInspectTypeOptions()
@@ -791,70 +801,70 @@
 	}
 
 	/** 更新合并流程选择的验货类型。 */
-	function setMergeInspectType(value) { mergeInspectType.value = String(value ?? '') }
+	function setMergeInspectType(value: string): void { mergeInspectType.value = String(value ?? '') }
 	/** 关闭合并弹层但保留当前卡片多选状态。 */
-	function closeMergeSheet() { showMergeSheet.value = false }
+	function closeMergeSheet(): void { showMergeSheet.value = false }
 	/** 进入合并卡片多选模式并清空上一次结果。 */
-	function startMergeSelection() { if (mergeInspectType.value !== '') { mergeSelectedItems.value = []; mergedPlanId.value = ''; mergeMode.value = true; showMergeSheet.value = false } }
+	function startMergeSelection(): void { if (mergeInspectType.value !== '') { mergeSelectedItems.value = [] as UTSJSONObject[]; mergedPlanId.value = ''; mergeMode.value = true; showMergeSheet.value = false } }
 	/** 返回当前合并选择中的首条计划作为后续兼容性锚点。 */
-	function getMergeAnchorItem() { return mergeSelectedItems.value.length > 0 ? mergeSelectedItems.value[0] : null }
+	function getMergeAnchorItem(): UTSJSONObject | null { return mergeSelectedItems.value.length > 0 ? mergeSelectedItems.value[0] : null }
 	/** 判断当前计划是否已经加入合并选择。 */
-	function isMergeChecked(item) { const id = getPlanOperationId(item); return mergeSelectedItems.value.some((selected) => getPlanOperationId(selected) === id) }
+	function isMergeChecked(item: UTSJSONObject): boolean { const id = String(getPlanOperationId(item)); return mergeSelectedItems.value.some((selected: UTSJSONObject): boolean => String(getPlanOperationId(selected)) === id) }
 	/** 判断计划是否满足当前验货类型和首条计划的 H5 合并规则。 */
-	function isMergeSelectableItem(item) { return isMergeChecked(item) || isMergeSelectable(item, mergeInspectType.value, getMergeAnchorItem()) }
+	function isMergeSelectableItem(item: UTSJSONObject): boolean { return isMergeChecked(item) || isMergeSelectable(item, mergeInspectType.value, getMergeAnchorItem()) }
 	/** 按 H5 规则获取订单组可全选的同工厂、同货类、同类型计划。 */
-	function getGroupTargetItems(group) { return getMergeGroupTargets(group, mergeInspectType.value, mergeSelectedItems.value) }
+	function getGroupTargetItems(group: UTSJSONObject): UTSJSONObject[] { return (getMergeGroupTargets(group, mergeInspectType.value, mergeSelectedItems.value) ?? []) as UTSJSONObject[] }
 	/** 判断订单组内是否存在可合并的计划。 */
-	function canGroupSelectAll(group) { return getGroupTargetItems(group).length > 0 }
+	function canGroupSelectAll(group: UTSJSONObject): boolean { return getGroupTargetItems(group).length > 0 }
 	/** 判断订单组当前兼容计划是否已全部选中。 */
-	function isGroupAllSelected(group) {
+	function isGroupAllSelected(group: UTSJSONObject): boolean {
 		const targets = getGroupTargetItems(group)
-		return targets.length > 0 && targets.every((item) => isMergeChecked(item))
+		return targets.length > 0 && targets.every((item: UTSJSONObject): boolean => isMergeChecked(item))
 	}
 	/** 切换订单组兼容计划的全选状态，保留其他订单组已选计划。 */
-	function toggleGroupSelectAll(group) {
+	function toggleGroupSelectAll(group: UTSJSONObject): void {
 		if (!mergeMode.value) return
 		const targets = getGroupTargetItems(group)
 		if (targets.length === 0) return
-		const targetIds = new Set(targets.map((item) => getPlanOperationId(item)))
+		const targetIds = new Set<string>(targets.map((item: UTSJSONObject): string => String(getPlanOperationId(item))))
 		if (isGroupAllSelected(group)) {
-			mergeSelectedItems.value = mergeSelectedItems.value.filter((item) => !targetIds.has(getPlanOperationId(item)))
+			mergeSelectedItems.value = mergeSelectedItems.value.filter((item: UTSJSONObject): boolean => !targetIds.has(String(getPlanOperationId(item))))
 			return
 		}
-		const selectedIds = new Set(mergeSelectedItems.value.map((item) => getPlanOperationId(item)))
-		mergeSelectedItems.value = [...mergeSelectedItems.value, ...targets.filter((item) => !selectedIds.has(getPlanOperationId(item)))]
+		const selectedIds = new Set<string>(mergeSelectedItems.value.map((item: UTSJSONObject): string => String(getPlanOperationId(item))))
+		mergeSelectedItems.value = [...mergeSelectedItems.value, ...targets.filter((item: UTSJSONObject): boolean => !selectedIds.has(String(getPlanOperationId(item))))]
 	}
 	/** 按 H5 合并资格规则添加或移除当前计划。 */
-	function toggleMergeSelect(item) {
-		const planId = getPlanOperationId(item)
+	function toggleMergeSelect(item: UTSJSONObject): void {
+		const planId = String(getPlanOperationId(item))
 		if (planId === '') { uni.showToast({ title: t('计划ID缺失，无法选择'), icon: 'none' }); return }
-		if (isMergeChecked(item)) { mergeSelectedItems.value = mergeSelectedItems.value.filter((selected) => getPlanOperationId(selected) !== planId); return }
+		if (isMergeChecked(item)) { mergeSelectedItems.value = mergeSelectedItems.value.filter((selected: UTSJSONObject): boolean => String(getPlanOperationId(selected)) !== planId); return }
 		if (!isBaseMergeEligible(item, mergeInspectType.value)) { uni.showToast({ title: t('仅支持未下载、已定计划且未合并的同类型任务'), icon: 'none' }); return }
 		if (!isMergeSelectableItem(item)) { uni.showToast({ title: t('需与首条计划保持同工厂、同货类、同验货类型'), icon: 'none' }); return }
 		mergeSelectedItems.value = [...mergeSelectedItems.value, item]
 	}
 	/** 退出合并模式并清空类型、选择、模板和远程结果。 */
-	function cancelMergeMode() { mergeMode.value = false; showMergeSheet.value = false; mergeSelectedItems.value = []; mergedPlanId.value = ''; mergeTemplateId.value = ''; mergeTemplateName.value = '' }
+	function cancelMergeMode(): void { mergeMode.value = false; showMergeSheet.value = false; mergeSelectedItems.value = [] as UTSJSONObject[]; mergedPlanId.value = ''; mergeTemplateId.value = ''; mergeTemplateName.value = '' }
 	/** 加载清单模板并打开已选计划确认弹层。 */
-	async function openMergeConfirm() {
+	async function openMergeConfirm(): Promise<void> {
 		if (mergeSelectedItems.value.length < 2) return
 		try { await loadTemplateOptions(); if (mergeTemplateId.value === '' && templateOptions.value.length > 0) setMergeTemplate(templateOptions.value[0]); mergeSheetStage.value = 'confirm'; showMergeSheet.value = true }
 		catch (error) { uni.showToast({ title: error?.message ?? t('加载清单失败'), icon: 'none' }) }
 	}
 	/** 更新合并计划下载使用的清单模板。 */
-	function setMergeTemplate(option) { mergeTemplateId.value = String(option?.id ?? ''); mergeTemplateName.value = String(option?.name ?? '') }
+	function setMergeTemplate(option: UTSJSONObject): void { mergeTemplateId.value = String(option?.id ?? ''); mergeTemplateName.value = String(option?.name ?? '') }
 	/** 再次校验全部计划后调用在线合并接口。 */
-	async function confirmMerge() {
+	async function confirmMerge(): Promise<void> {
 		if (operationSubmitting.value || mergeSelectedItems.value.length < 2) return
 		const anchor = mergeSelectedItems.value[0]
-		if (!mergeSelectedItems.value.every((item) => isMergeSelectable(item, mergeInspectType.value, anchor))) { uni.showToast({ title: t('存在不满足合并条件的任务'), icon: 'none' }); return }
-		const sourcePlanIds = mergeSelectedItems.value.map((item) => getPlanOperationId(item))
+		if (!mergeSelectedItems.value.every((item: UTSJSONObject): boolean => isMergeSelectable(item, mergeInspectType.value, anchor))) { uni.showToast({ title: t('存在不满足合并条件的任务'), icon: 'none' }); return }
+		const sourcePlanIds = mergeSelectedItems.value.map((item: UTSJSONObject): string => String(getPlanOperationId(item)))
 		operationSubmitting.value = true
 		try {
 			const response = await planOperationService.mergePlans(sourcePlanIds)
-			mergedPlanId.value = getMergedPlanId(response)
+			mergedPlanId.value = String(getMergedPlanId(response))
 			if (mergedPlanId.value === '') throw new Error('合并成功但未返回计划ID')
-			localPlans.value = markMergedSourcePlans(localPlans.value, sourcePlanIds, mergedPlanId.value)
+			localPlans.value = markMergedSourcePlans(localPlans.value, sourcePlanIds, mergedPlanId.value) as UTSJSONObject[]
 			for (const tab of tabs) {
 				if (tab.key === 'local') continue
 				remoteListMap[tab.key] = markMergedSourcePlans(remoteListMap[tab.key], sourcePlanIds, mergedPlanId.value)
@@ -864,7 +874,7 @@
 		finally { operationSubmitting.value = false }
 	}
 	/** 下载合并生成的新计划到离线数据库，并刷新列表回显。 */
-	async function downloadMergedPlan() {
+	async function downloadMergedPlan(): Promise<void> {
 		if (operationSubmitting.value) return
 		if (mergedPlanId.value === '') { uni.showToast({ title: t('缺少合并后计划ID，无法下载验货'), icon: 'none' }); return }
 		if (mergeTemplateId.value === '') { uni.showToast({ title: t('请选择清单'), icon: 'none' }); return }
@@ -880,40 +890,40 @@
 	}
 
 	/** 查询合并父计划成员并打开拆分预览，优先保留本地完整记录。 */
-	async function openSplitPreview(item) {
+	async function openSplitPreview(item: UTSJSONObject): Promise<void> {
 		if (!isSplitAvailable(item) || operationSubmitting.value) return
 		if (!(await isNetworkOnline())) { uni.showToast({ title: t('拆分验货需要联网，请连接网络后重试'), icon: 'none' }); return }
-		const planId = getPlanOperationId(item)
+		const planId = String(getPlanOperationId(item))
 		if (planId === '') { uni.showToast({ title: t('计划ID缺失，无法拆分'), icon: 'none' }); return }
-		const mergedParentPlanId = getItemParentPlanId(item)
+		const mergedParentPlanId = String(getItemParentPlanId(item))
 		const parentPlanId = mergedParentPlanId !== '' ? mergedParentPlanId : planId
 		operationSubmitting.value = true
 		try {
 			const response = await planApi.searchPlans({ parentPlanId }, 1, pageSize)
-			const candidates = [...(response?.records ?? [])]
+			const candidates = [...((response?.records ?? []) as UTSJSONObject[])]
 			for (const tab of tabs) {
-				if (tab.key !== 'local') candidates.push(...remoteListMap[tab.key])
+				if (tab.key !== 'local') candidates.push(...(remoteListMap[tab.key] as UTSJSONObject[]))
 			}
-			splitPreviewItems.value = buildSplitPreview(candidates, localPlans.value, parentPlanId)
+			splitPreviewItems.value = buildSplitPreview(candidates, localPlans.value, parentPlanId) as UTSJSONObject[]
 			if (splitPreviewItems.value.length === 0) splitPreviewItems.value = [item]
 			splitTargetPlanId.value = planId
-			splitResultItems.value = []
-			splitDownloadedIds.value = []
+			splitResultItems.value = [] as UTSJSONObject[]
+			splitDownloadedIds.value = [] as string[]
 			showSplitSheet.value = true
 		} catch (error) { uni.showToast({ title: error?.message ?? t('加载拆分预览失败'), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
 
 	/** 向云端拆分合并组并同步列表标记，结果弹层支持逐条下载。 */
-	async function confirmSplit() {
+	async function confirmSplit(): Promise<void> {
 		if (splitTargetPlanId.value === '' || operationSubmitting.value) return
 		if (!(await isNetworkOnline())) { uni.showToast({ title: t('拆分验货需要联网，请连接网络后重试'), icon: 'none' }); return }
 		operationSubmitting.value = true
 		try {
 			await planOperationService.splitPlan(splitTargetPlanId.value)
-			const sourceIds = splitPreviewItems.value.map((item) => getPlanOperationId(item))
-			splitResultItems.value = markSplitSourcePlans(splitPreviewItems.value, sourceIds)
-			localPlans.value = markSplitSourcePlans(localPlans.value, sourceIds)
+			const sourceIds = splitPreviewItems.value.map((item: UTSJSONObject): string => String(getPlanOperationId(item)))
+			splitResultItems.value = markSplitSourcePlans(splitPreviewItems.value, sourceIds) as UTSJSONObject[]
+			localPlans.value = markSplitSourcePlans(localPlans.value, sourceIds) as UTSJSONObject[]
 			for (const tab of tabs) {
 				if (tab.key !== 'local') remoteListMap[tab.key] = markSplitSourcePlans(remoteListMap[tab.key], sourceIds)
 			}
@@ -923,8 +933,8 @@
 	}
 
 	/** 下载一条已拆分计划并刷新 SQLite 下载状态。 */
-	async function downloadSplitItem(item) {
-		const planId = getPlanOperationId(item)
+	async function downloadSplitItem(item: UTSJSONObject): Promise<void> {
+		const planId = String(getPlanOperationId(item))
 		if (planId === '' || operationSubmitting.value) return
 		if (!(await isNetworkOnline())) { uni.showToast({ title: t('下载验货需要联网，请连接网络后重试'), icon: 'none' }); return }
 		operationSubmitting.value = true
@@ -939,31 +949,31 @@
 	}
 
 	/** 关闭拆分弹层并清理上次预览及下载状态。 */
-	function closeSplitSheet() {
+	function closeSplitSheet(): void {
 		if (operationSubmitting.value) return
 		showSplitSheet.value = false
 		splitTargetPlanId.value = ''
-		splitPreviewItems.value = []
-		splitResultItems.value = []
-		splitDownloadedIds.value = []
+		splitPreviewItems.value = [] as UTSJSONObject[]
+		splitResultItems.value = [] as UTSJSONObject[]
+		splitDownloadedIds.value = [] as string[]
 	}
 
 	/**
 	 * 提示快速验货入口已按 H5 保留。
 	 */
-	function showQuickInspectionTip() {
+	function showQuickInspectionTip(): void {
 		uni.showToast({ title: t('创建快速验货功能待接入'), icon: 'none' })
 	}
 
 	/** 更新服务未接入前明确告知用户，避免误以为已经完成检查。 */
-	function handleCheckForUpdates() {
+	function handleCheckForUpdates(): void {
 		uni.showToast({ title: t('检查更新功能待接入'), icon: 'none' })
 	}
 
 	/**
 	 * 清理本地会话并返回登录页。
 	 */
-	async function handleLogout() {
+	async function handleLogout(): Promise<void> {
 		try {
 			await logout()
 		} catch (error) {

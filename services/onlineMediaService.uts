@@ -49,7 +49,7 @@ export function createOnlineMediaService(options) {
     await requireCleanOnlinePlan(planId)
     let successCount = 0
     let failCount = 0
-    const errorMessages = []
+    const errorMessages: string[] = []
     let message = ''
     for (const request of requests) {
       const response = await planApi.copyPhotosToItems(request)

@@ -1,5 +1,9 @@
-/** 将远程与本地计划状态统一为列表使用的数字状态。 */
-export function normalizePlanStatus(itemOrStatus) {
+/**
+ * 将远程与本地计划状态统一为列表使用的数字状态。
+ * @param itemOrStatus 计划对象或直接的状态值
+ * @returns 0 待验货、1 进行中、3 已报告
+ */
+export function normalizePlanStatus(itemOrStatus: UTSJSONObject | string | number | null): number {
   const rawStatus = itemOrStatus != null && typeof itemOrStatus === 'object'
     ? (itemOrStatus.status ?? itemOrStatus.plan?.status)
     : itemOrStatus
@@ -17,8 +21,12 @@ export function normalizePlanStatus(itemOrStatus) {
   return 0
 }
 
-/** 从计划或报告数据中提取稳定的列表去重 ID。 */
-export function getPlanUniqueId(item) {
+/**
+ * 从计划或报告数据中提取稳定的列表去重 ID。
+ * @param item 计划或报告记录
+ * @returns 去重 ID，无法提取时为空串
+ */
+export function getPlanUniqueId(item: UTSJSONObject | null): string {
   if (item == null || typeof item !== 'object') return ''
   return (item.plan?.id
     || item.plan?.planId
@@ -29,8 +37,13 @@ export function getPlanUniqueId(item) {
     ?? ''
 }
 
-/** 判断计划状态是否属于指定列表页签。 */
-export function isPlanInTab(item, tabKey) {
+/**
+ * 判断计划状态是否属于指定列表页签。
+ * @param item 计划记录
+ * @param tabKey 列表页签标识
+ * @returns 是否应显示在该页签
+ */
+export function isPlanInTab(item: UTSJSONObject | null, tabKey: string): boolean {
   const status = normalizePlanStatus(item)
   if (tabKey === 'planned') return status === 0
   if (tabKey === 'progress') return status === 1
@@ -38,8 +51,13 @@ export function isPlanInTab(item, tabKey) {
   return true
 }
 
-/** 用嵌套或平铺卡片的非空字段补全本地计划，保留下载记录状态与详情。 */
-export function fillMissingPlanCardFields(localRecord, sourceItem) {
+/**
+ * 用嵌套或平铺卡片的非空字段补全本地计划，保留下载记录状态与详情。
+ * @param localRecord 本地已下载的计划记录
+ * @param sourceItem 远程计划卡片
+ * @returns 补全展示字段后的本地记录，无变化时原样返回
+ */
+export function fillMissingPlanCardFields(localRecord: UTSJSONObject, sourceItem: UTSJSONObject | null): UTSJSONObject {
   if (sourceItem == null) return localRecord
   const sourcePlan = sourceItem?.plan ?? sourceItem
   const localPlan = localRecord?.plan ?? {}
@@ -73,12 +91,17 @@ export function fillMissingPlanCardFields(localRecord, sourceItem) {
   return changed ? { ...localRecord, plan: completedPlan } : localRecord
 }
 
-/** 本地计划优先；本地摘要缺少展示字段时从同 ID 远程卡片补齐。 */
-export function mergePlansLocalFirst(localPlans, remotePlans) {
-  const localList = Array.isArray(localPlans) ? localPlans : []
-  const remoteList = Array.isArray(remotePlans) ? remotePlans : []
+/**
+ * 本地计划优先；本地摘要缺少展示字段时从同 ID 远程卡片补齐。
+ * @param localPlans 本地计划列表
+ * @param remotePlans 远程计划列表
+ * @returns 合并去重后的计划列表
+ */
+export function mergePlansLocalFirst(localPlans: UTSJSONObject[] | null, remotePlans: UTSJSONObject[] | null): UTSJSONObject[] {
+  const localList = Array.isArray(localPlans) ? localPlans : ([] as UTSJSONObject[])
+  const remoteList = Array.isArray(remotePlans) ? remotePlans : ([] as UTSJSONObject[])
   const localIds = new Set(localList.map(getPlanUniqueId).filter((id) => id !== ''))
-  const remoteById = new Map()
+  const remoteById = new Map<string, any>()
   for (const remotePlan of remoteList) {
     const id = getPlanUniqueId(remotePlan)
     if (id !== '' && !remoteById.has(id)) remoteById.set(id, remotePlan)
@@ -93,12 +116,18 @@ export function mergePlansLocalFirst(localPlans, remotePlans) {
   return merged
 }
 
-/** 根据释放 ID 和合并父计划 ID 过滤缓存，兼容嵌套父 ID 为空的平铺成员。 */
-export function filterReleasedPlans(plans, releasedIds, parentPlanId = '') {
-  const ids = new Set((Array.isArray(releasedIds) ? releasedIds : []).map((id) => String(id ?? '').trim()))
+/**
+ * 根据释放 ID 和合并父计划 ID 过滤缓存，兼容嵌套父 ID 为空的平铺成员。
+ * @param plans 缓存的计划列表
+ * @param releasedIds 已被其他客户端释放的计划 ID 列表
+ * @param parentPlanId 当前合并父计划 ID
+ * @returns 过滤后的剩余计划列表
+ */
+export function filterReleasedPlans(plans: UTSJSONObject[] | null, releasedIds: string[] | null, parentPlanId: string = ''): UTSJSONObject[] {
+  const ids = new Set((Array.isArray(releasedIds) ? releasedIds : ([] as string[])).map((id) => String(id ?? '').trim()))
   const parentId = String(parentPlanId ?? '').trim()
-  const remaining = []
-  for (const item of Array.isArray(plans) ? plans : []) {
+  const remaining: UTSJSONObject[] = []
+  for (const item of Array.isArray(plans) ? plans : ([] as UTSJSONObject[])) {
     const planId = String(getPlanUniqueId(item) ?? '').trim()
     if (planId !== '' && ids.has(planId)) continue
     const itemParentId = [item?.plan?.parentPlanId, item?.parentPlanId, item?.raw?.parentPlanId]
@@ -109,11 +138,15 @@ export function filterReleasedPlans(plans, releasedIds, parentPlanId = '') {
   return remaining
 }
 
-/** 将计划按客户订单号分组，并保留各组的供应商与日期信息。 */
-export function groupPlans(items) {
-  const source = Array.isArray(items) ? items : []
-  const groups = []
-  const groupMap = new Map()
+/**
+ * 将计划按客户订单号分组，并保留各组的供应商与日期信息。
+ * @param items 计划列表
+ * @returns 含 groupKey、客户订单号、供应商、日期和成员列表的分组数组
+ */
+export function groupPlans(items: UTSJSONObject[] | null): UTSJSONObject[] {
+  const source = Array.isArray(items) ? items : ([] as UTSJSONObject[])
+  const groups: UTSJSONObject[] = []
+  const groupMap = new Map<string, any>()
 
   for (const item of source) {
     const clientOrderNo = (item?.plan?.clientOrderNo || item?.clientOrderNo) ?? '未分组'
@@ -123,7 +156,7 @@ export function groupPlans(items) {
         clientOrderNo,
         supplierName: (item?.plan?.factoryName || item?.supplierName || item?.factoryName) ?? '-',
         orderDate: (item?.plan?.createDate || item?.createDate || item?.downloadedAt) ?? '',
-        items: []
+        items: [] as UTSJSONObject[]
       }
       groupMap.set(clientOrderNo, group)
       groups.push(group)
@@ -135,9 +168,11 @@ export function groupPlans(items) {
 
 /**
  * 将 H5 下载接口返回的 inspectionPlans、plans 或单计划结构拆成本地记录。
+ * @param downloadData 下载接口返回的数据对象
+ * @returns 逐条展开的本地计划记录列表
  */
-export function splitDownloadDataToLocalPlans(downloadData) {
-  if (downloadData == null || typeof downloadData !== 'object') return []
+export function splitDownloadDataToLocalPlans(downloadData: UTSJSONObject | null): UTSJSONObject[] {
+  if (downloadData == null || typeof downloadData !== 'object') return [] as UTSJSONObject[]
   const downloadedAt = downloadData?.downloadedAt || new Date().toISOString()
   const plans = Array.isArray(downloadData.inspectionPlans) && downloadData.inspectionPlans.length > 0
     ? downloadData.inspectionPlans
@@ -147,7 +182,7 @@ export function splitDownloadDataToLocalPlans(downloadData) {
 
   if (plans.length === 0) {
     const fallbackId = getPlanUniqueId(downloadData)
-    return fallbackId === '' ? [] : [{
+    return fallbackId === '' ? ([] as UTSJSONObject[]) : [{
       ...downloadData,
       planId: fallbackId,
       status: normalizePlanStatus(downloadData),

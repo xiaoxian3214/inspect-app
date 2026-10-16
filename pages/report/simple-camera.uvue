@@ -1,112 +1,544 @@
 <template>
-	<view class="camera-root">
-		<xview-camera-view
-			ref="cameraRef"
-			class="camera-view"
-			:facing="facing"
-			:flash="flashMode"
-			photo-format="jpg"
-			resolution="high"
-			:grid="gridMode"
-			:save-to-album="saveToAlbum"
-			@onCameraOpened="handleOpened"
-			@onPictureTaken="handlePhotoTaken"
-			@onCameraTakenError="handleError"
-			@onCameraError="handleError"
-			@onFocusStart="handleFocus"
-		/>
-		<view class="camera-overlay">
-			<TopSafeArea background-color="rgba(0,0,0,0.7)" />
-			<view class="header">
-				<view class="header-btn" @click="goBack"><AppIcon type="close" :size="24" color="#ffffff" /></view>
-				<text class="header-title">{{ t('拍照') }}</text>
-				<view class="header-btn" @click="toggleFlash"><text class="flash-label">{{ flashLabel }}</text></view>
+	<view class="camera-page">
+		<TopSafeArea background-color="#000000" />
+		<view class="preview-wrap">
+			<camera id="camera" class="camera-preview" :resolution="'high'" :device-position="devicePosition" :flash="flashMode"
+				photo-resolution="high" @initdone="handleCameraInitDone" @error="handleCameraError" @stop="handleCameraStop">
+			</camera>
+			<view class="preview-overlay">
+				<text v-if="previewStateText !== ''" class="preview-state-text">{{ previewStateText }}</text>
+				<view v-if="recording" class="recording-badge">
+					<view class="recording-dot"></view>
+					<text class="recording-label">{{ recordingLabel }}</text>
+				</view>
 			</view>
-			<view v-if="!ready" class="state">
-				<text class="state-text">{{ t(statusText) }}</text>
-			</view>
-			<view class="menu-bar">
-				<view class="menu-btn" @click="goBack"><AppIcon type="close" :size="28" color="#ffffff" /></view>
-				<view class="shutter" @click="takePhoto"><view class="shutter-inner"></view></view>
-				<view class="menu-btn" @click="switchFacing"><AppIcon type="camera" :size="28" color="#ffffff" /></view>
-			</view>
+		</view>
+		<view class="capture-panel" :style="{ paddingBottom: panelBottomPadding }">
+			<CaptureStrip :items="captureItems" :max-count="maxCaptureCount" @remove-photo="removeCapture" />
+			<CaptureSettingBar :flash-on="flashOn" :zoom-options="zoomOptions" :active-zoom="activeZoom" :capture-mode="captureMode"
+				:recording="recording" @cancel-capture="handleCancelCapture" @toggle-flash="toggleFlash" @change-zoom="applyZoom"
+				@switch-capture-mode="switchCaptureMode" @switch-camera="switchCamera" />
+			<CaptureToolbar :capture-mode="captureMode" :recording="recording" :disabled="shutterDisabled"
+				:finish-enabled="captureEnabled" @pick-album="captureFromAlbum" @press-shutter="takePhoto"
+				@finish-capture="handleFinishCapture" />
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
-	import { computed, ref } from 'vue'
+	import { computed, onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
+	import { onLoad } from '@dcloudio/uni-app'
 	import { t } from '../../i18n/index.uts'
 	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
-	import AppIcon from '../../components/icons/AppIcon.uvue'
+	import CaptureStrip from '../../components/camera/CaptureStrip.uvue'
+	import CaptureToolbar from '../../components/camera/CaptureToolbar.uvue'
+	import CaptureSettingBar from '../../components/camera/CaptureSettingBar.uvue'
+	import { appendCapturePaths, buildCameraCaptureEventName, buildCameraZoomOptions, formatVideoDurationLabel } from '../../domain/cameraCapture.uts'
+	import { isDeviceCaptureCancelledMessage, normalizeDeviceCapturePaths, resolveRemainingCaptureCount } from '../../domain/deviceCapture.uts'
+	import { MAX_VIDEO_DURATION_SECONDS } from '../../domain/photoUploadPolicy.uts'
+	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 
-	const cameraRef = ref<ComponentPublicInstance | null>(null)
-	const facing = ref('back')
+	/** 单次取景最多保留的媒体数量，超出后必须完成或删除后才能继续拍摄。 */
+	const maxCaptureCount = 9
+	/** 等待相机 initdone 的兜底时长；超过后提示用户检查相机权限。 */
+	const CAMERA_READY_TIMEOUT_MS = 4000
+	/** 录像启动兜底时长：原生回调不返回时也必须恢复快门，避免取景页整体失去响应。 */
+	const VIDEO_START_TIMEOUT_MS = 4000
+	/** 录像收尾兜底时长：停止录像的回调不返回时清空录制状态并提示重试。 */
+	const VIDEO_STOP_TIMEOUT_MS = 6000
+
+	/** 调用方请求标识，用于把结果事件只回传给发起本次拍摄的页面。 */
+	const requestId = ref('')
+	const devicePosition = ref('back')
 	const flashMode = ref('off')
-	const gridMode = ref('draw_3X3')
-	const saveToAlbum = ref(false)
-	const ready = ref(false)
-	const statusText = ref('正在启动相机…')
+	const captureMode = ref('photo')
+	const cameraReady = ref(false)
+	const cameraErrorText = ref('')
 	const capturing = ref(false)
+	const recording = ref(false)
+	const videoStarting = ref(false)
+	const finishing = ref(false)
+	const recordedSeconds = ref(0)
+	const activeZoom = ref(1)
+	/** 相机上报的最大变焦倍数，用于把用户点击的档位限制在有效范围内。 */
+	const maxZoomLevel = ref(1)
+	const zoomOptions = ref([] as number[])
+	const capturedPaths = ref([] as string[])
+	const capturedMediaTypes = ref([] as string[])
+	const capturedDurations = ref([] as number[])
+	/** 页面销毁标记：相机回调与定时器可能晚于卸载返回，卸载后不再写入响应式状态。 */
+	let disposed = false
+	let readyFallbackTimerId: number | null = null
+	let recordingTimerId: number | null = null
+	let videoWatchdogTimerId: number | null = null
 
-	/** 返回当前闪光灯模式的中文提示。 */
-	const flashLabel = computed(() => flashMode.value === 'on' ? '闪光开' : (flashMode.value === 'auto' ? '自动' : '闪光关'))
+	/** 底部操作面板的安全区留白。 */
+	const panelBottomPadding = safeBottomPaddingPx(12)
 
-	/** 相机就绪时更新状态。 */
-	function handleOpened() { ready.value = true; statusText.value = '轻触快门拍照' }
-	/** 聚焦事件记录。 */
-	function handleFocus(e: any) { console.log('[SimpleCamera] focus', e) }
-	/** 相机错误处理。 */
-	function handleError(e: any) { statusText.value = `相机错误: ${(e?.detail?.message ?? '未知').toString()}` }
+	/** 为原生模板提供可调用的翻译方法。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
 
-	/** 拍照：调用原生 takePhoto，等 onPictureTaken 回调。 */
-	function takePhoto() { if (!ready.value || capturing.value) return; capturing.value = true; cameraRef.value?.$callMethod('takePhoto') }
+	/** 当前仍可继续拍摄的媒体数量。 */
+	const remainingCount = computed((): number => resolveRemainingCaptureCount(maxCaptureCount, capturedPaths.value.length))
+	/** 快门是否禁用：相机未就绪、正在拍照或已达上限时禁用；录像中始终允许点击停止。 */
+	const shutterDisabled = computed((): boolean => {
+		if (recording.value) return false
+		if (capturing.value || videoStarting.value) return true
+		if (!cameraReady.value) return true
+		return remainingCount.value <= 0
+	})
+	/** 完成按钮是否可用：至少拍到一条媒体，且录像已结束。 */
+	const captureEnabled = computed((): boolean => capturedPaths.value.length > 0 && !recording.value && !finishing.value)
+	/** 闪光灯开关状态，开启时常亮补光。 */
+	const flashOn = computed((): boolean => flashMode.value === 'torch')
+	/** 取景状态文案：相机就绪时不显示任何提示。 */
+	const previewStateText = computed((): string => {
+		if (cameraReady.value) return ''
+		if (cameraErrorText.value !== '') return cameraErrorText.value
+		return translateText('正在启动相机…')
+	})
+	/** 录像走秒文案，与 60 秒上限一起展示。 */
+	const recordingLabel = computed((): string => `${formatVideoDurationLabel(recordedSeconds.value)} / ${formatVideoDurationLabel(MAX_VIDEO_DURATION_SECONDS)}`)
+	/** 传给底部照片区的媒体列表，路径、类型与时长一一对应。 */
+	const captureItems = computed((): UTSJSONObject[] => capturedPaths.value.map((path: string, index: number): UTSJSONObject => {
+		const mediaType = index < capturedMediaTypes.value.length ? capturedMediaTypes.value[index] : 'image'
+		const durationSeconds = index < capturedDurations.value.length ? capturedDurations.value[index] : 0
+		return { path: path, mediaType: mediaType, durationSeconds: durationSeconds }
+	}))
 
-	/** 切换前后摄像头。 */
-	function switchFacing() { facing.value = facing.value === 'back' ? 'front' : 'back'; cameraRef.value?.$callMethod('setFacing', facing.value) }
+	/** 清理相机就绪兜底计时器。 */
+	function clearReadyFallbackTimer(): void {
+		if (readyFallbackTimerId != null) {
+			clearTimeout(readyFallbackTimerId)
+			readyFallbackTimerId = null
+		}
+	}
 
-	/** 循环切换闪光灯模式：off → on → auto → off。 */
-	function toggleFlash() { flashMode.value = flashMode.value === 'off' ? 'on' : (flashMode.value === 'on' ? 'auto' : 'off'); cameraRef.value?.$callMethod('setFlash', flashMode.value) }
+	/** 启动相机就绪兜底计时：部分机型不回调 initdone，超时后给出权限提示。 */
+	function armCameraReadyFallback(): void {
+		clearReadyFallbackTimer()
+		readyFallbackTimerId = setTimeout(() => {
+			readyFallbackTimerId = null
+			if (disposed || cameraReady.value) return
+			cameraErrorText.value = t('无法使用相机，请检查系统相机权限')
+		}, CAMERA_READY_TIMEOUT_MS)
+	}
 
-	/** 参照 takePhoto.nvue 的 getTakenRes 模式：调用上一页 setImage 方法回传路径。 */
-	function goBackWithResult(path: string) {
+	/** 停止录像走秒定时器，避免录像结束后仍持续计时。 */
+	function stopRecordingTimer(): void {
+		if (recordingTimerId != null) {
+			clearInterval(recordingTimerId)
+			recordingTimerId = null
+		}
+	}
+
+	/** 拍照失败时提示用户重试。 */
+	function notifyCaptureFailure(): void {
+		uni.showToast({ title: t('未获取到照片，请重试'), icon: 'none' })
+	}
+
+	/** 达到单次拍摄上限时提示先完成或删除已拍媒体。 */
+	function notifyCaptureLimit(): void {
+		uni.showToast({ title: t('最多拍摄 {count} 张，请先完成或删除已拍照片', { count: maxCaptureCount }), icon: 'none' })
+	}
+
+	/** 录像开始或停止失败时提示用户重试。 */
+	function notifyRecordingFailure(): void {
+		uni.showToast({ title: t('录像失败，请重试'), icon: 'none' })
+	}
+
+	/** 媒体保存到应用持久目录失败时提示用户重新拍摄。 */
+	function notifyPersistFailure(): void {
+		uni.showToast({ title: t('本地保存失败'), icon: 'none' })
+	}
+
+	/** 将单条临时媒体保存到应用持久目录；路径为空或保存失败时返回空串。 */
+	function persistCapturePath(tempPath: string): Promise<string> {
+		const normalizedPath = tempPath.trim()
+		if (normalizedPath === '') return Promise.resolve('')
+		return new Promise<string>((resolve) => {
+			uni.getFileSystemManager().saveFile({
+				tempFilePath: normalizedPath,
+				success: (result) => resolve(result.savedFilePath ?? ''),
+				fail: (error) => resolve('')
+			})
+		})
+	}
+
+	/** 按拍摄顺序把全部临时媒体保存到持久目录；保存失败的条目会被丢弃，由调用方决定是否回传。 */
+	async function persistCapturePaths(tempPaths: string[]): Promise<string[]> {
+		const savedPaths: string[] = []
+		for (let index = 0; index < tempPaths.length; index++) {
+			const savedPath = await persistCapturePath(tempPaths[index])
+			if (savedPath !== '') savedPaths.push(savedPath)
+		}
+		return savedPaths
+	}
+
+	/** 通过上一页暴露的 setImage 方法回传持久化后的媒体路径，并关闭取景页。 */
+	function goBackWithResult(savedPaths: string[]): void {
 		const pages = getCurrentPages()
-		const prevPage = pages[pages.length - 2]
-		if (prevPage != null && typeof (prevPage as any).$vm?.setImage === 'function') {
-			(prevPage as any).$vm.setImage({ path })
+		if (pages.length >= 2) {
+			const previousPage = pages[pages.length - 2]
+			try {
+				previousPage?.$vm?.$callMethod('setImage', { path: savedPaths[0], paths: savedPaths })
+			} catch (error) {
+				// 调用页没有暴露 setImage（例如示例页）时忽略，结果事件仍然可用。
+				console.log('setImage callback skipped', error)
+			}
 		}
 		uni.navigateBack()
 	}
 
-	/** 拍照回调：持久化临时文件，参照 takePhoto.nvue 通过 getCurrentPages 回传结果。 */
-	function handlePhotoTaken(e: any) {
-		const tempPath = (e?.detail?.path ?? '').toString().trim()
-		capturing.value = false
-		if (tempPath === '') return
-		const fileManager = uni.getFileSystemManager()
-		fileManager.saveFile({
-			tempFilePath: tempPath,
-			success: (result) => goBackWithResult(result?.savedFilePath ?? tempPath),
-			fail: () => goBackWithResult(tempPath)
+	/** 补齐新加入媒体的类型与时长，使元数据与新路径列表一一对应。 */
+	function syncCaptureMetadata(previousCount: number, mediaType: string, durationSeconds: number): void {
+		const mediaTypes = capturedMediaTypes.value.slice()
+		const durations = capturedDurations.value.slice()
+		for (let index = previousCount; index < capturedPaths.value.length; index++) {
+			mediaTypes[index] = mediaType
+			durations[index] = durationSeconds
+		}
+		capturedMediaTypes.value = mediaTypes.slice(0, capturedPaths.value.length)
+		capturedDurations.value = durations.slice(0, capturedPaths.value.length)
+	}
+
+	/** 追加一条已确认的图片或视频，并同步记录其媒体类型与视频时长。 */
+	function appendCapturedMedia(mediaPath: string, mediaType: string, durationSeconds: number): void {
+		const previousCount = capturedPaths.value.length
+		capturedPaths.value = appendCapturePaths(capturedPaths.value, [mediaPath], maxCaptureCount)
+		syncCaptureMetadata(previousCount, mediaType, durationSeconds)
+	}
+
+	/** 向调用方广播本次拍摄结果，供示例页等事件订阅方接收；取消时不携带媒体。 */
+	function emitCaptureResult(cancelled: boolean): void {
+		const paths = cancelled ? ([] as string[]) : capturedPaths.value
+		const items = cancelled ? ([] as UTSJSONObject[]) : captureItems.value
+		uni.$emit(buildCameraCaptureEventName(requestId.value), { paths: paths, items: items, cancelled: cancelled })
+	}
+
+	/** 快门统一入口：录像模式开始或停止录像，拍照模式拍摄一张照片。 */
+	function takePhoto(): void {
+		if (!cameraReady.value) {
+			uni.showToast({ title: t('正在启动相机…'), icon: 'none' })
+			return
+		}
+		if (captureMode.value === 'video') {
+			handleVideoShutterPress()
+			return
+		}
+		if (capturing.value) return
+		if (remainingCount.value <= 0) {
+			notifyCaptureLimit()
+			return
+		}
+		const context = uni.createCameraContext()
+		if (context == null) {
+			notifyCaptureFailure()
+			return
+		}
+		capturing.value = true
+		try {
+			context.takePhoto({
+				quality: 'high',
+				selfieMirror: false,
+				success: (result: CameraContextTakePhotoResult) => {
+					if (disposed) return
+					capturing.value = false
+					const shotPaths = normalizeDeviceCapturePaths([result.tempImagePath ?? ''])
+					if (shotPaths.length === 0) {
+						notifyCaptureFailure()
+						return
+					}
+					const previousCount = capturedPaths.value.length
+					capturedPaths.value = appendCapturePaths(capturedPaths.value, shotPaths, maxCaptureCount)
+					syncCaptureMetadata(previousCount, 'image', 0)
+				},
+				fail: (error) => {
+					if (disposed) return
+					capturing.value = false
+					console.log('take photo failed', error.errMsg)
+					notifyCaptureFailure()
+				}
+			})
+		} catch (error) {
+			capturing.value = false
+			notifyCaptureFailure()
+		}
+	}
+
+	/** 从系统相册补充照片，按剩余可拍数量限制本次选择张数。 */
+	function captureFromAlbum(): void {
+		if (disposed || capturing.value || recording.value) return
+		if (remainingCount.value <= 0) {
+			notifyCaptureLimit()
+			return
+		}
+		uni.chooseImage({
+			count: remainingCount.value,
+			sizeType: ['compressed'],
+			sourceType: ['album'],
+			success: (result) => {
+				if (disposed) return
+				const pickedPaths = normalizeDeviceCapturePaths(result.tempFilePaths)
+				if (pickedPaths.length === 0) return
+				const previousCount = capturedPaths.value.length
+				capturedPaths.value = appendCapturePaths(capturedPaths.value, pickedPaths, maxCaptureCount)
+				syncCaptureMetadata(previousCount, 'image', 0)
+			},
+			fail: (error) => {
+				if (disposed) return
+				if (isDeviceCaptureCancelledMessage(error.errMsg)) return
+				uni.showToast({ title: t('打开相册失败，请重试'), icon: 'none' })
+			}
 		})
 	}
 
-	/** 返回上一页。 */
-	function goBack() { uni.navigateBack() }
+	/** 从底部照片区移除指定位置的媒体，并同步删除其类型与时长。 */
+	function removeCapture(index: number): void {
+		if (index < 0 || index >= capturedPaths.value.length) return
+		const paths = capturedPaths.value.slice()
+		const mediaTypes = capturedMediaTypes.value.slice()
+		const durations = capturedDurations.value.slice()
+		paths.splice(index, 1)
+		mediaTypes.splice(index, 1)
+		durations.splice(index, 1)
+		capturedPaths.value = paths
+		capturedMediaTypes.value = mediaTypes
+		capturedDurations.value = durations
+	}
+
+	/** 完成拍摄：把全部媒体持久化后回传给上一页，并关闭取景页。 */
+	async function handleFinishCapture(): Promise<void> {
+		if (disposed) return
+		if (recording.value) {
+			uni.showToast({ title: t('录制中，请先停止录像'), icon: 'none' })
+			return
+		}
+		if (capturedPaths.value.length === 0) {
+			uni.showToast({ title: t('还没有照片，点击下方快门开始拍摄'), icon: 'none' })
+			return
+		}
+		if (finishing.value || capturing.value) return
+		finishing.value = true
+		const savedPaths = await persistCapturePaths(capturedPaths.value)
+		if (disposed) return
+		if (savedPaths.length < capturedPaths.value.length) {
+			// 只要有媒体没能落到持久目录就不回传，保留临时文件让用户重试。
+			finishing.value = false
+			notifyPersistFailure()
+			return
+		}
+		emitCaptureResult(false)
+		goBackWithResult(savedPaths)
+	}
+
+	/** 取消本次拍摄：直接退出取景页并广播取消结果，不保存任何临时媒体。 */
+	function handleCancelCapture(): void {
+		if (disposed) return
+		if (recording.value) {
+			uni.showToast({ title: t('录制中，请先停止录像'), icon: 'none' })
+			return
+		}
+		emitCaptureResult(true)
+		uni.navigateBack()
+	}
+
+	/** 启动录像走秒显示；真正的自动停止由相机 60 秒超时回调负责。 */
+	function beginRecordingTimer(): void {
+		stopRecordingTimer()
+		recording.value = true
+		recordedSeconds.value = 0
+		recordingTimerId = setInterval(() => {
+			if (disposed || !recording.value) {
+				stopRecordingTimer()
+				return
+			}
+			if (recordedSeconds.value < MAX_VIDEO_DURATION_SECONDS) recordedSeconds.value = recordedSeconds.value + 1
+		}, 1000)
+	}
+
+	/** 收尾录像：停止走秒并按视频类型把本地视频加入照片区，重复回调只处理一次。 */
+	function finishVideoRecording(tempVideoPath: string, durationSeconds: number): void {
+		const wasActive = recording.value || videoStarting.value
+		stopRecordingTimer()
+		recording.value = false
+		videoStarting.value = false
+		const videoPaths = normalizeDeviceCapturePaths([tempVideoPath])
+		if (videoPaths.length === 0) {
+			recordedSeconds.value = 0
+			if (wasActive) notifyRecordingFailure()
+			return
+		}
+		if (!wasActive) return
+		appendCapturedMedia(videoPaths[0], 'video', Math.max(1, Math.round(durationSeconds)))
+		recordedSeconds.value = 0
+	}
+
+	/** 开始录像：时长上限与后端 60 秒约束一致，超时由相机自动停止并回传视频。 */
+	function startVideoRecording(): void {
+		const context = uni.createCameraContext()
+		if (context == null) {
+			notifyRecordingFailure()
+			return
+		}
+		videoStarting.value = true
+		try {
+			context.startRecord({
+				timeout: MAX_VIDEO_DURATION_SECONDS,
+				selfieMirror: false,
+				success: () => {
+					if (disposed) return
+					videoStarting.value = false
+					beginRecordingTimer()
+				},
+				fail: (error) => {
+					if (disposed) return
+					videoStarting.value = false
+					notifyRecordingFailure()
+				},
+				timeoutCallback: (result) => {
+					if (disposed) return
+					const timeoutResult = result as CameraContextStartRecordTimeoutResult
+					finishVideoRecording(timeoutResult.tempVideoPath ?? '', MAX_VIDEO_DURATION_SECONDS)
+				}
+			})
+		} catch (error) {
+			videoStarting.value = false
+			notifyRecordingFailure()
+		}
+	}
+
+	/** 停止录像并等待相机回传本地视频路径。 */
+	function stopVideoRecording(): void {
+		const context = uni.createCameraContext()
+		if (context == null) return
+		try {
+			context.stopRecord({
+				compressed: false,
+				success: (result: CameraContextStopRecordResult) => {
+					if (disposed) return
+					finishVideoRecording(result.tempVideoPath ?? '', recordedSeconds.value)
+				},
+				fail: (error) => {
+					if (disposed) return
+					stopRecordingTimer()
+					recording.value = false
+					notifyRecordingFailure()
+				}
+			})
+		} catch (error) {
+			stopRecordingTimer()
+			recording.value = false
+			notifyRecordingFailure()
+		}
+	}
+
+	/** 录像模式下的快门：录制中停止录像，未录制时开始录像。 */
+	function handleVideoShutterPress(): void {
+		if (recording.value) {
+			stopVideoRecording()
+			return
+		}
+		if (videoStarting.value) return
+		if (remainingCount.value <= 0) {
+			notifyCaptureLimit()
+			return
+		}
+		startVideoRecording()
+	}
+
+	/** 在关闭与常亮之间切换闪光灯；录像中禁止切换。 */
+	function toggleFlash(): void {
+		if (recording.value) return
+		flashMode.value = flashMode.value === 'torch' ? 'off' : 'torch'
+	}
+
+	/** 应用用户选择的变焦倍率，相机不支持数字变焦时保持档位展示。 */
+	function applyZoom(zoom: number): void {
+		const context = uni.createCameraContext()
+		if (context == null) return
+		activeZoom.value = zoom
+		try {
+			context.setZoom({ zoom: zoom })
+		} catch (error) {
+			console.log('set zoom failed', error)
+		}
+	}
+
+	/** 在拍照与录像模式之间切换；录像中或录像启动中禁止切换。 */
+	function switchCaptureMode(mode: string): void {
+		if (recording.value || videoStarting.value || capturing.value) return
+		captureMode.value = mode === 'video' ? 'video' : 'photo'
+	}
+
+	/** 翻转前后摄像头；录像中禁止翻转，避免中断录像会话。 */
+	function switchCamera(): void {
+		if (recording.value || videoStarting.value) return
+		devicePosition.value = devicePosition.value === 'back' ? 'front' : 'back'
+	}
+
+	/** 相机初始化完成后开放快门，并按 maxZoom 生成可用倍率档位。 */
+	function handleCameraInitDone(event: UniCameraInitDoneEvent): void {
+		if (disposed) return
+		cameraReady.value = true
+		cameraErrorText.value = ''
+		clearReadyFallbackTimer()
+		zoomOptions.value = buildCameraZoomOptions(Math.max(1, event.detail.maxZoom ?? 1))
+		activeZoom.value = 1
+	}
+
+	/** 相机初始化或运行报错时关闭快门并提示检查系统相机权限。 */
+	function handleCameraError(event: UniCameraErrorEvent): void {
+		if (disposed) return
+		cameraReady.value = false
+		clearReadyFallbackTimer()
+		cameraErrorText.value = t('无法使用相机，请检查系统相机权限')
+		console.log('camera error', event.detail.errMsg ?? '')
+	}
+
+	/** 相机停止后回收取景状态，并重新等待相机恢复，避免回到前台后快门一直不可用。 */
+	function handleCameraStop(event: UniCameraStopEvent): void {
+		if (disposed) return
+		cameraReady.value = false
+		capturing.value = false
+		recording.value = false
+		videoStarting.value = false
+		stopRecordingTimer()
+		armCameraReadyFallback()
+	}
+
+	/** 读取路由参数中的相机请求标识，用于把结果事件回传给调用方。 */
+	function handlePageLoad(options: OnLoadOptions): void {
+		requestId.value = decodeURIComponent(options['requestId'] ?? '').trim()
+	}
+
+	onLoad(handlePageLoad)
+
+	onMounted(() => {
+		armCameraReadyFallback()
+	})
+
+	onBeforeUnmount(() => {
+		disposed = true
+		clearReadyFallbackTimer()
+		stopRecordingTimer()
+	})
+
+	onUnmounted(() => {
+		disposed = true
+		clearReadyFallbackTimer()
+	})
 </script>
 
 <style>
-	.camera-root { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background-color: #000000; }
-	.camera-view { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
-	.camera-overlay { position: absolute; left: 0; top: 0; right: 0; bottom: 0; flex-direction: column; }
-	.header { flex-direction: row; align-items: center; justify-content: space-between; padding: 20rpx 28rpx; }
-	.header-btn { padding: 18rpx; min-width: 80rpx; }
-	.header-title { color: #ffffff; font-size: 32rpx; font-weight: 600; }
-	.flash-label { color: #ffffff; font-size: 24rpx; }
-	.state { flex: 1; align-items: center; justify-content: center; }
-	.state-text { color: rgba(255, 255, 255, 0.7); font-size: 26rpx; }
-	.menu-bar { height: 200rpx; padding: 0 60rpx 40rpx; flex-direction: row; align-items: center; justify-content: space-between; margin-top: auto; }
-	.menu-btn { width: 100rpx; height: 100rpx; align-items: center; justify-content: center; }
-	.shutter { width: 140rpx; height: 140rpx; align-items: center; justify-content: center; border: 8rpx solid #ffffff; border-radius: 50%; }
-	.shutter-inner { width: 114rpx; height: 114rpx; border-radius: 50%; background-color: #ffffff; }
+	.camera-page { flex: 1; background-color: #000000; }
+	/* 取景画面占据上方主要区域（约 85% 窗口高度），底部面板按控制条内容高度自适应，确保操作不被裁切。 */
+	.preview-wrap { flex: 1; position: relative; background-color: #000000; }
+	.camera-preview { flex: 1; width: 100%; }
+	.preview-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; align-items: center; justify-content: center; }
+	.preview-state-text { padding: 16rpx 28rpx; color: #f8fafc; font-size: 26rpx; border-radius: 16rpx; background-color: rgba(15, 23, 42, 0.72); }
+	.recording-badge { position: absolute; top: 24rpx; flex-direction: row; align-items: center; padding: 8rpx 20rpx; border-radius: 24rpx; background-color: rgba(15, 23, 42, 0.76); }
+	.recording-dot { width: 16rpx; height: 16rpx; margin-right: 10rpx; border-radius: 8rpx; background-color: #ef4444; }
+	.recording-label { color: #f8fafc; font-size: 24rpx; }
+	.capture-panel { background-color: #0f172a; }
 </style>

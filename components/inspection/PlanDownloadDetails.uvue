@@ -1,5 +1,5 @@
 <template>
-	<scroll-view class="download-info-scroll" :scroll-y="true">
+	<scroll-view class="download-info-scroll" direction="vertical">
 		<view v-if="isMerged" class="merged-info-card">
 			<text class="merged-title">{{ translateText('此合并验货包含以下验货：') }}</text>
 			<PlanMemberTable :items="mergedItems" :loading="mergedLoading" />

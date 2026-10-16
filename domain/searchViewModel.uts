@@ -1,7 +1,8 @@
 /**
  * 返回计划对象中用于远程操作和本地匹配的稳定计划 ID。
+ * item 为列表或详情中的计划 JSON；按嵌套、平铺、raw 顺序取首个非空 ID，找不到时返回空串。
  */
-export function getPlanOperationId(item) {
+export function getPlanOperationId(item: UTSJSONObject): string {
   const candidates = [
     item?.plan?.id,
     item?.plan?.planId,
@@ -17,8 +18,9 @@ export function getPlanOperationId(item) {
 
 /**
  * 将页面状态值归一化为 H5 使用的数字状态。
+ * status 为接口或本地缓存中的原始状态（数字或字符串枚举）；返回 0/1/3，无法识别时返回 -1。
  */
-export function normalizeSearchStatus(status) {
+export function normalizeSearchStatus(status: any): number {
   if (typeof status === 'number') return status
   const text = String(status ?? '').trim()
   if (text === '0' || text === 'planned' || text === 'NEW' || text === 'DOWNLOADED') return 0
@@ -29,8 +31,9 @@ export function normalizeSearchStatus(status) {
 
 /**
  * 把 yyyy-MM-dd 日期转换为本地当天边界对应的 ISO 字符串。
+ * value 为筛选日期文本，endOfDay 决定取当天 23:59:59.999 还是 00:00:00.000；非法日期返回空串。
  */
-export function toDateBoundaryIso(value, endOfDay: boolean = false) {
+export function toDateBoundaryIso(value: string, endOfDay: boolean = false): string {
   const dateText = String(value ?? '').trim()
   if (dateText === '') return ''
   const timeText = endOfDay ? '23:59:59.999' : '00:00:00.000'
@@ -41,8 +44,9 @@ export function toDateBoundaryIso(value, endOfDay: boolean = false) {
 
 /**
  * 根据关键字和筛选值构建与 H5 一致的搜索请求参数。
+ * keyword 为搜索关键字，filters 为页面筛选草稿；返回仅含有效筛选字段的请求参数对象。
  */
-export function buildSearchParams(keyword, filters: any = {}) {
+export function buildSearchParams(keyword: string, filters: any = {}): UTSJSONObject {
   const params = { keyword: String(keyword ?? '').trim() }
   const normalizedStatus = normalizeSearchStatus(filters?.status)
   const inspectType = String(filters?.inspectType ?? '').trim()
@@ -57,30 +61,35 @@ export function buildSearchParams(keyword, filters: any = {}) {
 
 /**
  * 使用同 ID 的完整本地记录覆盖远程搜索记录，保留离线编辑状态。
+ * remoteRecords 为远程搜索结果行，localPlans 为本地计划行；返回合并后的计划数组。
  */
-export function mergeRemoteWithLocal(remoteRecords, localPlans) {
-  const localById = new Map()
-  for (const localPlan of Array.isArray(localPlans) ? localPlans : []) {
+export function mergeRemoteWithLocal(remoteRecords: UTSJSONObject[], localPlans: UTSJSONObject[]): UTSJSONObject[] {
+  const localById = new Map<string, any>()
+  for (const localPlan of Array.isArray(localPlans) ? localPlans : ([] as UTSJSONObject[])) {
     const planId = getPlanOperationId(localPlan)
     if (planId !== '') localById.set(planId, localPlan)
   }
-  return (Array.isArray(remoteRecords) ? remoteRecords : []).map((record) => {
+  return (Array.isArray(remoteRecords) ? remoteRecords : ([] as UTSJSONObject[])).map((record) => {
     return localById.get(getPlanOperationId(record)) || record
   })
 }
 
 /**
  * 返回计划的检查类型编码，兼容远程、本地和 raw 包装结构。
+ * item 为计划 JSON；返回归一化后的检查类型编码，缺失时返回空串。
  */
-export function getItemInspectType(item) {
+export function getItemInspectType(item: UTSJSONObject): string {
   return firstNonEmptyText([
     item?.plan?.inspectType, item?.inspectType, item?.raw?.inspectType,
     item?.plan?.inspectTypeName, item?.inspectTypeName, item?.raw?.inspectTypeName
   ], '').trim()
 }
 
-/** 为卡片显示验货类型名称；拆分生成的 plan 缺少类型时保留原卡片的名称或编码。 */
-export function getPlanInspectTypeLabel(item) {
+/**
+ * 为卡片显示验货类型名称；拆分生成的 plan 缺少类型时保留原卡片的名称或编码。
+ * item 为计划 JSON；返回可展示的验货类型名称，缺省返回“验货”。
+ */
+export function getPlanInspectTypeLabel(item: UTSJSONObject): string {
   return firstNonEmptyText([
     item?.plan?.inspectTypeName, item?.plan?.inspectType,
     item?.inspectTypeName, item?.inspectType,
@@ -90,22 +99,25 @@ export function getPlanInspectTypeLabel(item) {
 
 /**
  * 返回计划的工厂号，供合并选择兼容性判断使用。
+ * item 为计划 JSON；返回去空格后的工厂号，缺失时返回空串。
  */
-export function getItemFactoryNo(item) {
+export function getItemFactoryNo(item: UTSJSONObject): string {
   return String(item?.plan?.factoryNo ?? item?.factoryNo ?? item?.raw?.factoryNo ?? '').trim()
 }
 
 /**
  * 返回计划的货类，供合并选择兼容性判断使用。
+ * item 为计划 JSON；返回去空格后的货类，缺失时返回空串。
  */
-export function getItemGoodsClass(item) {
+export function getItemGoodsClass(item: UTSJSONObject): string {
   return String(item?.plan?.goodsClass ?? item?.goodsClass ?? item?.raw?.goodsClass ?? '').trim()
 }
 
 /**
  * 判断计划是否满足 H5 合并流程的基础资格。
+ * item 为计划 JSON，inspectType 为目标验货类型；返回未锁定、已定计划且类型一致时为 true。
  */
-export function isBaseMergeEligible(item, inspectType) {
+export function isBaseMergeEligible(item: UTSJSONObject, inspectType: string): boolean {
   const lockFlag = parseInt(String(item?.plan?.lockFlag ?? item?.lockFlag ?? item?.raw?.lockFlag ?? 0))
   const status = normalizeSearchStatus(item?.status ?? item?.plan?.status ?? item?.raw?.status)
   const mergeType = parseInt(String(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0))
@@ -119,8 +131,9 @@ export function isBaseMergeEligible(item, inspectType) {
 
 /**
  * 判断计划是否与已选合并锚点保持工厂号、货类和检查类型一致。
+ * item 为待判断计划，inspectType 为目标类型，anchorItem 为已选锚点；返回是否可加入当前合并组。
  */
-export function isMergeSelectable(item, inspectType, anchorItem: any | null = null) {
+export function isMergeSelectable(item: UTSJSONObject, inspectType: string, anchorItem: UTSJSONObject | null = null): boolean {
   if (!isBaseMergeEligible(item, inspectType)) return false
   if (anchorItem == null) return true
   return getItemFactoryNo(item) === getItemFactoryNo(anchorItem)
@@ -128,29 +141,35 @@ export function isMergeSelectable(item, inspectType, anchorItem: any | null = nu
     && getItemInspectType(item) === getItemInspectType(anchorItem)
 }
 
-/** 返回 H5 分组全选目标：未选时取最大兼容组，已有锚点时只取同条件计划。 */
-export function getMergeGroupTargets(group, inspectType, selectedItems: any[] = []) {
-  const items = Array.isArray(group?.items) ? group.items : []
+/**
+ * 返回 H5 分组全选目标：未选时取最大兼容组，已有锚点时只取同条件计划。
+ * group 为列表分组，inspectType 为目标类型，selectedItems 为已选计划；返回可全选的计划数组。
+ */
+export function getMergeGroupTargets(group: UTSJSONObject, inspectType: string, selectedItems: UTSJSONObject[] = []): UTSJSONObject[] {
+  const items = Array.isArray(group?.items) ? group.items : ([] as UTSJSONObject[])
   if (selectedItems.length > 0) {
     const anchor = selectedItems[0]
     return items.filter((item) => getPlanOperationId(item) !== '' && isMergeSelectable(item, inspectType, anchor))
   }
-  const buckets = new Map()
+  const buckets = new Map<string, any[]>()
   for (const item of items) {
     if (getPlanOperationId(item) === '' || !isBaseMergeEligible(item, inspectType)) continue
     const key = `${getItemFactoryNo(item)}||${getItemGoodsClass(item)}||${getItemInspectType(item)}`
-    if (!buckets.has(key)) buckets.set(key, [])
+    if (!buckets.has(key)) buckets.set(key, [] as UTSJSONObject[])
     buckets.get(key).push(item)
   }
-  let largest = []
+  let largest: UTSJSONObject[] = []
   for (const bucket of buckets.values()) {
     if (bucket.length > largest.length) largest = bucket
   }
   return largest
 }
 
-/** 按 H5 合并响应结构提取用于后续下载的父计划 ID，兼容直接返回 ID。 */
-export function getMergedPlanId(result) {
+/**
+ * 按 H5 合并响应结构提取用于后续下载的父计划 ID，兼容直接返回 ID。
+ * result 为合并接口返回（字符串、数字或包装对象）；返回非空计划 ID，缺失时返回空串。
+ */
+export function getMergedPlanId(result: any): string {
   if (typeof result === 'string' || typeof result === 'number') return String(result).trim()
   const data = result?.data
   const candidates = [
@@ -168,8 +187,11 @@ export function firstNonEmptyText(values: (any | null)[], fallback: string): str
   return found == null ? fallback : found.toString()
 }
 
-/** 生成 H5 合并确认表格的单号、款号#批次和产品名称三列。 */
-export function getMergePreviewRow(item) {
+/**
+ * 生成 H5 合并确认表格的单号、款号#批次和产品名称三列。
+ * item 为计划 JSON；返回 orderNo、itemBatch、productName 三个展示字段。
+ */
+export function getMergePreviewRow(item: UTSJSONObject): UTSJSONObject {
   const plan = item?.plan ?? item ?? {}
   const orderNo = firstNonEmptyText([plan?.clientOrderNo, item?.clientOrderNo, plan?.domeNo, item?.domeNo, item?.planNo], '未分组')
   const itemNo = firstNonEmptyText([plan?.subGoodsNo, item?.subGoodsNo], '-')
@@ -178,8 +200,11 @@ export function getMergePreviewRow(item) {
   return { orderNo, itemBatch: `${itemNo}#${batchNo}`, productName }
 }
 
-/** 合并成功后仅更新来源卡片的合并标记和父计划 ID，不修改未参与的列表记录。 */
-export function markMergedSourcePlans(items, sourcePlanIds, mergedPlanId) {
+/**
+ * 合并成功后仅更新来源卡片的合并标记和父计划 ID，不修改未参与的列表记录。
+ * items 为当前列表，sourcePlanIds 为参与合并的计划 ID，mergedPlanId 为父计划 ID；返回更新后的列表。
+ */
+export function markMergedSourcePlans(items: UTSJSONObject[], sourcePlanIds: string[], mergedPlanId: string): UTSJSONObject[] {
   const sourceIds = new Set(sourcePlanIds.map((id) => String(id)))
   return items.map((item) => {
     if (!sourceIds.has(getPlanOperationId(item))) return item
@@ -193,16 +218,22 @@ export function markMergedSourcePlans(items, sourcePlanIds, mergedPlanId) {
   })
 }
 
-/** 仅允许未锁定、已定计划且已合并的成员执行拆分。 */
-export function isSplitAvailable(item) {
+/**
+ * 仅允许未锁定、已定计划且已合并的成员执行拆分。
+ * item 为计划 JSON；返回是否允许发起拆分。
+ */
+export function isSplitAvailable(item: UTSJSONObject): boolean {
   const lockFlag = parseInt(String(item?.plan?.lockFlag ?? item?.lockFlag ?? item?.raw?.lockFlag ?? 0))
   const mergeType = parseInt(String(item?.plan?.mergeType ?? item?.mergeType ?? item?.raw?.mergeType ?? 0))
   const status = normalizeSearchStatus(item?.status ?? item?.plan?.status ?? item?.raw?.status)
   return mergeType === 2 && lockFlag === 0 && status === 0
 }
 
-/** 拆分成功后同步来源卡片的合并类型，保持其他计划对象不变。 */
-export function markSplitSourcePlans(items, sourcePlanIds) {
+/**
+ * 拆分成功后同步来源卡片的合并类型，保持其他计划对象不变。
+ * items 为当前列表，sourcePlanIds 为参与拆分的计划 ID；返回更新后的列表。
+ */
+export function markSplitSourcePlans(items: UTSJSONObject[], sourcePlanIds: string[]): UTSJSONObject[] {
   const sourceIds = new Set(sourcePlanIds.map((id) => String(id)))
   return items.map((item) => {
     if (!sourceIds.has(getPlanOperationId(item))) return item
@@ -215,9 +246,12 @@ export function markSplitSourcePlans(items, sourcePlanIds) {
   })
 }
 
-/** 搜索结果中将已释放的计划及同一合并组成员一起恢复为未锁定状态。 */
-export function markReleasedGroupPlans(items, releasedIds, parentPlanId) {
-  const ids = new Set((releasedIds ?? []).map((id) => String(id)))
+/**
+ * 搜索结果中将已释放的计划及同一合并组成员一起恢复为未锁定状态。
+ * items 为当前列表，releasedIds 为接口返回的已释放计划 ID，parentPlanId 为合并父计划 ID；返回更新后的列表。
+ */
+export function markReleasedGroupPlans(items: UTSJSONObject[], releasedIds: string[], parentPlanId: string): UTSJSONObject[] {
+  const ids = new Set((releasedIds ?? ([] as string[])).map((id) => String(id)))
   const parentId = String(parentPlanId ?? '').trim()
   return items.map((item) => {
     if (!ids.has(getPlanOperationId(item)) && (parentId === '' || getItemParentPlanId(item) !== parentId)) return item
@@ -234,24 +268,26 @@ export function markReleasedGroupPlans(items, releasedIds, parentPlanId) {
 
 /**
  * 返回计划所属的合并父计划 ID；嵌套字段为空时回退到平铺或原始字段。
+ * item 为计划 JSON；返回去空格后的父计划 ID，缺失时返回空串。
  */
-export function getItemParentPlanId(item) {
+export function getItemParentPlanId(item: UTSJSONObject): string {
   return firstNonEmptyText([item?.plan?.parentPlanId, item?.parentPlanId, item?.raw?.parentPlanId], '').trim()
 }
 
 /**
  * 合并远程和本地拆分预览记录，按计划 ID 去重并优先使用本地版本。
+ * remoteRecords 为远程行，localPlans 为本地行，parentPlanId 为合并父计划 ID；返回去重后的预览数组。
  */
-export function buildSplitPreview(remoteRecords, localPlans, parentPlanId) {
+export function buildSplitPreview(remoteRecords: UTSJSONObject[], localPlans: UTSJSONObject[], parentPlanId: string): UTSJSONObject[] {
   const targetParentId = String(parentPlanId ?? '').trim()
-  const localById = new Map()
-  for (const localPlan of Array.isArray(localPlans) ? localPlans : []) {
+  const localById = new Map<string, any>()
+  for (const localPlan of Array.isArray(localPlans) ? localPlans : ([] as UTSJSONObject[])) {
     const planId = getPlanOperationId(localPlan)
     if (planId !== '') localById.set(planId, localPlan)
   }
-  const result = []
-  const seenIds = new Set()
-  for (const item of [...(Array.isArray(remoteRecords) ? remoteRecords : []), ...(Array.isArray(localPlans) ? localPlans : [])]) {
+  const result: UTSJSONObject[] = []
+  const seenIds = new Set<string>()
+  for (const item of [...(Array.isArray(remoteRecords) ? remoteRecords : ([] as UTSJSONObject[])), ...(Array.isArray(localPlans) ? localPlans : ([] as UTSJSONObject[]))]) {
     if (getItemParentPlanId(item) !== targetParentId) continue
     const planId = getPlanOperationId(item)
     if (planId === '' || seenIds.has(planId)) continue
@@ -263,8 +299,9 @@ export function buildSplitPreview(remoteRecords, localPlans, parentPlanId) {
 
 /**
  * 从复制接口的不同返回结构中提取新计划 ID。
+ * result 为复制接口返回（字符串、数字或包装对象）；返回非空新计划 ID，缺失时返回空串。
  */
-export function extractCopiedPlanId(result) {
+export function extractCopiedPlanId(result: any): string {
   const candidates = [
     result?.id,
     result?.planId,

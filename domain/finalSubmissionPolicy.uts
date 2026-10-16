@@ -1,7 +1,9 @@
 /**
  * 判断照片记录是否包含能够参与提交校验的本地或服务端媒体信息。
+ * @param photo 单条照片记录
+ * @returns 是否为有效照片记录（已删除记录直接视为无效）
  */
-function isPhotoRecord(photo) {
+function isPhotoRecord(photo: UTSJSONObject | null): boolean {
   if (photo == null || typeof photo !== 'object' || photo?.deleted === true) return false
   return Boolean(
     photo?.photoId
@@ -16,8 +18,10 @@ function isPhotoRecord(photo) {
 
 /**
  * 判断照片是否已经具备服务端文件标识或明确的上传成功状态。
+ * @param photo 单条照片记录
+ * @returns 已上传（或无需上传）返回 true，仍需上传返回 false
  */
-export function isPhotoUploaded(photo) {
+export function isPhotoUploaded(photo: UTSJSONObject | null): boolean {
   if (!isPhotoRecord(photo)) return true
   if (String(photo?.fileId ?? '').trim() !== '') return true
   const status = String(photo?.uploadStatus ?? '').trim().toLowerCase()
@@ -26,9 +30,11 @@ export function isPhotoUploaded(photo) {
 
 /**
  * 汇总最终提交前的图片状态，并返回可直接展示给用户的阻断原因。
+ * @param photos 当前报告的全部图片记录
+ * @returns 含 ready、数量统计和阻断提示文案的结果对象
  */
-export function evaluateFinalSubmissionPhotos(photos) {
-  const source = Array.isArray(photos) ? photos.filter(isPhotoRecord) : []
+export function evaluateFinalSubmissionPhotos(photos: UTSJSONObject[] | null): UTSJSONObject {
+  const source = Array.isArray(photos) ? photos.filter(isPhotoRecord) : ([] as UTSJSONObject[])
   const unfinished = source.filter((photo) => !isPhotoUploaded(photo))
   const failedStatuses = new Set(['failed', 'error', 'needs_attention'])
   const failedCount = unfinished.filter((photo) => {
@@ -48,23 +54,40 @@ export function evaluateFinalSubmissionPhotos(photos) {
   }
 }
 
-/** 按 H5 规则确认本次提交的计划已经成为报告；合并组其他成员由本地共享报告一并更新。 */
-export function isCurrentPlanReported(detail, currentPlanId) {
-  const reported = (status) => {
+/**
+ * 按 H5 规则确认本次提交的计划已经成为报告；合并组其他成员由本地共享报告一并更新。
+ * @param detail 报告详情对象
+ * @param currentPlanId 当前提交的计划标识
+ * @returns 当前计划是否已进入已报告状态
+ */
+export function isCurrentPlanReported(detail: UTSJSONObject | null, currentPlanId: string): boolean {
+  /**
+   * 将服务端状态值归一为是否已报告。
+   * @param status 服务端返回的计划状态原始值
+   * @returns 是否为已完成/已报告状态
+   */
+  const reported = (status: string | number | null) => {
     const raw = String(status ?? '').trim()
     if (raw === '3') return true
     const text = raw.toUpperCase()
     return text === 'COMPLETED' || text === 'DONE' || text === 'SUBMITTED' || text === 'REPORTED'
   }
-  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : []
+  const plans = Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : ([] as UTSJSONObject[])
   const planId = String(currentPlanId ?? '').trim()
   const current = plans.find((plan) => String(plan?.id ?? plan?.planId ?? plan?.reportId ?? '').trim() === planId)
     ?? plans[0] ?? detail?.plan ?? detail?.report
   return reported(current?.status) || reported(detail?.plan?.status)
 }
 
-/** 最终生成后有限次重查当前计划状态，允许服务端短暂延迟但绝不重复调用报告生成接口。 */
-export async function waitForCurrentPlanReported(loadDetail, currentPlanId, attempts: number = 3, delayMs: number = 500) {
+/**
+ * 最终生成后有限次重查当前计划状态，允许服务端短暂延迟但绝不重复调用报告生成接口。
+ * @param loadDetail 重新拉取报告详情的函数
+ * @param currentPlanId 当前提交的计划标识
+ * @param attempts 最大重查次数
+ * @param delayMs 每次重查之间的等待毫秒数
+ * @returns 重查期间计划是否进入已报告状态
+ */
+export async function waitForCurrentPlanReported(loadDetail: (planId: string) => Promise<UTSJSONObject>, currentPlanId: string, attempts: number = 3, delayMs: number = 500): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const detail = await loadDetail(currentPlanId)
     if (isCurrentPlanReported(detail, currentPlanId)) return true

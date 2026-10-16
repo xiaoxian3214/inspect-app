@@ -1,0 +1,72 @@
+<template>
+	<view class="demo-page">
+		<TopSafeArea background-color="#0f172a" />
+		<view class="demo-header">
+			<text class="demo-title">uni-app x 取景示例</text>
+			<text class="demo-subtitle">取景与拍照都留在页面内，示例入口从这里进入</text>
+		</view>
+		<view class="demo-content">
+			<view class="demo-button" @click="openCapturePage">
+				<text class="demo-button-text">打开自定义拍照</text>
+			</view>
+			<view class="demo-result">
+				<text class="demo-result-label">最近一次拍摄结果</text>
+				<text class="demo-result-text">{{ resultText }}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { ref } from 'vue'
+	import { onLoad, onUnload } from '@dcloudio/uni-app'
+	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
+	import { buildCameraCaptureEventName, normalizeCameraCaptureMedia } from '../../domain/cameraCapture.uts'
+
+	/** 示例入口不携带请求标识，取景页的默认结果频道即示例页监听的频道。 */
+	const CAMERA_REQUEST_ID = ''
+	const cameraEventName = buildCameraCaptureEventName(CAMERA_REQUEST_ID)
+	const resultText = ref('还没有收到拍摄结果')
+
+	/** 接收取景页广播的拍摄结果，展示归一化后的媒体数量。 */
+	function handleCameraResult(payload: UTSJSONObject): void {
+		const items = normalizeCameraCaptureMedia(payload)
+		resultText.value = items.length > 0 ? `收到 ${items.length} 个媒体文件` : '本次拍摄已取消'
+	}
+
+	/** 进入示例页时订阅取景页结果事件。 */
+	function handlePageLoad(): void {
+		uni.$on(cameraEventName, handleCameraResult)
+	}
+
+	/** 离开示例页时移除监听，避免结果回调在页面销毁后仍然触发。 */
+	function handlePageUnload(): void {
+		uni.$off(cameraEventName)
+	}
+
+	/** 打开生产取景页，取景、拍照与完成回传都在取景页内完成。 */
+	function openCapturePage(): void {
+		toPage('/pages/report/simple-camera')
+	}
+
+	/** 统一的示例页跳转方法。 */
+	function toPage(url: string): void {
+		uni.navigateTo({ url: url })
+	}
+
+	onLoad(handlePageLoad)
+	onUnload(handlePageUnload)
+</script>
+
+<style>
+	.demo-page { flex: 1; background-color: #0f172a; }
+	.demo-header { padding: 32rpx 28rpx; }
+	.demo-title { color: #f8fafc; font-size: 40rpx; font-weight: bold; }
+	.demo-subtitle { margin-top: 12rpx; color: #94a3b8; font-size: 24rpx; }
+	.demo-content { padding: 0 28rpx; }
+	.demo-button { height: 96rpx; align-items: center; justify-content: center; border-radius: 20rpx; background-color: #03ae4f; }
+	.demo-button-text { color: #ffffff; font-size: 30rpx; }
+	.demo-result { margin-top: 32rpx; padding: 24rpx; border-radius: 20rpx; background-color: rgba(148, 163, 184, 0.16); }
+	.demo-result-label { color: #cbd5e1; font-size: 24rpx; }
+	.demo-result-text { margin-top: 12rpx; color: #f8fafc; font-size: 28rpx; }
+</style>

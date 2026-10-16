@@ -2,7 +2,7 @@
 	<view v-if="visible" class="overlay" @click="closeSheet">
 		<view class="dialog" :style="{ height: dialogHeight, paddingBottom: dialogBottomPadding }" @click.stop="stopEvent">
 			<view class="header"><text class="close" @click="closeSheet">×</text><text class="title">{{ translateText('复制检查点到其他验货') }}</text><text class="step-indicator">{{ currentStep }}/3</text></view>
-			<scroll-view class="body" scroll-y>
+			<scroll-view class="body" direction="vertical">
 				<view v-if="currentStep === 1">
 					<text class="step-title">{{ translateText('选择需要复制的信息') }}</text>
 					<view class="select-row" @click="toggleAllFields"><view class="checkbox" :class="{ checked: allFieldsSelected }"><text v-if="allFieldsSelected" class="check-mark">✓</text></view><text class="row-label">{{ translateText('全选') }}</text></view>

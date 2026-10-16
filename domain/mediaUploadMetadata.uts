@@ -1,19 +1,25 @@
 /**
  * 返回当前详情主计划的子货号，保持与 H5 getSubGoodsNo 一致。
+ * @param detail 报告详情对象
+ * @returns 子货号文本，缺失时为空串
  */
-export function getMediaSubGoodsNo(detail) {
+export function getMediaSubGoodsNo(detail: UTSJSONObject | null): string {
   return String(detail?.plan?.subGoodsNo ?? '').trim()
 }
 
 /**
  * 解析普通或合并验货检查项图片对应的服务端业务 ID。
+ * @param detail 报告详情对象
+ * @param item 检查项记录
+ * @param sonPlanId 合并验货子计划标识
+ * @returns 服务端检查项结果 ID，无法匹配时回退 `${itemId}_${childPlanId}`
  */
-export function resolveChecklistMediaBizId(detail, item, sonPlanId = '') {
+export function resolveChecklistMediaBizId(detail: UTSJSONObject | null, item: UTSJSONObject | null, sonPlanId: string = ''): string {
   const rawItemId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').trim()
   const itemId = rawItemId.includes('__') ? rawItemId.split('__')[0] : rawItemId
   const childPlanId = String(sonPlanId ?? item?.sonPlanId ?? '').trim()
   if (itemId === '' || childPlanId === '') return itemId
-  const rows = Array.isArray(detail?.itemResults) ? detail.itemResults : []
+  const rows = Array.isArray(detail?.itemResults) ? detail.itemResults : ([] as UTSJSONObject[])
   const itemStandardItemId = String(item?.standardItemId ?? '').trim()
   const matched = rows.find((row) => {
     if (String(row?.sonPlanId ?? '').trim() !== childPlanId) return false
@@ -30,8 +36,13 @@ export function resolveChecklistMediaBizId(detail, item, sonPlanId = '') {
 
 /**
  * 构建与 H5 检查项媒体上传完全一致的四个业务参数。
+ * @param detail 报告详情对象
+ * @param item 检查项记录
+ * @param sonPlanId 合并验货子计划标识
+ * @param sortNo 图片在该检查项内的排序号
+ * @returns 含 bizId、bizType、subGoodsNo、sortNo 的上传参数对象
  */
-export function buildChecklistMediaMetadata(detail, item, sonPlanId = '', sortNo = 1) {
+export function buildChecklistMediaMetadata(detail: UTSJSONObject | null, item: UTSJSONObject | null, sonPlanId: string = '', sortNo: number = 1): UTSJSONObject {
   return {
     bizId: resolveChecklistMediaBizId(detail, item, sonPlanId),
     bizType: 'checkResult',
@@ -42,8 +53,12 @@ export function buildChecklistMediaMetadata(detail, item, sonPlanId = '', sortNo
 
 /**
  * 构建与 H5 疵点媒体上传完全一致的四个业务参数。
+ * @param detail 报告详情对象
+ * @param defectId 疵点标识
+ * @param sortNo 图片在该疵点内的排序号
+ * @returns 含 bizId、bizType、subGoodsNo、sortNo 的上传参数对象
  */
-export function buildDefectMediaMetadata(detail, defectId, sortNo = 1) {
+export function buildDefectMediaMetadata(detail: UTSJSONObject | null, defectId: string, sortNo: number = 1): UTSJSONObject {
   return {
     bizId: String(defectId ?? '').trim(),
     bizType: 'defect',

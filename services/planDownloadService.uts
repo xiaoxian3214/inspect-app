@@ -16,7 +16,7 @@ export function createPlanDownloadService(options) {
   /** 保存生成接口返回的完整报告；缺少离线清单时拒绝整组落库，不额外请求详情。 */
   async function downloadToLocal(planId, payload, expectedPlanIds: string[] = [], sourceItems: any[] = []) {
     const downloadData = await planApi.downloadPlan(planId, payload ?? {})
-    const sourceById = new Map()
+    const sourceById = new Map<string, any>()
     for (const item of sourceItems) {
       const id = getSourcePlanId(item)
       if (id !== '') sourceById.set(id, item)

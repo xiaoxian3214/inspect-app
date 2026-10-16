@@ -21,7 +21,7 @@
 						<text class="merge-table-cell merge-table-header-cell">{{ translateText('款号#批次') }}</text>
 						<text class="merge-table-cell merge-table-header-cell">{{ translateText('产品名称') }}</text>
 					</view>
-					<scroll-view class="merge-table-body" :scroll-y="true">
+					<scroll-view class="merge-table-body" direction="vertical">
 						<view v-for="row in previewRows" :key="row.key" class="merge-table-row">
 							<text class="merge-table-cell">{{ row.orderNo }}</text>
 							<text class="merge-table-cell">{{ row.itemBatch }}</text>

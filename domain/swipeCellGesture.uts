@@ -1,9 +1,14 @@
+/** 清单侧滑手势的落点结果：偏移量（像素）与最终停留在左侧、右侧或关闭状态。 */
 type SwipeTarget = { offset: number, position: string }
 
 /**
  * 根据触摸位移锁定手势方向；纵向手势交还页面滚动，横向手势用于清单侧滑。
+ * @param deltaX 水平方向触摸位移
+ * @param deltaY 垂直方向触摸位移
+ * @param threshold 判定为有效手势的最小位移
+ * @returns 'pending'、'horizontal' 或 'vertical'
  */
-export function resolveGestureAxis(deltaX, deltaY, threshold = 10) {
+export function resolveGestureAxis(deltaX: number, deltaY: number, threshold: number = 10): string {
   const safeDeltaX = Math.abs(parseInt(String(deltaX ?? 0)))
   const safeDeltaY = Math.abs(parseInt(String(deltaY ?? 0)))
   const safeThreshold = Math.max(1, parseInt(String(threshold ?? 10)))
@@ -13,8 +18,12 @@ export function resolveGestureAxis(deltaX, deltaY, threshold = 10) {
 
 /**
  * 将清单滑动位移限制在 H5 左右操作区宽度内。
+ * @param offset 当前滑动位移
+ * @param leftWidth 左侧快捷操作区宽度
+ * @param rightWidth 右侧结果操作区宽度
+ * @returns 收敛到左右操作区宽度范围内的位移
  */
-export function clampSwipeOffset(offset, leftWidth, rightWidth) {
+export function clampSwipeOffset(offset: number, leftWidth: number, rightWidth: number): number {
   const safeLeftWidth = Math.max(0, parseInt(String(leftWidth ?? 0)))
   const safeRightWidth = Math.max(0, parseInt(String(rightWidth ?? 0)))
   return Math.max(-safeRightWidth, Math.min(safeLeftWidth, parseInt(String(offset ?? 0))))
@@ -22,15 +31,25 @@ export function clampSwipeOffset(offset, leftWidth, rightWidth) {
 
 /**
  * 根据手指起始位置与横向移动距离计算当前清单滑动位移。
+ * @param startOffset 手指按下时的滑动位移
+ * @param deltaX 本次横向触摸位移
+ * @param leftWidth 左侧快捷操作区宽度
+ * @param rightWidth 右侧结果操作区宽度
+ * @returns 当前应呈现的滑动位移
  */
-export function resolveSwipeMove(startOffset, deltaX, leftWidth, rightWidth) {
+export function resolveSwipeMove(startOffset: number, deltaX: number, leftWidth: number, rightWidth: number): number {
   return clampSwipeOffset(parseInt(String(startOffset ?? 0)) + parseInt(String(deltaX ?? 0)), leftWidth, rightWidth)
 }
 
 /**
  * 根据松手位移决定打开左侧快捷状态、右侧四种结果操作或回到关闭状态。
+ * @param offset 松手时的滑动位移
+ * @param leftWidth 左侧快捷操作区宽度
+ * @param rightWidth 右侧结果操作区宽度
+ * @param threshold 触发打开操作区的最小位移
+ * @returns 松手后停留状态的偏移量与位置
  */
-export function resolveSwipeTarget(offset, leftWidth, rightWidth, threshold = 48): SwipeTarget {
+export function resolveSwipeTarget(offset: number, leftWidth: number, rightWidth: number, threshold: number = 48): SwipeTarget {
   const safeOffset = parseInt(String(offset ?? 0))
   const safeThreshold = Math.max(1, parseInt(String(threshold ?? 48)))
   if (safeOffset >= safeThreshold) return { offset: Math.max(0, parseInt(String(leftWidth ?? 0))), position: 'left' }
@@ -40,8 +59,15 @@ export function resolveSwipeTarget(offset, leftWidth, rightWidth, threshold = 48
 
 /**
  * 根据手势起始展开状态和反向拖动距离决定松手结果，使已展开操作可短距离拖回关闭。
+ * @param offset 松手时的滑动位移
+ * @param startOffset 手指按下时的滑动位移
+ * @param deltaX 本次横向触摸位移
+ * @param leftWidth 左侧快捷操作区宽度
+ * @param rightWidth 右侧结果操作区宽度
+ * @param threshold 判定为反向拖回的最小位移
+ * @returns 松手后停留状态的偏移量与位置
  */
-export function resolveSwipeRelease(offset, startOffset, deltaX, leftWidth, rightWidth, threshold = 48): SwipeTarget {
+export function resolveSwipeRelease(offset: number, startOffset: number, deltaX: number, leftWidth: number, rightWidth: number, threshold: number = 48): SwipeTarget {
   const safeStartOffset = parseInt(String(startOffset ?? 0))
   const safeDeltaX = parseInt(String(deltaX ?? 0))
   const safeThreshold = Math.max(1, parseInt(String(threshold ?? 48)))

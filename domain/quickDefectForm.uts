@@ -1,5 +1,9 @@
-/** 从服务端或本地疵点恢复编辑草稿，保留检查项和合并验货关联。 */
-export function createDefectDraft(defect) {
+/**
+ * 从服务端或本地疵点恢复编辑草稿，保留检查项和合并验货关联。
+ * @param defect 服务端或本地疵点记录
+ * @returns 归一化后的疵点编辑草稿
+ */
+export function createDefectDraft(defect: UTSJSONObject): UTSJSONObject {
   const commonFlag = parseInt(String(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0))) === 1 ? 1 : 0
   const quantity = parseFloat(String(defect?.quantity === 'other' ? defect?.customQuantity : (defect?.quantity ?? defect?.defectCount ?? 1)))
   const usesOtherQuantity = defect?.quantity === 'other' || quantity > 19
@@ -15,28 +19,46 @@ export function createDefectDraft(defect) {
     checkItemId: defect?.checkItemId ?? '', checkItemName: defect?.checkItemName ?? '',
     checkItemResultId: defect?.checkItemResultId ?? defect?.itemResultId ?? '',
     sonPlanId: defect?.sonPlanId ?? null,
-    photos: Array.isArray(defect?.photos) ? [...defect.photos] : []
+    photos: Array.isArray(defect?.photos) ? [...defect.photos] : ([] as UTSJSONObject[])
   }
 }
 
-/** 选择 1–19 或其他数量；选择数量时退出普遍性疵点状态。 */
-export function selectDefectQuantity(draft, quantity) {
+/**
+ * 选择 1–19 或其他数量；选择数量时退出普遍性疵点状态。
+ * @param draft 当前疵点草稿（组件内 type 对象，只有 UTSObject 能同时满足展开与字段读取）
+ * @param quantity 新选择的数量，'other' 表示自定义数量
+ * @returns 更新数量后的新草稿对象
+ */
+export function selectDefectQuantity(draft: UTSObject, quantity: number | string): UTSJSONObject {
   return { ...draft, quantity, customQuantity: quantity === 'other' ? draft.customQuantity ?? '' : '', commonFlag: 0 }
 }
 
-/** 切换普遍性疵点，开启时清空数量，关闭时恢复默认数量。 */
-export function setDefectCommon(draft, checked) {
+/**
+ * 切换普遍性疵点，开启时清空数量，关闭时恢复默认数量。
+ * @param draft 当前疵点草稿（组件内 type 对象）
+ * @param checked 是否勾选普遍性疵点
+ * @returns 更新普遍性状态后的新草稿对象
+ */
+export function setDefectCommon(draft: UTSObject, checked: boolean): UTSJSONObject {
   return { ...draft, commonFlag: checked ? 1 : 0, quantity: checked ? null : (draft.quantity ?? 1), customQuantity: checked ? '' : draft.customQuantity }
 }
 
-/** 获取实际受影响数量，普遍性疵点返回 null。 */
-export function getDefectQuantity(draft) {
+/**
+ * 获取实际受影响数量，普遍性疵点返回 null。
+ * @param draft 当前疵点草稿（组件内 type 对象）
+ * @returns 受影响数量，普遍性疵点或非法数量返回 null
+ */
+export function getDefectQuantity(draft: UTSObject): number | null {
   if (parseInt(String(draft?.commonFlag ?? 0)) === 1) return null
   return parseInt(String(draft?.quantity === 'other' ? draft?.customQuantity : draft?.quantity))
 }
 
-/** 校验必选疵点类别及受影响数量，返回空字符串表示可保存。 */
-export function validateDefectDraft(draft) {
+/**
+ * 校验必选疵点类别及受影响数量，返回空字符串表示可保存。
+ * @param draft 当前疵点草稿（组件内 type 对象）
+ * @returns 阻断保存的提示文案，校验通过为空串
+ */
+export function validateDefectDraft(draft: UTSObject): string {
   if (!draft?.defectCode) return '请选择完整疵点类别（三级）'
   if (!draft?.defectDesc) return '请选择完整疵点类别（三级）'
   const quantity = getDefectQuantity(draft)

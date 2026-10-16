@@ -2,12 +2,12 @@
 	<view v-if="visible" class="overlay" @click="closeSheet">
 		<view class="dialog" :style="{ height: windowHeightPx(0.82), paddingBottom: safeBottomPaddingPx(24) }" @click.stop="stopEvent">
 			<view class="sheet-header">
-				<text class="title">{{ t('报告评论') }}</text>
+				<text class="title">{{ translateText('报告评论') }}</text>
 				<view class="close-button" @click="closeSheet"><AppIcon type="close" :size="18" color="#64748b" /></view>
 			</view>
-			<scroll-view class="comment-list" :scroll-y="true" :show-scrollbar="false">
-				<text v-if="loading" class="state-text">{{ t('加载中...') }}</text>
-				<text v-else-if="threads.length === 0" class="state-text">{{ t('暂无评论，发布第一条评论吧。') }}</text>
+			<scroll-view class="comment-list" direction="vertical" :show-scrollbar="false">
+				<text v-if="loading" class="state-text">{{ translateText('加载中...') }}</text>
+				<text v-else-if="threads.length === 0" class="state-text">{{ translateText('暂无评论，发布第一条评论吧。') }}</text>
 				<view v-else class="thread-list">
 					<view v-for="thread in threads" :key="thread.id" class="comment-card">
 						<view class="comment-head">
@@ -16,8 +16,8 @@
 								<text class="time">{{ thread.updatedAt || thread.createdAt ?? '-' }}</text>
 							</view>
 							<view class="head-actions">
-								<text class="action" @click="startReply(thread)">{{ t('回复') }}</text>
-								<text class="action danger" @click="removeComment(thread)">{{ t(deletingId === thread.id ? '删除中...' : '删除') }}</text>
+								<text class="action" @click="startReply(thread)">{{ translateText('回复') }}</text>
+								<text class="action danger" @click="removeComment(thread)">{{ translateText(deletingId === thread.id ? '删除中...' : '删除') }}</text>
 							</view>
 						</view>
 						<text class="content">{{ thread.content ?? '-' }}</text>
@@ -25,12 +25,12 @@
 							<view v-for="reply in thread.replies" :key="reply.id" class="reply-card">
 								<view class="comment-head">
 									<view class="head-left">
-										<view class="reply-author"><text class="author">{{ reply.authorName ?? '-' }}</text><text v-if="reply.replyToName !== ''" class="reply-to">{{ t('回复 {name}', { name: reply.replyToName }) }}</text></view>
+										<view class="reply-author"><text class="author">{{ reply.authorName ?? '-' }}</text><text v-if="reply.replyToName !== ''" class="reply-to">{{ translateText('回复 {name}', { name: reply.replyToName }) }}</text></view>
 										<text class="time">{{ reply.updatedAt || reply.createdAt ?? '-' }}</text>
 									</view>
 									<view class="head-actions">
-										<text class="action" @click="startReply(thread)">{{ t('继续回复') }}</text>
-										<text class="action danger" @click="removeComment(reply)">{{ t(deletingId === reply.id ? '删除中...' : '删除') }}</text>
+										<text class="action" @click="startReply(thread)">{{ translateText('继续回复') }}</text>
+										<text class="action danger" @click="removeComment(reply)">{{ translateText(deletingId === reply.id ? '删除中...' : '删除') }}</text>
 									</view>
 								</view>
 								<text class="content">{{ reply.content ?? '-' }}</text>
@@ -41,13 +41,13 @@
 			</scroll-view>
 			<view class="editor">
 				<view v-if="(replyTarget.id ?? '').toString() !== ''" class="reply-target">
-				<text class="reply-target-text">{{ t('回复给：{name}', { name: replyTarget.authorName ?? '-' }) }}</text>
-					<text class="reply-target-cancel" @click="cancelReply">{{ t('取消回复') }}</text>
+				<text class="reply-target-text">{{ translateText('回复给：{name}', { name: replyTarget.authorName ?? '-' }) }}</text>
+					<text class="reply-target-cancel" @click="cancelReply">{{ translateText('取消回复') }}</text>
 				</view>
-				<textarea class="comment-input" :value="draft" :placeholder="t((replyTarget.id ?? '').toString() !== '' ? '写回复' : '写评论')" :maxlength="500" @input="handleInput" />
+				<textarea class="comment-input" :value="draft" :placeholder="translateText((replyTarget.id ?? '').toString() !== '' ? '写回复' : '写评论')" :maxlength="500" @input="handleInput" />
 				<view class="editor-actions">
-					<button v-if="(replyTarget.id ?? '').toString() !== ''" class="editor-button secondary" :disabled="saving" @click="cancelReply">{{ t('取消') }}</button>
-					<button class="editor-button primary" :disabled="saving || draft.trim() === ''" @click="submitComment">{{ t(saving ? '提交中...' : ((replyTarget.id ?? '').toString() !== '' ? '提交回复' : '提交评论')) }}</button>
+					<button v-if="(replyTarget.id ?? '').toString() !== ''" class="editor-button secondary" :disabled="saving" @click="cancelReply">{{ translateText('取消') }}</button>
+					<button class="editor-button primary" :disabled="saving || draft.trim() === ''" @click="submitComment">{{ translateText(saving ? '提交中...' : ((replyTarget.id ?? '').toString() !== '' ? '提交回复' : '提交评论')) }}</button>
 				</view>
 			</view>
 		</view>
@@ -57,6 +57,9 @@
 <script setup lang="uts">
 	import { windowHeightPx, safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { t } from '../../i18n/index.uts'
+
+	/** 为 Android 原生模板提供可调用的翻译方法，保留占位符参数。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
 	import { ref, watch } from 'vue'
 	import AppIcon from '../icons/AppIcon.uvue'
 	import { reportCommentsApi } from '../../runtime/appRuntime.uts'

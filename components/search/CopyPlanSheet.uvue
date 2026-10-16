@@ -2,7 +2,7 @@
 	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
 		<view class="sheet-panel" @click.stop>
 			<text class="sheet-title">{{ translateText(mode === 2 ? '复制合并验货' : '复制当前验货') }}</text>
-			<scroll-view class="copy-content" :scroll-y="true">
+			<scroll-view class="copy-content" direction="vertical">
 				<view v-if="mode === 2" class="merged-section">
 					<text class="merged-title">{{ translateText('此合并验货包含以下验货：') }}</text>
 					<PlanMemberTable :items="mergedItems" :loading="mergedLoading" />

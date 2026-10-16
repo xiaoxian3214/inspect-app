@@ -2,7 +2,7 @@
 	<view v-if="visible" class="option-overlay" @click.stop="closeSheet">
 		<view class="option-panel" @click.stop>
 			<text class="option-title">{{ translateText(title) }}</text>
-			<scroll-view class="option-list" :scroll-y="true">
+			<scroll-view class="option-list" direction="vertical">
 				<text v-if="options.length === 0" class="option-empty">{{ translateText(emptyText) }}</text>
 				<view v-for="option in optionRows" :key="option.value" class="option-row" :class="{ selected: option.value === draftValue }" @click="chooseOption(option)">
 					<text class="option-name">{{ option.label }}</text>

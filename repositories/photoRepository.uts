@@ -81,7 +81,7 @@ export function createPhotoRepository(database) {
   async function listByReportId(reportId) {
     const normalizedReportId = String(reportId ?? '').trim()
     const sharedPlanIds = getSharedPlanIds(normalizedReportId)
-    const seen = new Set()
+    const seen = new Set<string>()
     return database.readTable('photo')
       .filter((row) => sharedPlanIds.has(String(row?.reportId ?? '')))
       .sort((left, right) => parseInt(String(left?.sortNo ?? 0)) - parseInt(String(right?.sortNo ?? 0)))
@@ -117,8 +117,8 @@ export function createPhotoRepository(database) {
    * 返回仍有本地图片待上传的全部报告 ID，并保持数据库中的首次出现顺序。
    */
   async function listPendingReportIds() {
-    const reportIds = []
-    const seen = new Set()
+    const reportIds: string[] = []
+    const seen = new Set<string>()
     database.readTable('photo').forEach((row) => {
       const reportId = String(row?.reportId ?? '').trim()
       if (reportId === '' || seen.has(reportId) || !isPendingPhoto(parsePhotoRow(row))) return

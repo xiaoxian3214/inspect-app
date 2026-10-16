@@ -1,5 +1,9 @@
-/** 提取本地报告的精简诊断信息，避免将照片和完整清单塞进剪贴板。 */
-export function buildLocalReportDiagnostic(row) {
+/**
+ * 提取本地报告的精简诊断信息，避免将照片和完整清单塞进剪贴板。
+ * @param row 本地报告缓存行
+ * @returns 可直接复制的诊断 JSON 文本
+ */
+export function buildLocalReportDiagnostic(row: UTSJSONObject | null): string {
   const hasAssembledData = row?.data != null && typeof row.data === 'object'
   const jsonData = hasAssembledData ? JSON.stringify(row.data) : String(row?.jsonData ?? '')
   let detail = hasAssembledData ? row.data : {}
@@ -20,8 +24,8 @@ export function buildLocalReportDiagnostic(row) {
     clientOrderNo: detail.client_order_no
   } : detail?.plan != null && typeof detail.plan === 'object'
     ? detail.plan : (Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans[0] ?? {} : {})
-  const standardItems = Array.isArray(detail?.standardItems) ? detail.standardItems : []
-  const inspectionPlans = isPlanRow ? [plan] : (Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : [])
+  const standardItems = Array.isArray(detail?.standardItems) ? detail.standardItems : ([] as UTSJSONObject[])
+  const inspectionPlans = isPlanRow ? [plan] : (Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : ([] as UTSJSONObject[]))
   const checklistLeafCount = standardItems.reduce((count, section) => {
     return count + (Array.isArray(section?.children) ? section.children.length : 0)
   }, 0)
@@ -45,17 +49,21 @@ export function buildLocalReportDiagnostic(row) {
   }, null, 2)
 }
 
-/** 将已落库详情按获取详情接口的 data 字段组织，不伪造网络响应状态和时间。 */
-export function buildLocalDetailResponse(detail) {
-  const itemResults = Array.isArray(detail?.itemResults) ? detail.itemResults : []
+/**
+ * 将已落库详情按获取详情接口的 data 字段组织，不伪造网络响应状态和时间。
+ * @param detail 本地详情对象
+ * @returns 与获取详情接口结构一致的响应对象
+ */
+export function buildLocalDetailResponse(detail: UTSJSONObject | null): UTSJSONObject {
+  const itemResults = Array.isArray(detail?.itemResults) ? detail.itemResults : ([] as UTSJSONObject[])
   const defectRecords = Array.isArray(detail?.defectRecords) ? detail.defectRecords
-    : (Array.isArray(detail?.defects) ? detail.defects : [])
+    : (Array.isArray(detail?.defects) ? detail.defects : ([] as UTSJSONObject[]))
   const passedItems = itemResults.filter((item) => item?.resultStatus === 'APPROVED').length
   return { data: {
     report: detail?.report ?? null,
     itemResults,
     defectRecords,
-    inspectionPlans: Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : (detail?.plan == null ? [] : [detail.plan]),
+    inspectionPlans: Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : (detail?.plan == null ? ([] as UTSJSONObject[]) : [detail.plan]),
     totalItems: itemResults.length,
     passedItems,
     failedItems: itemResults.length - passedItems,
@@ -68,13 +76,19 @@ export function buildLocalDetailResponse(detail) {
   } }
 }
 
-/** 将 SQLite 原始结果、组装后的本地详情和页面实际绑定值合成一份可复制的完整诊断。 */
-export function buildLocalDetailDebugSnapshot(sqliteDetail, pageDetail, sqliteItemResultRows) {
-  const rows = Array.isArray(sqliteItemResultRows) ? sqliteItemResultRows : []
+/**
+ * 将 SQLite 原始结果、组装后的本地详情和页面实际绑定值合成一份可复制的完整诊断。
+ * @param sqliteDetail SQLite 中读取的详情对象
+ * @param pageDetail 页面当前绑定的详情对象
+ * @param sqliteItemResultRows SQLite 中的检查项结果原始行
+ * @returns 含结果绑定、原始行与两个详情快照的诊断对象
+ */
+export function buildLocalDetailDebugSnapshot(sqliteDetail: UTSJSONObject | null, pageDetail: UTSJSONObject | null, sqliteItemResultRows: UTSJSONObject[] | null): UTSJSONObject {
+  const rows = Array.isArray(sqliteItemResultRows) ? sqliteItemResultRows : ([] as UTSJSONObject[])
   const itemResults = rows.length > 0 ? rows.map((row) => row.jsonData)
-    : (Array.isArray(sqliteDetail?.itemResults) ? sqliteDetail.itemResults : [])
-  const treeItems = []
-  ;(Array.isArray(pageDetail?.standardItems) ? pageDetail.standardItems : []).forEach((section) => {
+    : (Array.isArray(sqliteDetail?.itemResults) ? sqliteDetail.itemResults : ([] as UTSJSONObject[]))
+  const treeItems: any[] = []
+  ;(Array.isArray(pageDetail?.standardItems) ? pageDetail.standardItems : ([] as UTSJSONObject[])).forEach((section) => {
     if (Array.isArray(section?.children) && section.children.length > 0) treeItems.push(...section.children)
     else treeItems.push(section)
   })
@@ -98,8 +112,14 @@ export function buildLocalDetailDebugSnapshot(sqliteDetail, pageDetail, sqliteIt
   return { resultBindings, sqliteItemResultRows: rows, sqliteDetail, pageDetail }
 }
 
-/** 将完整 JSON 分段供原生 text 渲染；每段无丢失，复制时仍使用原始全文。 */
-export function getLocalDetailDebugPage(text, index = 0, chunkSize = 12000) {
+/**
+ * 将完整 JSON 分段供原生 text 渲染；每段无丢失，复制时仍使用原始全文。
+ * @param text 完整诊断 JSON 文本
+ * @param index 当前分段下标
+ * @param chunkSize 每个分段的字符数
+ * @returns 含总分段数、当前下标与当前分段内容的对象
+ */
+export function getLocalDetailDebugPage(text: string, index: number = 0, chunkSize: number = 12000): UTSJSONObject {
   const source = String(text ?? '')
   const size = Math.max(1, Math.floor(parseInt(String(chunkSize ?? 12000))))
   const total = Math.max(1, Math.ceil(source.length / size))

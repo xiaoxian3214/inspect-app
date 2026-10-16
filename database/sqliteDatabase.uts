@@ -94,7 +94,7 @@ function diffTable(tableName, previous, next) {
   const primaryKey = TABLE_KEYS[tableName]
   const before = new Map(previous.map((row) => [String(row[primaryKey]), row]))
   const after = new Map(next.map((row) => [String(row[primaryKey]), row]))
-  const statements = []
+  const statements: string[] = []
   before.forEach((_row, key) => {
     if (!after.has(key)) statements.push(`DELETE FROM ${physicalTableName(tableName)} WHERE ${primaryKey} = ${sqlValue(key)}`)
   })
@@ -134,7 +134,7 @@ export function createSqliteDatabase(driver: any, schemaSqlList: string[], legac
     if (legacy == null || typeof legacy !== 'object') return loaded
     const missingGroups = Object.keys(LEGACY_GROUP_SCHEMA).filter((name) => Array.isArray(legacy[name]) && legacy[name].length > 0)
     if (missingGroups.length > 0) await driver.executeBatch(missingGroups.map((name) => LEGACY_GROUP_SCHEMA[name]))
-    const statements = []
+    const statements: string[] = []
     for (const tableName of Object.keys(TABLE_KEYS)) {
       const existing = new Set(loaded[tableName].map((row) => String(row[TABLE_KEYS[tableName]])))
       for (const row of (Array.isArray(legacy[tableName]) ? legacy[tableName] : [])) {
@@ -162,7 +162,7 @@ export function createSqliteDatabase(driver: any, schemaSqlList: string[], legac
   async function migrateItemResultIds(loaded) {
     const rows = loaded.item_result
     const occupied = new Set(rows.map((row) => String(row.itemResultId)))
-    const statements = []
+    const statements: string[] = []
     rows.forEach((row) => {
       let item = {}
       try { item = JSON.parse(row.jsonData ?? '{}') } catch (_) {}
@@ -286,9 +286,9 @@ export function createSqliteDatabase(driver: any, schemaSqlList: string[], legac
     await open()
     const task = writeTail.then(async () => {
       const working = { ...state }
-      const changed = new Set()
+      const changed = new Set<string>()
       const result = await executor(createTransactionContext(working, changed))
-      const statements = []
+      const statements: string[] = []
       changed.forEach((tableName) => statements.push(...diffTable(tableName, state[tableName], working[tableName])))
       if (statements.length > 0) await driver.executeBatch(statements)
       state = working

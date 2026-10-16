@@ -70,7 +70,7 @@ test('download confirmation renders all fields in a scrollable native sheet and 
   assert.match(card, /<OptionSelectSheet[^>]*:visible="showDownloadTemplateSheet"[^>]*:options="downloadTemplateOptions"[^>]*@confirm="selectDownloadTemplate"/)
   assert.match(card, /function selectDownloadTemplate\(option\)/)
   assert.match(card, /downloadTemplateName\.value !== '' \? downloadTemplateName\.value : '请选择清单'/)
-  assert.match(details, /<scroll-view[^>]*scroll-y="true"/)
+  assert.match(details, /<scroll-view[^>]*direction="vertical"="true"/)
   assert.match(details, /v-for="field in fields"/)
   assert.match(details, /buildDownloadPlanFields\(props\.item\)/)
   assert.match(details, /class="section" @click="openTemplateOptions"/)

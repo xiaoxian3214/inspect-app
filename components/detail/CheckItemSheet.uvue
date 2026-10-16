@@ -8,7 +8,7 @@
 				<AppButton variant="icon camera" icon-type="camera" :icon-size="25" icon-color="#1a5f3f" @press="addPhoto" />
 			</view>
 
-			<scroll-view class="sheet-body" :scroll-y="true" :show-scrollbar="false">
+			<scroll-view class="sheet-body" direction="vertical" :show-scrollbar="false">
 				<view class="sheet-body-content">
 				<view v-if="draft.result" class="current-result-banner" :class="`banner-${draft.result}`">
 					<view class="banner-left"><view class="result-status-dot"></view><text class="result-status-label">{{ currentResultLabel }}</text></view>
@@ -23,9 +23,9 @@
 					<view class="group-card">
 						<view class="group-navigation"><AppButton variant="nav" :disabled="measurementIndex === 0" @press="previousMeasurement">{{ translateText('上一组') }}</AppButton><text class="group-index">{{ measurementIndex + 1 }}/{{ draft.measurements.length }}</text><AppButton variant="nav" :disabled="measurementIndex >= draft.measurements.length - 1" @press="nextMeasurement">{{ translateText('下一组') }}</AppButton></view>
 						<view v-if="draft.measurements.length > 1" class="group-delete"><AppButton variant="remove" @press="removeMeasurement(measurementIndex)">{{ translateText('删除当前组') }}</AppButton></view>
-						<view v-for="attr in specAttributes" :key="`${measurementIndex}_${attr.attrId}`" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.measurements[measurementIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateMeasurement(measurementIndex, attr.attrId, $event)" /></view>
+						<view v-for="attr in specAttributes" :key="`${measurementIndex}_${attr.attrId}`" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.measurements[measurementIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateMeasurement(measurementIndex, attr.attrId, $event as UniInputEvent)" /></view>
 					</view>
-					<view v-if="draft.measurements.length > 1" class="group-summary"><text>{{ translateText('规格汇总') }}</text><scroll-view :scroll-x="true" class="summary-scroll"><view class="summary-row"><text class="summary-label">{{ translateText('规格') }}</text><text v-for="(_, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell">{{ summaryIndex + 1 }}</text></view><view v-for="attr in specAttributes" :key="attr.attrId" class="summary-row"><text class="summary-label">{{ attr.attrName }}</text><text v-for="(summaryRow, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell" :class="{ 'summary-current': summaryIndex === measurementIndex }">{{ summaryRow[attr.attrId] || '-' }}</text></view></scroll-view></view>
+					<view v-if="draft.measurements.length > 1" class="group-summary"><text>{{ translateText('规格汇总') }}</text><scroll-view direction="horizontal" class="summary-scroll"><view class="summary-row"><text class="summary-label">{{ translateText('规格') }}</text><text v-for="(_, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell">{{ summaryIndex + 1 }}</text></view><view v-for="attr in specAttributes" :key="attr.attrId" class="summary-row"><text class="summary-label">{{ attr.attrName }}</text><text v-for="(summaryRow, summaryIndex) in draft.measurements" :key="summaryIndex" class="summary-cell" :class="{ 'summary-current': summaryIndex === measurementIndex }">{{ summaryRow[attr.attrId] || '-' }}</text></view></scroll-view></view>
 				</view>
 
 				<view v-else-if="itemType === 'Text'" class="type-section">
@@ -34,7 +34,7 @@
 					<view class="group-card">
 						<view class="group-navigation"><AppButton variant="nav" :disabled="textGroupIndex === 0" @press="previousTextGroup">{{ translateText('上一组') }}</AppButton><text class="group-index">{{ textGroupIndex + 1 }}/{{ draft.textGroups.length }}</text><AppButton variant="nav" :disabled="textGroupIndex >= draft.textGroups.length - 1" @press="nextTextGroup">{{ translateText('下一组') }}</AppButton></view>
 						<view v-if="draft.textGroups.length > 1" class="group-delete"><AppButton variant="remove" @press="removeTextGroup(textGroupIndex)">{{ translateText('删除当前组') }}</AppButton></view>
-						<view v-for="attr in specAttributes" :key="`${textGroupIndex}_${attr.attrId}`" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.textGroups[textGroupIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateTextField(textGroupIndex, attr.attrId, $event)" /></view>
+						<view v-for="attr in specAttributes" :key="`${textGroupIndex}_${attr.attrId}`" class="value-row"><text class="value-label">{{ attr.attrName }}</text><input class="value-input" :value="draft.textGroups[textGroupIndex]?.[attr.attrId]" :placeholder="translateText('请输入{name}', { name: attr.attrName })" @input="updateTextField(textGroupIndex, attr.attrId, $event as UniInputEvent)" /></view>
 					</view>
 				</view>
 
@@ -145,7 +145,7 @@
 	const showCheckPointUpload = computed(() => props.goodsFlag === 9)
 	/** 有检查结果或填写内容时才允许显示重置入口。 */
 	/** 判断规格或文本行是否包含已填写字段，替代原生端不支持的 Object.values。 */
-	function hasFilledRow(row: UTSJSONObject): boolean { let filled = false; row.toMap().forEach((value: any) => { if (value != null && value.toString().trim() !== '') filled = true }); return filled }
+	function hasFilledRow(row: UTSJSONObject): boolean { let filled = false; row.toMap().forEach((value) => { if (value != null && value.toString().trim() !== '') filled = true }); return filled }
 	/** 判断当前草稿是否包含结果、备注或任何已填写的媒体与属性。 */
 	const hasContent = computed(() => draft.value.result !== '' || draft.value.comment !== '' || draft.value.photos.length > 0 || draft.value.measurements.some((row) => hasFilledRow(row)) || draft.value.textGroups.some((row) => hasFilledRow(row)) || draft.value.barcodeItems.some((row) => (row['code'] ?? '').toString().trim() !== ''))
 	type ResultOption = { value: string, label: string, icon: string, color: string }
@@ -195,23 +195,40 @@
 	function buildDraftData() { return { ...draft.value, completed: isDraftCompleted() } }
 	/** 自动保存字段、备注或分组变化，但保持弹框继续打开。 */
 	function autoSaveDraft() { emit('auto-save', { item: props.item, data: buildDraftData() }) }
-	/** 备注框失焦时提交有变化的输入；弹层关闭或选择结果时也调用，避免输入丢失。 */
+	/** 备注框失焦时提交有变化的输入；弹层保持打开，因此可以安全改写内部草稿。 */
 	function saveNotesOnBlur() { if (draft.value.comment === noteDraft.value) return; draft.value = { ...draft.value, comment: noteDraft.value }; autoSaveDraft() }
-	/** 选择检查结果后立即保存并交由父页面关闭弹框或进入疵点录入。 */
+
+	/**
+	 * 关闭弹层前提交仍未落盘的备注。
+	 * 只把备注交给父页面持久化，不在关闭阶段改写 draft：弹层根节点即将被销毁，
+	 * 此时改写内部状态会驱动已销毁的渲染子树在 vapor 原生渲染线程重新渲染并闪退。
+	 */
+	function flushNotesOnClose() { if (draft.value.comment === noteDraft.value) return; emit('auto-save', { item: props.item, data: { ...buildDraftData(), comment: noteDraft.value } }) }
+
+	/**
+	 * 判断当前草稿在指定结果下是否满足 H5 的完成条件。
+	 * 用于在不写入响应式草稿的前提下计算即将提交的 completed 字段。
+	 */
+	function isCompletedWithResult(result: string): boolean { if (itemType.value === 'Standard') return result !== ''; return isDraftCompleted() }
+
+	/**
+	 * 选择检查结果后立即保存并交由父页面关闭弹框或进入疵点录入。
+	 * 备注与结果直接并入提交数据，不在关闭前改写内部草稿：父页面会在同一渲染周期关闭弹层，
+	 * 此时改写草稿会驱动已销毁的渲染子树在 vapor 原生渲染线程重新渲染并闪退。
+	 */
 	function confirmResult(result: string) {
-		saveNotesOnBlur()
 		const isMergedChild = (itemData.value['sonPlanId'] ?? '').toString() !== ''
 		const requiresPhoto = parseInt((itemData.value['isPhotoRequired'] ?? 0).toString()) === 1
 		if (!isMergedChild && requiresPhoto && result !== 'na' && mediaPhotos.value.length === 0) {
+			saveNotesOnBlur()
 			uni.showToast({ title: t('请上传照片(必填项)'), icon: 'none' })
 			return
 		}
-		draft.value = { ...draft.value, result }
-		emit('select-result', { item: props.item, result, data: buildDraftData() })
+		emit('select-result', { item: props.item, result, data: { ...draft.value, comment: noteDraft.value, result, completed: isCompletedWithResult(result) } })
 	}
 	/** 更新临时备注，输入过程中不触发本地保存。 */
 	function updateComment(event: UniInputEvent) { noteDraft.value = event.detail.value }
-	/** 更新指定规格组中的属性值并触发自动保存。 */
+	/** 更新指定规格组中的属性值并触发自动保存；模板已把 $event 断言为输入事件。 */
 	function updateMeasurement(rowIndex: number, attrId: string, event: UniInputEvent) { const rows = [...draft.value.measurements]; rows[rowIndex] = { ...rows[rowIndex], [attrId]: event.detail.value }; draft.value = { ...draft.value, measurements: rows }; autoSaveDraft() }
 	/** 新增一组 H5 规格属性并触发自动保存。 */
 	function addMeasurement() { draft.value = { ...draft.value, measurements: [...draft.value.measurements, createEmptyAttributeRow()] }; measurementIndex.value = draft.value.measurements.length - 1; autoSaveDraft() }
@@ -221,7 +238,7 @@
 	function previousMeasurement() { measurementIndex.value = Math.max(0, measurementIndex.value - 1) }
 	/** 在规格组之间向后切换，不修改已保存数据。 */
 	function nextMeasurement() { measurementIndex.value = Math.min(draft.value.measurements.length - 1, measurementIndex.value + 1) }
-	/** 更新指定文本组中的属性值并触发自动保存。 */
+	/** 更新指定文本组中的属性值并触发自动保存；模板已把 $event 断言为输入事件。 */
 	function updateTextField(rowIndex: number, attrId: string, event: UniInputEvent) { const rows = [...draft.value.textGroups]; rows[rowIndex] = { ...rows[rowIndex], [attrId]: event.detail.value }; draft.value = { ...draft.value, textGroups: rows }; autoSaveDraft() }
 	/** 新增一组 H5 文本属性并触发自动保存。 */
 	function addTextGroup() { draft.value = { ...draft.value, textGroups: [...draft.value.textGroups, createEmptyAttributeRow()] }; textGroupIndex.value = draft.value.textGroups.length - 1; autoSaveDraft() }
@@ -243,8 +260,15 @@
 	function saveBarcodeName() { const name = barcodeName.value.trim(); if (!name) { uni.showToast({ title: t('请输入条码名称'), icon: 'none' }); return }; const rows = [...draft.value.barcodeItems]; if (editingBarcodeIndex.value >= 0) rows[editingBarcodeIndex.value] = { ...rows[editingBarcodeIndex.value], name }; else rows.push({ name, code: '', format: '' }); draft.value = { ...draft.value, barcodeItems: rows }; closeBarcodeEditor(); syncBarcodes() }
 	/** 删除当前条码项并同步旧版条码字段。 */
 	function deleteBarcode() { const rows = draft.value.barcodeItems.filter((_, index) => index !== editingBarcodeIndex.value); draft.value = { ...draft.value, barcodeItems: rows }; closeBarcodeEditor(); syncBarcodes() }
-	/** 使用 App 原生扫码保存 H5 格式的码值与类型；取消或空结果不改草稿。 */
-	function scanBarcode(index: number) { uni.scanCode({ scanType: ['qrCode', 'barCode'], onlyFromCamera: false, success: (result: ScanCodeSuccess) => { const code = result.result.trim(); if (code === '') return; const rows = [...draft.value.barcodeItems]; if (rows[index] == null) return; rows[index] = { ...rows[index], code, format: normalizeScanFormat(result.scanType) }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }, fail: (error: ScanCodeFail) => { if (!(JSON.stringify(error) ?? '').toLowerCase().includes('cancel')) uni.showModal({ title: t('扫码提示'), content: t('未能调起扫一扫或扫码失败'), showCancel: false }) } }) }
+	/**
+	 * 使用 App 原生扫码保存 H5 格式的码值与类型；取消或空结果不改草稿。
+	 * 扫码期间弹层可能被关闭或切换到别的检查项，回调里先校验可见性与检查项身份，
+	 * 避免把码值写进已销毁的弹层草稿或错误的检查项。
+	 */
+	function scanBarcode(index: number) {
+		const scannedItemId = String(itemData.value['itemId'] ?? '')
+		uni.scanCode({ scanType: ['qrCode', 'barCode'], onlyFromCamera: false, success: (result: ScanCodeSuccess) => { if (!isSheetVisible() || String(itemData.value['itemId'] ?? '') !== scannedItemId) return; const code = result.result.trim(); if (code === '') return; const rows = [...draft.value.barcodeItems]; if (rows[index] == null) return; rows[index] = { ...rows[index], code, format: normalizeScanFormat(result.scanType) }; draft.value = { ...draft.value, barcodeItems: rows }; syncBarcodes() }, fail: (error: ScanCodeFail) => { if (!(JSON.stringify(error) ?? '').toLowerCase().includes('cancel')) uni.showModal({ title: t('扫码提示'), content: t('未能调起扫一扫或扫码失败'), showCancel: false }) } })
+	}
 	/** 请求复制当前检查项到其他验货计划。 */
 	function requestCopyItems() { emit('copy-items', props.item) }
 	/** 请求批量移动当前检查项已上传的照片或视频。 */
@@ -272,17 +296,33 @@
 	/** 打开当前检查项已关联的疵点记录。 */
 	function openDefect(defect: UTSJSONObject) { emit('open-defect', defect) }
 	/** 将服务端疵点等级标准化为 H5 使用的三级枚举。 */
-	function normalizeSeverity(raw: any): string { const value = (raw ?? '').toString().toUpperCase(); if (value.includes('CRITICAL') || value.includes('致命')) return 'CRITICAL'; if (value.includes('MAJOR') || value.includes('主要') || value.includes('严重')) return 'MAJOR'; return 'MINOR' }
+	function normalizeSeverity(raw: string): string { const value = raw.toUpperCase(); if (value.includes('CRITICAL') || value.includes('致命')) return 'CRITICAL'; if (value.includes('MAJOR') || value.includes('主要') || value.includes('严重')) return 'MAJOR'; return 'MINOR' }
 	/** 返回标准化疵点等级对应的中文名称。 */
-	function getSeverityLabel(raw: any): string { const labels: UTSJSONObject = { CRITICAL: '致命', MAJOR: '主要', MINOR: '次要' }; return (labels[normalizeSeverity(raw)] ?? '次要').toString() }
-	/** 关闭检查项弹层前保存仍在编辑的备注。 */
-	function closeSheet() { saveNotesOnBlur(); emit('close') }
+	function getSeverityLabel(raw: string): string { const labels: UTSJSONObject = { CRITICAL: '致命', MAJOR: '主要', MINOR: '次要' }; return (labels[normalizeSeverity(raw)] ?? '次要').toString() }
+	/** 关闭检查项弹层前保存仍在编辑的备注，关闭阶段只提交不写回内部状态。 */
+	function closeSheet() { flushNotesOnClose(); emit('close') }
 	/** 阻止点击弹层内容区域时触发遮罩关闭。 */
 	function stopEvent() {}
 
-	/** 监听父页面切换的检查项，并初始化与其对应的可编辑草稿。 */
-	watch((): UTSJSONObject => itemData.value, (item: UTSJSONObject) => resetDraft(item), { immediate: true, deep: true })
-	watch((): number => props.sortSavedRevision, () => completePhotoSort())
+	/**
+	 * 判断检查项弹层当前是否可见。
+	 * 弹层关闭后父页面仍会持续更新检查项数据，弹层内部的状态写入必须先以此守卫。
+	 */
+	function isSheetVisible(): boolean { return props.visible === true }
+
+	/**
+	 * 检查项数据变化时重建可编辑草稿。
+	 * 弹层关闭期间禁止写入草稿：本组件实例仍然挂载，此时写入会驱动已经销毁的弹层渲染子树
+	 * 在 vapor 原生渲染线程重新渲染，触发共享数据字段追踪的野指针崩溃（关闭检查项必闪退）。
+	 * 检查项每次更新都会生成新对象，因此按身份变化监听即可，无需深度监听。
+	 */
+	watch((): UTSJSONObject => itemData.value, (item: UTSJSONObject) => { if (isSheetVisible()) resetDraft(item) })
+
+	/** 每次打开弹层时按最新检查项重建草稿，补齐关闭期间被跳过的数据同步。 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (visible) resetDraft(itemData.value) }, { immediate: true })
+
+	/** 排序结果回传只在弹层打开时同步草稿，关闭后不再写入内部状态。 */
+	watch((): number => props.sortSavedRevision, () => { if (isSheetVisible()) completePhotoSort() })
 </script>
 
 <style>

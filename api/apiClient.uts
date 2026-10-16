@@ -4,7 +4,7 @@ function trimTrailingSlash(value) {
 
 function buildQueryString(query) {
   const source = query != null && typeof query === 'object' ? query : {}
-  const pairs = []
+  const pairs: string[] = []
   for (const key of Object.keys(source)) {
     const value = source[key]
     if (value === undefined || value === null || value === '') continue

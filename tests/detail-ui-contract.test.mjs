@@ -29,7 +29,7 @@ test('checklist keeps the check column fixed while multiline remarks expand belo
 /** 弹层始终取当前检查项状态而非旧 checklistItems 快照。 */
 test('checklist sheet reads the current result data for the selected row', async () => {
   const page = await readFile('pages/report/detail.uvue', 'utf8')
-  assert.match(page, /if \(direct\) return \{ \.\.\.direct, data: detail\.value\?\.checklistData\?\.\[key\] \?\? direct\.data \?\? \{\} \}/)
+  assert.match(page, /if \(direct != null\) return \{ \.\.\.direct, data: detail\.value\?\.checklistData\?\.\[key\] \?\? direct\['data'\] \?\? \{\} \} as UTSJSONObject/)
 })
 
 /** 相机入口只派发一次业务事件，避免重复调起选图和双份写库。 */
@@ -308,7 +308,7 @@ test('detail page is componentized and wires the offline inspection workflow', a
   assert.match(source, /draftTouched/)
   assert.match(source, /onHide/)
   assert.match(source, /onUnload/)
-  assert.match(source, /let leaveSaveTask = null/)
+  assert.match(source, /let leaveSaveTask: Promise<UTSJSONObject \| null> \| null = null/)
   assert.match(source, /function flushTouchedDraft/)
   assert.match(source, /if \(!draftTouched\.value\) return saveChain/)
   assert.match(source, /if \(leaveSaveTask != null\) return leaveSaveTask/)
@@ -485,7 +485,7 @@ test('quantity operations stay offline while copy and media actions require onli
 /** 跨单复制及批量媒体使用在线接口，不再将专用操作延后入队。 */
 test('copy and batch media call online services without queuing file operations', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
-  const copyFlow = source.split('async function submitCopyItems(payload)')[1].split('async function openBatchMoveSheet()')[0]
+  const copyFlow = source.split(/async function submitCopyItems\([^)]*\)/)[1].split('async function openBatchMoveSheet()')[0]
   assert.match(copyFlow, /if \(!\(await isNetworkOnline\(\)\)\) throw new Error\('复制到其他验货需要联网'\)/)
   assert.match(copyFlow, /checklistCopyService\.copyOnline\(detail\.value, \{ \.\.\.payload, targetPlanIds \}\)/)
   assert.match(copyFlow, /await flushTouchedDraft\(\)/)
@@ -497,8 +497,8 @@ test('copy and batch media call online services without queuing file operations'
 /** 批量复制和批量移动的目标失败时，沿用底部弹层显示汇总和具体原因。 */
 test('detail copy and media move display business failures in the original bottom sheet', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
-  const copyFlow = source.split('async function submitCopyItems(payload)')[1].split('async function openBatchMoveSheet()')[0]
-  const moveFlow = source.split('async function submitBatchMove(payload)')[1].split('function openReadyQuantity()')[0]
+  const copyFlow = source.split(/async function submitCopyItems\([^)]*\)/)[1].split('async function openBatchMoveSheet()')[0]
+  const moveFlow = source.split(/async function submitBatchMove\([^)]*\)/)[1].split('function openReadyQuantity()')[0]
   assert.match(source, /<ConfirmActionSheet :visible="showBatchResult" :title="batchResultTitle"/)
   for (const flow of [copyFlow, moveFlow]) {
     assert.match(flow, /if \(result\.failCount > 0\)/)
@@ -585,7 +585,7 @@ test('check item editor sorts photos through a reusable native bottom sheet', as
   assert.doesNotMatch(sheet, /document\.|window\.|getBoundingClientRect/)
   assert.match(page, /@photos-sorted="sortChecklistPhotos"/)
   assert.match(page, /function sortChecklistPhotos/)
-  assert.match(page, /onlineMediaService\.sortPhotos\(detail\.value, itemId, payload\?\.photos\)/)
+  assert.match(page, /await onlineMediaService\.sortPhotos\(detail\.value, itemId, payload\?\.photos\)/)
 })
 
 /** 照片重排入口与 H5 一样位于底部操作区的批量移动入口上方。 */
@@ -764,7 +764,7 @@ test('defect editor scrolls through 1–19 and the H5 other quantity option', as
   assert.match(sheet, /\.quantity-scroll \{[^}]*width: 100%;/)
   assert.match(sheet, /\.quantity-row \{[^}]*width: 2100rpx;[^}]*flex-direction: row;/)
   assert.match(sheet, /\.qty-item, \.qty-other \{[^}]*flex-shrink: 0;/)
-  assert.match(sheet, /<input v-if="draft\.quantity === 'other' && draft\.commonFlag !== 1" class="other-input"[^>]*@input="updateField\('customQuantity', \$event\)"/)
+  assert.match(sheet, /<input v-if="draft\.quantity === 'other' && draft\.commonFlag !== 1" class="other-input"[^>]*@input="updateField\('customQuantity', \$event as UniInputEvent\)"/)
   assert.match(sheet, /\.other-input \{[^}]*border-width: 2rpx;[^}]*border-style: solid;[^}]*border-color: #e5e7eb;/)
   assert.match(sheet, /quantity: getDefectQuantity\(draft\.value\)/)
 })
@@ -933,8 +933,12 @@ test('check item notes save on blur without separate close or confirm actions', 
   assert.doesNotMatch(sheet, /class="notes-actions"/)
   assert.match(sheet, /function updateComment\([^)]*\) \{ noteDraft\.value = event\.detail\.value \}/)
   assert.match(sheet, /function saveNotesOnBlur\([^)]*\)[^\n]*autoSaveDraft\(\)/)
-  assert.match(sheet, /function closeSheet\([^)]*\) \{ saveNotesOnBlur\(\); emit\('close'\) \}/)
-  assert.match(sheet, /function confirmResult\([^)]*\)\s*\{\s*saveNotesOnBlur\(\)/)
+  /* 关闭与选结果都不能丢失未失焦的备注，但也不得在关闭阶段改写内部草稿：弹层子树即将销毁，
+     此时写入会驱动已销毁的渲染子树在 vapor 原生渲染线程重新渲染并闪退（见 vapor-sheet-close-safety 测试）。 */
+  assert.match(sheet, /function closeSheet\([^)]*\) \{ flushNotesOnClose\(\); emit\('close'\) \}/)
+  assert.match(sheet, /function flushNotesOnClose\([^)]*\)[^\n]*comment: noteDraft\.value/)
+  assert.match(sheet, /function confirmResult\([^)]*\)[\s\S]{0,600}?saveNotesOnBlur\(\)/)
+  assert.match(sheet, /function confirmResult\([^)]*\)[\s\S]{0,600}?comment: noteDraft\.value, result/)
   assert.doesNotMatch(sheet, /function updateComment\([^)]*\)[^\n]*autoSaveDraft\(\)/)
 })
 
