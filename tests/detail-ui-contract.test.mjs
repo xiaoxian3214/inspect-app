@@ -292,11 +292,12 @@ test('detail page is componentized and wires the offline inspection workflow', a
 
   assert.match(source, /inspectionDetailService\.loadDetail/)
   assert.match(source, /inspectionDetailService\.saveDraft/)
-  assert.match(source, /uni\.chooseImage\(/)
-  assert.match(source, /sourceType:\s*\['camera'\]/)
+  assert.match(source, /buildCameraCaptureEventName/)
+  assert.match(source, /url: `\/pages\/report\/simple-camera\?requestId=\$\{encodeURIComponent\(requestId\)\}`/)
+  assert.doesNotMatch(source, /uni\.chooseImage\(/)
   assert.doesNotMatch(source, /\/pages\/report\/camera/)
-  assert.match(source, /uni\.getFileSystemManager\(\)/)
-  assert.match(source, /fileSystemManager\.saveFile/)
+  assert.match(source, /createAppMediaPersistenceService\(\)/)
+  assert.match(source, /mediaPersistenceService\.persistMediaPath/)
   assert.doesNotMatch(source, /uni\.saveFile/)
   assert.match(source, /inspectionMediaService\.addLocalPhoto/)
   assert.match(source, /inspectionMediaService\.uploadPendingPhotos/)
@@ -315,12 +316,24 @@ test('detail page is componentized and wires the offline inspection workflow', a
   assert.match(source, /async function goBack\(\) \{ await flushTouchedDraft\(\); uni\.navigateBack\(\) \}/)
   assert.doesNotMatch(source, /persistDraft\(\{ markDirty: draftTouched\.value \}\)/)
   assert.match(source, /function processSyncQueueAfterChange\(\)/)
-  assert.match(source, /if \(markDirty && options\?\.deferSync !== true\) processSyncQueueAfterChange\(\)/)
+  assert.match(source, /if \(!pageDisposed && \(markDirty \|\| options\?\.syncPhotosOnly === true\) && options\?\.deferSync !== true\) processSyncQueueAfterChange\(\)/)
   assert.equal((source.match(/syncOfflineDataAutomatically\(\)/g) || []).length, 2, 'detail page should process the queue after content changes and from the explicit manual action')
   assert.doesNotMatch(source, /saveDraft\(planId\.value, detail\.value, \{ markDirty: false \}\)/)
   assert.doesNotMatch(source, /resumePendingUploads/)
   assert.match(source, /function handlePageShow\(\) \{ if \(pageLoaded\) refreshSyncOverview\(\) \}/)
   assert.doesNotMatch(source, /window\.|document\.|localStorage|indexedDB/)
+})
+
+/** 单纯拍照只应建立独立图片上传队列，不应将报告普通草稿标脏并调用生成接口。 */
+test('custom photo capture persists locally and triggers image upload without generating a draft', async () => {
+  const source = await readFile('pages/report/detail.uvue', 'utf8')
+  const captured = source.split('async function addChecklistPhoto(')[1].split('/** 拍摄检查点图片')[0]
+  assert.match(captured, /await createLocalPhotos\(/)
+  assert.match(captured, /persistDraft\(\{ markDirty: false, changes: \{ itemIds: \[itemKey\] \}, syncPhotosOnly: true \}\)/)
+  assert.doesNotMatch(captured, /scheduleDraftSave\('item'/)
+  const point = source.split('async function addCheckPointPhoto(')[1].split('/** 请求二次确认当前检查项')[0]
+  assert.match(point, /persistDraft\(\{ markDirty: false, changes: \{ itemIds: \[itemKey\] \}, syncPhotosOnly: true \}\)/)
+  assert.match(source, /if \(!pageDisposed && \(markDirty \|\| options\?\.syncPhotosOnly === true\) && options\?\.deferSync !== true\) processSyncQueueAfterChange\(\)/)
 })
 
 test('detail media capture uses the H5 biz metadata contract', async () => {

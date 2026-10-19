@@ -18,6 +18,7 @@ export const TABLE_NAMES = [
   'qcm_inspection_item_result',
   'qcm_inspection_defect_record',
   'photo',
+  'camera_capture',
   'sync_log',
   'request_queue',
   'schema_migration',
@@ -93,6 +94,14 @@ export const schemaSqlList = [
     sortNo INTEGER DEFAULT 0,
     jsonData TEXT,
     md5 TEXT
+  );`,
+  `CREATE TABLE IF NOT EXISTS camera_capture (
+    captureId TEXT PRIMARY KEY,
+    sessionId TEXT NOT NULL,
+    localPath TEXT NOT NULL,
+    mediaType TEXT NOT NULL,
+    durationSeconds INTEGER DEFAULT 0,
+    sortNo INTEGER DEFAULT 0
   );`,
   `CREATE TABLE IF NOT EXISTS sync_log (
     id TEXT PRIMARY KEY,

@@ -6,8 +6,8 @@
 		<view class="setting-action" @click="toggleFlash">
 			<image class="setting-icon" :src="flashIcon" mode="aspectFit" />
 		</view>
-		<view class="zoom-group">
-			<view v-if="zoomLevels.length > 1" class="zoom-chip" @click="cycleZoom">
+		<view v-if="zoomLevels.length > 1" class="zoom-group">
+			<view class="zoom-chip" @click="cycleZoom">
 				<text class="zoom-chip-text">{{ zoomLabel(activeZoom) }}</text>
 			</view>
 		</view>
@@ -63,9 +63,14 @@
 	function toggleFlash(): void {
 		emit('toggle-flash')
 	}
-	/** 通知页面应用用户选中的倍率。 */
-	function selectZoom(zoom: number): void {
-		emit('change-zoom', zoom)
+	/**
+	 * 通知页面把倍率切到下一个档位。
+	 * 按钮只展示当前档位，每点一次循环往后一档；只有一个可用档位时不做任何切换。
+	 */
+	function cycleZoom(): void {
+		const levels = zoomLevels.value
+		if (levels.length <= 1) return
+		emit('change-zoom', resolveNextCameraZoom(levels, props.activeZoom))
 	}
 	/** 通知页面在拍照与录像模式之间切换。 */
 	function switchMode(): void {
@@ -85,8 +90,7 @@
 	.setting-icon { width: 44rpx; height: 44rpx; }
 	.setting-label { color: #e2e8f0; font-size: 22rpx; }
 	.zoom-group { height: 68rpx; flex-direction: row; align-items: center; }
-	.zoom-chip { min-width: 56rpx; height: 44rpx; margin: 0 4rpx; padding: 0 8rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: rgba(148, 163, 184, 0.24); }
-	.zoom-chip.active { background-color: #facc15; }
-	.zoom-chip-text { color: #e2e8f0; font-size: 22rpx; }
-	.zoom-chip-text.active { color: #0f172a; }
+	/* 倍率只展示当前档位，点击后循环切换下一档，因此按钮常亮表示可直接点。 */
+	.zoom-chip { min-width: 64rpx; height: 44rpx; padding: 0 12rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: #facc15; }
+	.zoom-chip-text { color: #0f172a; font-size: 22rpx; }
 </style>

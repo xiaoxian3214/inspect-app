@@ -14,6 +14,7 @@ test('defines every offline table required by the app', () => {
     'qcm_inspection_item_result',
     'qcm_inspection_defect_record',
     'photo',
+    'camera_capture',
     'sync_log',
     'request_queue',
     'schema_migration',

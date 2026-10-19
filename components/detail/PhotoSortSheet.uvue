@@ -8,7 +8,7 @@
 				<text class="head-action done" @click="saveOrder">{{ translateText(saving ? '保存中...' : '完成') }}</text>
 			</view>
 			<text class="sort-hint">{{ translateText('按住照片拖拽可调整顺序') }}</text>
-			<scroll-view class="sort-body" direction="dragIndex < 0 ? 'vertical' : 'none'" :show-scrollbar="false">
+			<scroll-view class="sort-body" :direction="dragIndex < 0 ? 'vertical' : 'none'" :show-scrollbar="false">
 				<view class="sort-grid">
 					<view
 						v-for="(photo, index) in sortedPhotos"

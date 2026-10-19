@@ -49,9 +49,8 @@ test('detail components declare referenced functions before calling them', async
 /** 自定义拍照页的落盘与回传依赖先声明，且路径处理不调用 Kotlin String 构造函数。 */
 test('custom camera page declares save helpers before the capture handler', async () => {
   const source = await readFile('pages/report/simple-camera.uvue', 'utf8')
-  assert.ok(source.indexOf('function persistCapturePath(') < source.indexOf('function persistCapturePaths('))
-  assert.ok(source.indexOf('function persistCapturePaths(') < source.indexOf('async function handleFinishCapture('))
-  assert.ok(source.indexOf('function goBackWithResult(') < source.indexOf('async function handleFinishCapture('))
+  assert.ok(source.indexOf('function appendCapturedMedia(') < source.indexOf('function handleFinishCapture('))
+  assert.ok(source.indexOf('function goBackWithResult(') < source.indexOf('function handleFinishCapture('))
   assert.ok(source.indexOf('function clearReadyFallbackTimer(') < source.indexOf('onMounted('))
   assert.doesNotMatch(source, /\bString\s*\(/)
 })

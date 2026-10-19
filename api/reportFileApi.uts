@@ -83,6 +83,21 @@ function unwrapUploadResponse(response) {
 }
 
 /**
+ * 把自定义相机的原生绝对地址转换成 uni.uploadFile 可识别的本地 file URI。
+ * 直接传 /storage/... 会按项目路径映射到 apps/<appid>/www/storage/...，导致 ENOENT；
+ * 系统相机返回的框架路径及已有 file:// 地址原样保留。
+ * @param path 媒体入库时记录的本地地址
+ * @returns 交给 uni.uploadFile 的文件 URI 或既有框架路径
+ */
+export function normalizeUploadLocalPath(path: string): string {
+  const normalizedPath = String(path ?? '').trim()
+  if (normalizedPath.startsWith('/storage/') || normalizedPath.startsWith('/mnt/') || normalizedPath.startsWith('/sdcard/')) {
+    return `file://${normalizedPath}`
+  }
+  return normalizedPath
+}
+
+/**
  * 创建基于 uni.uploadFile 的默认本地文件上传传输器。
  */
 export function createUniUploadTransport() {
@@ -147,7 +162,7 @@ export function createReportFileApi(options) {
     const uploadTimeoutMs = parseInt(String(params?.uploadTimeoutMs)) > 0 ? parseInt(String(params.uploadTimeoutMs)) : 120000
     const response = await uploadTransport({
       url: `${baseUrl}/api/inspect/file/upload`,
-      filePath: normalizedPath,
+      filePath: normalizeUploadLocalPath(normalizedPath),
       name: 'file',
       header,
       fileType,

@@ -44,7 +44,7 @@ function buildPhotoQueueItem(photo, planLabelMap) {
     id: `upload:${planId}:${(photo?.photoId || photo?.id || photo?.localPath) ?? ''}`,
     syncType: '上传',
     operationType: 'upload',
-    content: `${planLabel} ${resolvePhotoOwnerLabel(photo)}`,
+    content: `${planLabel} ${resolvePhotoOwnerLabel(photo)} 图片上传`,
     meta: error === '' ? `状态：${status}` : `状态：${status} · ${error}`,
     status
   }

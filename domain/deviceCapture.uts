@@ -17,6 +17,24 @@ export function normalizeDeviceCapturePaths(rawPaths: string[] | null): string[]
 }
 
 /**
+ * 把相机或相册返回的本地媒体路径转成 image 组件可直接加载的展示地址。
+ * 自定义相机的 takePhoto 回调返回原生绝对路径（Android 形如
+ * /storage/emulated/0/Android/data/包名/cache/uni-media/Pic_1.jpg），而 image 组件的 src
+ * 只识别 /static 资源、file:/// 绝对路径与网络地址，缺少 file:// 前缀时缩略图会一直空白。
+ * 这里只补齐展示所需的前缀，入库与上传仍使用原始路径。
+ * @param path 媒体文件的本地路径或远端地址
+ * @returns 可直接绑定给 image 的展示地址；空路径返回空串，已是可识别形式的路径原样返回
+ */
+export function resolveLocalMediaDisplayPath(path: string): string {
+  const normalizedPath = String(path ?? '').trim()
+  if (normalizedPath === '') return ''
+  if (/^(file:|unifile:|content:|blob:|data:|https?:)/i.test(normalizedPath)) return normalizedPath
+  if (normalizedPath.startsWith('/static/') || normalizedPath.startsWith('/uni_modules/')) return normalizedPath
+  if (normalizedPath.startsWith('/')) return `file://${normalizedPath}`
+  return normalizedPath
+}
+
+/**
  * 判断系统相机或相册的失败信息是否属于用户主动取消（返回键或取消按钮）。
  * 取消属于正常操作路径：调用方不应提示错误，也不应自动重新打开相机。
  * @param message 失败回调的 errMsg 原文
@@ -24,16 +42,4 @@ export function normalizeDeviceCapturePaths(rawPaths: string[] | null): string[]
  */
 export function isDeviceCaptureCancelledMessage(message: string): boolean {
   return String(message ?? '').toLowerCase().includes('cancel')
-}
-
-/**
- * 计算本次拍摄列表还能继续拍摄的数量。
- * @param maxCount 单次拍摄允许保留的最大张数
- * @param capturedCount 当前已拍张数
- * @returns 剩余可拍张数，已达到或超过上限时返回 0
- */
-export function resolveRemainingCaptureCount(maxCount: number, capturedCount: number): number {
-  const normalizedMaxCount = Math.max(1, parseInt(String(maxCount ?? 1)))
-  const normalizedCapturedCount = Math.max(0, parseInt(String(capturedCount ?? 0)))
-  return Math.max(0, normalizedMaxCount - normalizedCapturedCount)
 }

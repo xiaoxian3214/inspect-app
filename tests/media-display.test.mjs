@@ -9,6 +9,15 @@ test('prefers persistent local media paths for offline display', () => {
   assert.equal(mediaModule.getMediaDisplayUrl({ localPath: '_doc/photo.jpg', fileId: 'file-1' }, 'thumbnail', apiBaseUrl), '_doc/photo.jpg')
 })
 
+/** 自定义相机返回原生绝对路径；入库路径不变，但媒体库 image 必须使用 file:// 展示。 */
+test('renders custom camera absolute paths in the inspection media library', () => {
+  const original = '/storage/emulated/0/Android/data/app/cache/uni-media/Pic_1.jpg'
+  assert.equal(mediaModule.getMediaDisplayUrl({ localPath: original }, 'thumbnail', apiBaseUrl), `file://${original}`)
+  assert.equal(mediaModule.getMediaDisplayUrl({ localPath: original }, 'preview', apiBaseUrl), `file://${original}`)
+  assert.equal(mediaModule.getMediaDisplayUrl({ localPath: 'file:///storage/emulated/0/a.jpg' }, 'thumbnail', apiBaseUrl), 'file:///storage/emulated/0/a.jpg')
+  assert.equal(mediaModule.getMediaDisplayUrl({ localPath: 'unifile://usr/photo.jpg' }, 'thumbnail', apiBaseUrl), 'unifile://usr/photo.jpg')
+})
+
 test('builds H5-compatible thumbnail and preview urls from a server file id', () => {
   assert.equal(mediaModule.getMediaDisplayUrl({ fileId: 'file 1' }, 'thumbnail', apiBaseUrl), 'https://inspecttest.letright.com.cn/qcm/api/inspect/file/file%201/thumbnail')
   assert.equal(mediaModule.getMediaDisplayUrl({ fileId: 'file 1' }, 'preview', apiBaseUrl), 'https://inspecttest.letright.com.cn/qcm/api/inspect/file/file%201/preview')

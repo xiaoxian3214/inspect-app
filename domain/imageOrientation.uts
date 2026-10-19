@@ -1,30 +1,36 @@
 /**
- * 根据加速度计重力方向返回缩略图需要施加的反向旋转角度；姿态不明确时保持上一次角度。
- * @param x 加速度计水平方向重力分量
- * @param y 加速度计垂直方向重力分量
- * @param currentRotation 上一次生效的旋转角度
- * @returns 缩略图应施加的旋转角度
+ * 把任意角度归一到 0/90/180/270 四档。
+ * 相机与图片信息可能上报负角度或超过 360 的角度，先收敛成可直接用于旋转的最小角度。
+ * @param rotation 原始旋转角度
+ * @returns 归一到 [0, 360) 的 90 度整数倍角度
  */
-export function resolveMediaPreviewRotation(x: number, y: number, currentRotation: number = 0): number {
-  const horizontalGravity = parseInt(String(x ?? 0))
-  const verticalGravity = parseInt(String(y ?? 0))
-  const horizontalStrength = Math.abs(horizontalGravity)
-  const verticalStrength = Math.abs(verticalGravity)
-  if (horizontalStrength < 0.55 && verticalStrength < 0.55) return currentRotation
-  if (Math.abs(horizontalStrength - verticalStrength) < 0.12) return currentRotation
-  if (horizontalStrength > verticalStrength) return horizontalGravity > 0 ? -90 : 90
-  return verticalGravity > 0 ? 180 : 0
+export function normalizeRotation(rotation: number): number {
+  const parsedRotation = Number(rotation ?? 0)
+  const safeRotation = Number.isNaN(parsedRotation) ? 0 : parsedRotation
+  return ((Math.round(safeRotation / 90) * 90) % 360 + 360) % 360
 }
 
 /**
- * 返回手机当前姿态相对照片拍摄姿态的最短旋转差值，避免横拍照片初次显示时被再次旋转。
- * @param currentRotation 手机当前姿态对应的旋转角度
- * @param captureRotation 照片拍摄时记录的旋转角度
- * @returns 介于 -180 与 180 之间的最短旋转差值
+ * 把图片的 EXIF 方向换算成「回正需要顺时针旋转的角度」。
+ * 相机把机身姿态写进照片的 EXIF 方向：left/right 表示像素横向存放，需要转 90/270 度才能正向展示。
+ * 大小写、镜像后缀与 rotate-90 这类等价写法统一按同一档处理，未知方向按不需要旋转处理。
+ * @param exifOrientation 图片信息里的方向文本，如 up/down/left/right 及其镜像变体
+ * @returns 回正照片需要顺时针旋转的角度：0 / 90 / 180 / 270
  */
-export function resolveMediaPreviewRotationDelta(currentRotation: number, captureRotation: number): number {
-  let rotationDelta = (parseInt(String(currentRotation ?? 0)) - parseInt(String(captureRotation ?? 0))) % 360
-  if (rotationDelta > 180) rotationDelta -= 360
-  if (rotationDelta < -180) rotationDelta += 360
-  return rotationDelta
+export function resolveExifOrientationRotation(exifOrientation: string): number {
+  const normalizedOrientation = String(exifOrientation ?? '').trim().toLowerCase()
+  if (normalizedOrientation === 'right' || normalizedOrientation === 'right-mirrored' || normalizedOrientation === 'rotate-90') return 90
+  if (normalizedOrientation === 'down' || normalizedOrientation === 'down-mirrored' || normalizedOrientation === 'rotate-180') return 180
+  if (normalizedOrientation === 'left' || normalizedOrientation === 'left-mirrored' || normalizedOrientation === 'rotate-270') return 270
+  return 0
+}
+
+/**
+ * 把图片信息里的方向文本换算成最终可用的回正角度：先按 EXIF 语义映射，再归一到 0/90/180/270。
+ * 调用方（拍照页与回正服务）统一使用它，避免各处重复维护方向映射规则。
+ * @param exifOrientation 图片信息里的方向文本
+ * @returns 回正照片需要顺时针旋转的角度
+ */
+export function resolveUprightRotation(exifOrientation: string): number {
+  return normalizeRotation(resolveExifOrientationRotation(exifOrientation))
 }

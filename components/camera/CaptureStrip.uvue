@@ -1,17 +1,17 @@
 <template>
 	<view class="capture-strip">
-		<text v-if="mediaItems.length > 0" class="capture-strip-count">{{ countLabel }}</text>
 		<view v-if="mediaItems.length === 0" class="capture-empty">
-			<text class="capture-empty-text">{{ translateText('还没有照片，点击下方快门开始拍摄') }}</text>
+			<text class="capture-empty-text">{{ translateText('还没有照片，点击快门开始拍摄') }}</text>
 		</view>
 		<scroll-view v-else class="capture-strip-scroll" direction="horizontal" :show-scrollbar="false">
 			<view class="capture-strip-row">
-				<view v-for="(item, index) in mediaItems" :key="index" class="capture-thumb-wrap">
+				<view v-for="(item, index) in mediaItems" :key="index" class="capture-thumb-wrap" @click="previewPhoto(index)">
 					<view v-if="item.isVideo" class="capture-thumb capture-thumb-video">
 						<view class="capture-play-triangle"></view>
 					</view>
-					<image v-else class="capture-thumb" :src="item.path" mode="aspectFill" />
+					<image v-else class="capture-thumb" :src="item.previewPath" mode="aspectFill" @error="handleThumbError" />
 					<text v-if="item.isVideo" class="capture-thumb-duration">{{ item.durationLabel }}</text>
+					<view class="capture-thumb-number"><text class="capture-thumb-number-text">{{ index + 1 }}</text></view>
 					<view class="capture-remove" @click.stop="handleRemove(index)">
 						<text class="capture-remove-text">×</text>
 					</view>
@@ -25,52 +25,65 @@
 	import { t } from '../../i18n/index.uts'
 	import { computed } from 'vue'
 	import { formatVideoDurationLabel } from '../../domain/cameraCapture.uts'
+	import { resolveLocalMediaDisplayPath } from '../../domain/deviceCapture.uts'
 	import { isVideoMedia } from '../../domain/photoUploadPolicy.uts'
 
 	/** 照片区单元格：只暴露原生模板需要渲染的字段，避免模板直接访问动态对象。 */
 	type StripMedia = {
-		path: string,
+		previewPath: string,
 		isVideo: boolean,
 		durationLabel: string
 	}
 
 	const props = defineProps({
-		items: { type: Array, default: () => [] as UTSJSONObject[] },
-		maxCount: { type: Number, default: 9 }
+		items: { type: Array, default: () => [] as UTSJSONObject[] }
 	})
-	const emit = defineEmits(['remove-photo'])
+	const emit = defineEmits(['remove-photo', 'preview-photo'])
 
 	/** 为原生模板提供可调用的翻译方法。 */
 	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
 
-	/** 把拍摄结果收窄成照片区可渲染的单元格列表，视频额外带时长角标。 */
+	/**
+	 * 把拍摄结果收窄成照片区可渲染的单元格列表，视频额外带时长角标。
+	 * 相机回调可能给出原生绝对路径，必须补成 file:// 前缀后 image 才能加载出缩略图；
+	 * 图片方向由拍照页按设备写入的 EXIF 方向回正，这里只负责展示回正后的文件。
+	 */
 	const mediaItems = computed((): StripMedia[] => (props.items as UTSJSONObject[]).map((item: UTSJSONObject): StripMedia => ({
-		path: (item['path'] ?? '').toString(),
+		previewPath: resolveLocalMediaDisplayPath((item['previewPath'] ?? item['path'] ?? '').toString()),
 		isVideo: isVideoMedia(item),
 		durationLabel: formatVideoDurationLabel(parseInt((item['durationSeconds'] ?? 0).toString()))
 	})))
 
-	/** 已拍张数标签，让用户随时知道还能拍多少张。 */
-	const countLabel = computed((): string => translateText('已拍 {count}/{max} 张', { count: mediaItems.value.length, max: props.maxCount }))
+	/** 通知拍照页打开指定下标的媒体大图预览。 */
+	function previewPhoto(index: number): void { emit('preview-photo', index) }
 
 	/** 通知页面删除指定位置的照片或视频。 */
 	function handleRemove(index: number): void {
 		emit('remove-photo', index)
 	}
+
+	/**
+	 * 缩略图加载失败时输出当前展示地址，便于真机上定位本地路径不被 image 识别的问题。
+	 * 只打印日志，不回写组件状态：销毁后回调写状态会让 vapor 原生渲染线程访问已释放节点。
+	 */
+	function handleThumbError(): void {
+		console.log('capture thumbnail load failed', mediaItems.value.map((item: StripMedia): string => item.previewPath).join(','))
+	}
 </script>
 
 <style>
-	.capture-strip { height: 96rpx; flex-direction: row; align-items: center; padding-left: 16rpx; background-color: #0f172a; }
-	.capture-strip-count { width: 156rpx; color: #cbd5e1; font-size: 22rpx; }
-	.capture-strip-scroll { flex: 1; height: 96rpx; }
-	.capture-strip-row { height: 96rpx; flex-direction: row; align-items: center; }
-	.capture-thumb-wrap { position: relative; width: 80rpx; height: 80rpx; margin-right: 12rpx; border-radius: 12rpx; overflow: hidden; background-color: #1e293b; }
-	.capture-thumb { width: 80rpx; height: 80rpx; }
+	.capture-strip { height: 168rpx; flex-direction: row; align-items: center; padding-left: 16rpx; background-color: #0f172a; }
+	.capture-strip-scroll { flex: 1; height: 168rpx; }
+	.capture-strip-row { height: 168rpx; flex-direction: row; align-items: center; }
+	.capture-thumb-wrap { position: relative; width: 152rpx; height: 152rpx; margin-right: 16rpx; border-radius: 16rpx; overflow: hidden; background-color: #1e293b; }
+	.capture-thumb { width: 152rpx; height: 152rpx; }
+	.capture-thumb-number { position: absolute; top: 4rpx; left: 4rpx; min-width: 36rpx; height: 36rpx; padding: 0 6rpx; align-items: center; justify-content: center; border-radius: 18rpx; background-color: rgba(15, 23, 42, 0.82); }
+	.capture-thumb-number-text { color: #ffffff; font-size: 22rpx; }
 	.capture-thumb-video { align-items: center; justify-content: center; background-color: #1e293b; }
-	.capture-play-triangle { width: 0; height: 0; border-top-width: 10rpx; border-top-color: transparent; border-bottom-width: 10rpx; border-bottom-color: transparent; border-left-width: 16rpx; border-left-color: #ffffff; }
-	.capture-thumb-duration { position: absolute; left: 0; right: 0; bottom: 0; padding: 2rpx 4rpx; color: #ffffff; font-size: 18rpx; text-align: center; background-color: rgba(15, 23, 42, 0.65); }
-	.capture-remove { position: absolute; top: 0; right: 0; width: 32rpx; height: 32rpx; align-items: center; justify-content: center; border-bottom-left-radius: 12rpx; background-color: rgba(15, 23, 42, 0.78); }
-	.capture-remove-text { color: #ffffff; font-size: 24rpx; line-height: 24rpx; }
-	.capture-empty { flex: 1; height: 96rpx; justify-content: center; }
-	.capture-empty-text { color: #94a3b8; font-size: 22rpx; }
+	.capture-play-triangle { width: 0; height: 0; border-top-width: 16rpx; border-top-color: transparent; border-bottom-width: 16rpx; border-bottom-color: transparent; border-left-width: 26rpx; border-left-color: #ffffff; }
+	.capture-thumb-duration { position: absolute; left: 0; right: 0; bottom: 0; padding: 4rpx 8rpx; color: #ffffff; font-size: 22rpx; text-align: center; background-color: rgba(15, 23, 42, 0.65); }
+	.capture-remove { position: absolute; top: 0; right: 0; width: 44rpx; height: 44rpx; align-items: center; justify-content: center; border-bottom-left-radius: 16rpx; background-color: rgba(15, 23, 42, 0.78); }
+	.capture-remove-text { color: #ffffff; font-size: 30rpx; line-height: 30rpx; }
+	.capture-empty { flex: 1; height: 168rpx; justify-content: center; }
+	.capture-empty-text { color: #94a3b8; font-size: 24rpx; }
 </style>

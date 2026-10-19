@@ -203,6 +203,55 @@ test('downloads and persists detail when no local snapshot exists', async () => 
   assert.equal(saved.length, 1)
 })
 
+/** 仅拍摄照片不得生成普通报告草稿；独立照片表负责断网待上传及恢复。 */
+test('photo-only draft keeps report sync state clean while retaining local photos', async () => {
+  const saved = []
+  const service = serviceModule.createInspectionDetailService({
+    reportRepository: { saveDraftChanges: async (id, detail, changes) => saved.push({ id, detail, changes }) },
+    planApi: {}, isOnline: async () => false, viewModel: createViewModel()
+  })
+  const result = await service.saveDraft('plan-1', {
+    planId: 'plan-1', status: 1, plan: { id: 'plan-1', status: 1 }, syncStatus: 'SYNCED', pendingSyncPayload: null,
+    checklistData: { 'item-1': { photos: [{ photoId: 'camera-1', localPath: '/storage/photo.jpg', uploadStatus: 'pending' }] } }
+  }, { markDirty: false, changes: { itemIds: ['item-1'] } })
+  assert.equal(result.syncStatus, 'SYNCED')
+  assert.equal(result.pendingSyncPayload, null)
+  assert.equal(saved[0].detail.checklistData['item-1'].photos[0].photoId, 'camera-1')
+  assert.deepEqual(saved[0].changes.itemIds, ['item-1'])
+})
+
+/** 照片上传回填不得将原本干净的报告标脏，否则自动同步会调用 reports/generate。 */
+test('photo upload refresh preserves a clean report without creating a generate payload', async () => {
+  let saved = null
+  const service = serviceModule.createInspectionDetailService({
+    reportRepository: { saveDetailSnapshot: async (_id, detail) => { saved = detail } },
+    planApi: {}, isOnline: async () => true, viewModel: createViewModel()
+  })
+  const result = await service.saveDraft('plan-1', {
+    planId: 'plan-1', plan: { id: 'plan-1', status: 1 }, syncStatus: 'SYNCED', pendingSyncPayload: null,
+    checklistItems: [], defects: [], photos: [{ photoId: 'camera-1', fileId: 'remote-1' }]
+  }, { markDirty: false })
+  assert.equal(saved.syncStatus, 'SYNCED')
+  assert.equal(result.pendingSyncPayload, null)
+  assert.equal(result.photos[0].fileId, 'remote-1')
+})
+
+/** 已有业务草稿同步时，照片落盘不能撤销原本等待同步的检查结果和备注。 */
+test('photo-only changes preserve an existing dirty draft for later ordinary sync', async () => {
+  let saved = null
+  const service = serviceModule.createInspectionDetailService({
+    reportRepository: { saveDraftChanges: async (_id, detail) => { saved = detail } },
+    planApi: {}, isOnline: async () => false, viewModel: createViewModel()
+  })
+  const pendingSyncPayload = { planId: 'plan-1', finishFlag: 0, comment: '既有备注' }
+  await service.saveDraft('plan-1', {
+    planId: 'plan-1', status: 1, plan: { id: 'plan-1', status: 1 }, syncStatus: 'DIRTY', pendingSyncPayload,
+    checklistData: { 'item-1': { photos: [{ photoId: 'camera-1' }] } }
+  }, { markDirty: false, changes: { itemIds: ['item-1'] } })
+  assert.equal(saved.syncStatus, 'DIRTY')
+  assert.deepEqual(saved.pendingSyncPayload, pendingSyncPayload)
+})
+
 test('saves dirty drafts with pending sync payload and in-progress status', async () => {
   const saved = []
   const service = serviceModule.createInspectionDetailService({

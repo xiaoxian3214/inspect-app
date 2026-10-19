@@ -11,6 +11,18 @@ test('list delegates the H5 user drawer to a native component', async () => {
   assert.match(page, /applyLocale\(normalizedLanguage\)/)
 })
 
+/** 用户抽屉使用原生弹层的遮罩事件关闭，内容区点击不得误触关闭。 */
+test('user drawer routes page-container overlay clicks to the parent close handler', async () => {
+  const source = await readFile('components/inspection/UserInfoDrawer.uvue', 'utf8')
+  const page = await readFile('pages/report/list.uvue', 'utf8')
+  assert.match(source, /<page-container\s+:show="visible"\s+position="left"\s+:overlay="true"[\s\S]*?@clickoverlay="closeDrawer"/)
+  assert.match(source, /<view class="user-drawer">/)
+  assert.doesNotMatch(source, /class="user-drawer-overlay"|@click\.stop/)
+  assert.match(source, /function closeDrawer\(\).*emit\('close'\)/)
+  assert.match(page, /<UserInfoDrawer[\s\S]*?@close="closeUserDrawer"/)
+  assert.match(page, /function closeUserDrawer\(\): void \{\s*showUserDrawer\.value = false/)
+})
+
 /** 对齐 H5 左侧抽屉的头部、信息区和底部语言及业务操作。 */
 test('native user drawer matches the H5 three-section layout and locale codes', async () => {
   const source = await readFile('components/inspection/UserInfoDrawer.uvue', 'utf8')
@@ -21,7 +33,9 @@ test('native user drawer matches the H5 three-section layout and locale codes', 
   assert.match(template, /v-for="code in localeCodes"[\s\S]*?class="user-lang-option"[\s\S]*?:class="\{ active: code === locale \}"[\s\S]*?\{\{ code \}\}/)
   assert.match(source, /const localeCodes = computed\(\(\): string\[\] => \(props\.locales as string\[\]\)\.map/)
   assert.match(template, /@click="changeLanguage\(code\)"/)
-  assert.match(style, /\.user-drawer\s*\{[^}]*width:\s*82%;[^}]*max-width:\s*640rpx;[^}]*flex-direction:\s*column;/s)
+  assert.match(template, /:custom-style="drawerContainerStyle"/)
+  assert.match(source, /Math\.min\(uni\.getWindowInfo\(\)\.windowWidth \* 0\.82, uni\.rpx2px\(640\)\)/)
+  assert.match(style, /\.user-drawer\s*\{[^}]*width:\s*100%;[^}]*flex-direction:\s*column;/s)
   assert.match(style, /\.user-drawer-footer\s*\{[^}]*margin-top:\s*auto;/s)
   assert.match(source, /safeBottomPaddingPx\(28\)/)
   assert.match(template, /<TopSafeArea background-color="#ffffff"\s*\/>/)
@@ -40,7 +54,7 @@ test('native user drawer emits business actions and respects busy buttons', asyn
   assert.match(source, /if \(props\.clearingLocalCache\) return/)
 })
 
-/** 检查更新入口位于退出登录前，由列表页给出明确的待接入提示。 */
+/** 检查更新入口位于退出登录前，交由列表页发起真实更新检查。 */
 test('update action precedes logout and delegates to the list page', async () => {
   const drawer = await readFile('components/inspection/UserInfoDrawer.uvue', 'utf8')
   const page = await readFile('pages/report/list.uvue', 'utf8')
@@ -49,7 +63,7 @@ test('update action precedes logout and delegates to the list page', async () =>
   assert.match(template, /@click="checkForUpdates"[^>]*>.*t\('检查更新'\)[\s\S]*?t\('退出登录'\)/)
   assert.match(drawer, /emit\('check-for-updates'\)/)
   assert.match(page, /@check-for-updates="handleCheckForUpdates"/)
-  assert.match(page, /function handleCheckForUpdates\(\)[^{]*\{\s*uni\.showToast\(\{ title: t\('检查更新功能待接入'\), icon: 'none' \}\)/)
+  assert.match(page, /async function handleCheckForUpdates\(\): Promise<void>/)
+  assert.match(page, /appUpdateService\.check\(/)
   assert.equal(translations.match(/\["检查更新",/g)?.length, 2)
-  assert.equal(translations.match(/\["检查更新功能待接入",/g)?.length, 2)
 })

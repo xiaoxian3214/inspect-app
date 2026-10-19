@@ -5,12 +5,15 @@ import { loadUtsModule } from './load-uts-module.mjs'
 
 const captureModule = await loadUtsModule('domain/cameraCapture.uts')
 
-test('appends unique burst captures in order and respects the maximum count', () => {
+test('appends unique captures in order without truncating the session', () => {
   assert.deepEqual(captureModule.appendCapturePaths(
     ['/saved/a.jpg'],
-    ['/saved/a.jpg', '/saved/b.jpg', '/saved/c.jpg'],
-    2
-  ), ['/saved/a.jpg', '/saved/b.jpg'])
+    ['/saved/a.jpg', '/saved/b.jpg', '/saved/c.jpg']
+  ), ['/saved/a.jpg', '/saved/b.jpg', '/saved/c.jpg'])
+
+  const manyPaths = []
+  for (let index = 0; index < 24; index++) manyPaths.push(`/saved/shot-${index}.jpg`)
+  assert.equal(captureModule.appendCapturePaths([], manyPaths).length, 24)
 })
 
 test('builds a stable isolated event name for each camera request', () => {
@@ -60,33 +63,58 @@ test('detail sheets share the H5-style reusable media grid', async () => {
   assert.match(item, /\.media-image\s*\{[^}]*width:\s*100%[^}]*height:\s*100%/)
 })
 
-test('detail page opens the system camera and bypasses the custom burst camera', async () => {
+test('detail page opens the reusable capture page and consumes its request-scoped result', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
 
-  assert.match(source, /uni\.chooseImage\(/)
-  assert.match(source, /count:\s*1/)
-  assert.match(source, /sourceType:\s*\['camera'\]/)
-  assert.doesNotMatch(source, /buildCameraCaptureEventName/)
-  assert.doesNotMatch(source, /\/pages\/report\/camera\?requestId=/)
+  assert.doesNotMatch(source, /uni\.chooseImage\(/)
+  assert.match(source, /import \{ buildCameraCaptureEventName, normalizeCameraCaptureMedia \} from '\.\.\/\.\.\/domain\/cameraCapture\.uts'/)
+  assert.match(source, /uni\.\$on\(eventName, handler\)/)
+  assert.match(source, /url: `\/pages\/report\/simple-camera\?requestId=\$\{encodeURIComponent\(requestId\)\}`/)
   assert.doesNotMatch(source, /uni\.\$once/)
+  assert.match(source, /function settleCameraCapture\(payload: UTSJSONObject \| null\): void/)
+  assert.match(source, /if \(pendingCaptureEventName !== eventName\) return/)
+  assert.match(source, /settleCameraCapture\(null\)/)
 })
 
-test('detail page persists confirmed camera paths through the app-x file system manager', async () => {
+/** 自定义相机的结果事件以 requestId 隔离，完成时必须在返回详情前发出包含全部本地路径的媒体条目。 */
+test('custom capture sends every saved media item to the detail media library', async () => {
+  const camera = await readFile('pages/report/simple-camera.uvue', 'utf8')
+  const detail = await readFile('pages/report/detail.uvue', 'utf8')
+  assert.match(camera, /const items = cancelled \? \(\[\] as UTSJSONObject\[\]\) : buildResultItems\(savedPaths\)/)
+  assert.match(camera, /uni\.\$emit\(buildCameraCaptureEventName\(requestId\.value\), \{ paths: paths, items: items, cancelled: cancelled \}\)/)
+  assert.ok(camera.indexOf('emitCaptureResult(false, savedPaths)') < camera.indexOf('goBackWithResult(savedPaths)'))
+  assert.match(detail, /normalizeCameraCaptureMedia\(payload\)/)
+  assert.match(detail, /inspectionMediaService\.addLocalPhoto\(planId\.value, localPath/)
+})
+
+test('detail page routes camera results through the shared media persistence service', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
 
-  assert.match(source, /uni\.getFileSystemManager\(\)/)
-  assert.match(source, /fileSystemManager\.saveFile/)
+  assert.match(source, /import \{ createAppMediaPersistenceService \} from '\.\.\/\.\.\/services\/mediaPersistenceService\.uts'/)
+  assert.match(source, /const mediaPersistenceService = createAppMediaPersistenceService\(\)/)
+  assert.match(source, /mediaPersistenceService\.persistMediaPath\(tempPath, isVideo\)/)
   assert.doesNotMatch(source, /uni\.saveFile/)
+  assert.doesNotMatch(source, /fileSystemManager\.saveFile/)
 })
 
-test('zoom presets only expose the ratios the camera actually supports', () => {
+test('zoom presets keep only the 1x/2x/3x levels the capture flow cycles through', () => {
   assert.deepEqual(captureModule.buildCameraZoomOptions(0), [1])
   assert.deepEqual(captureModule.buildCameraZoomOptions(1), [1])
   assert.deepEqual(captureModule.buildCameraZoomOptions(2), [1, 2])
   assert.deepEqual(captureModule.buildCameraZoomOptions(3), [1, 2, 3])
   assert.deepEqual(captureModule.buildCameraZoomOptions(4), [1, 2, 3])
-  assert.deepEqual(captureModule.buildCameraZoomOptions(10), [1, 2, 3, 5, 10])
+  assert.deepEqual(captureModule.buildCameraZoomOptions(10), [1, 2, 3])
   assert.deepEqual(captureModule.buildCameraZoomOptions(Number.NaN), [1])
+})
+
+test('zoom button switches to the next supported level and wraps back to 1x', () => {
+  assert.equal(captureModule.resolveNextCameraZoom([1, 2, 3], 1), 2)
+  assert.equal(captureModule.resolveNextCameraZoom([1, 2, 3], 2), 3)
+  assert.equal(captureModule.resolveNextCameraZoom([1, 2, 3], 3), 1)
+  assert.equal(captureModule.resolveNextCameraZoom([1, 2], 2), 1)
+  assert.equal(captureModule.resolveNextCameraZoom([1], 1), 1)
+  assert.equal(captureModule.resolveNextCameraZoom([1, 2, 3], 7), 1)
+  assert.equal(captureModule.resolveNextCameraZoom([], 2), 1)
 })
 
 test('video duration labels use mm:ss and clamp invalid values to zero', () => {
@@ -99,18 +127,16 @@ test('video duration labels use mm:ss and clamp invalid values to zero', () => {
 })
 
 /**
- * 取景页底部必须提供取消、闪光灯、倍率、拍照、切换录像、翻转和完成，
- * 取景画面占上方主要区域，照片区与控制条都留在页面下半部分。
+ * 取景页底部必须提供相册、取消、闪光灯、倍率、拍照、切换录像、翻转和完成，
+ * 取景画面占上方主要区域，照片区与单行控制条都留在页面下半部分。
  */
 test('capture page wires the bottom control panel the inspection flow needs', async () => {
   const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
   const strip = await readFile('components/camera/CaptureStrip.uvue', 'utf8')
-  const toolbar = await readFile('components/camera/CaptureToolbar.uvue', 'utf8')
-  const settingBar = await readFile('components/camera/CaptureSettingBar.uvue', 'utf8')
+  const controlBar = await readFile('components/camera/CaptureControlBar.uvue', 'utf8')
 
   assert.match(page, /import CaptureStrip from '\.\.\/\.\.\/components\/camera\/CaptureStrip\.uvue'/)
-  assert.match(page, /import CaptureToolbar from '\.\.\/\.\.\/components\/camera\/CaptureToolbar\.uvue'/)
-  assert.match(page, /import CaptureSettingBar from '\.\.\/\.\.\/components\/camera\/CaptureSettingBar\.uvue'/)
+  assert.match(page, /import CaptureControlBar from '\.\.\/\.\.\/components\/camera\/CaptureControlBar\.uvue'/)
   assert.match(page, /class="camera-page"/)
   assert.match(page, /class="preview-wrap"/)
   assert.match(page, /class="capture-panel"/)
@@ -121,6 +147,11 @@ test('capture page wires the bottom control panel the inspection flow needs', as
   assert.match(page, /@change-zoom="applyZoom"/)
   assert.match(page, /@switch-capture-mode="switchCaptureMode"/)
   assert.match(page, /@switch-camera="switchCamera"/)
+  assert.match(page, /@pick-album="captureFromAlbum"/)
+  assert.match(page, /@press-shutter="takePhoto"/)
+  assert.match(page, /@finish-capture="handleFinishCapture"/)
+  assert.match(page, /:shutter-disabled="shutterDisabled"/)
+  assert.match(page, /:finish-enabled="captureEnabled"/)
   assert.match(page, /buildCameraZoomOptions/)
   assert.match(page, /context\.setZoom\(\{/)
   assert.match(page, /:flash="flashMode"/)
@@ -128,12 +159,82 @@ test('capture page wires the bottom control panel the inspection flow needs', as
   assert.match(page, /context\.stopRecord\(/)
   assert.match(page, /context\.takePhoto\(/)
 
-  assert.match(settingBar, /defineEmits\(\['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera'\]\)/)
-  assert.match(settingBar, /\/static\/camera\/flip\.png/)
-  assert.match(settingBar, /\/static\/camera\/flashoff\.png/)
-  assert.match(settingBar, /\/static\/camera\/flashon\.png/)
-  assert.match(settingBar, /translateText\('取消'\)/)
-  assert.match(toolbar, /\/static\/camera\/shutter\.png/)
+  assert.match(controlBar, /defineEmits\(\['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera', 'pick-album', 'press-shutter', 'finish-capture'\]\)/)
+  assert.match(controlBar, /\/static\/camera\/flip\.png/)
+  assert.match(controlBar, /\/static\/camera\/flashoff\.png/)
+  assert.match(controlBar, /\/static\/camera\/flashon\.png/)
+  assert.match(controlBar, /\/static\/camera\/xiangce\.png/)
+  assert.match(controlBar, /\/static\/camera\/shutter\.png/)
+  assert.match(controlBar, /translateText\('取消'\)/)
+  assert.match(controlBar, /translateText\('完成'\)/)
   assert.match(strip, /capture-thumb/)
   assert.match(strip, /remove-photo/)
+})
+
+/**
+ * 快门与操作行必须落在同一行：左右两组等宽，快门夹在中间保持居中。
+ */
+test('shutter and operation row share one centered control row', async () => {
+  const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
+  const controlBar = await readFile('components/camera/CaptureControlBar.uvue', 'utf8')
+
+  assert.match(page, /<CaptureControlBar[\s\S]*?\/>/)
+  assert.doesNotMatch(page, /<CaptureSettingBar/)
+  assert.doesNotMatch(page, /<CaptureToolbar/)
+  assert.match(controlBar, /class="capture-control-row"/)
+  assert.match(controlBar, /class="control-side control-side-left"/)
+  assert.match(controlBar, /class="shutter-wrap"/)
+  assert.match(controlBar, /class="control-side control-side-right"/)
+  const leftIndex = controlBar.indexOf('control-side-left')
+  const shutterIndex = controlBar.indexOf('shutter-wrap"')
+  const rightIndex = controlBar.indexOf('control-side-right')
+  assert.ok(leftIndex < shutterIndex && shutterIndex < rightIndex, '快门必须夹在左右两组操作项之间')
+  assert.match(controlBar, /\.control-side\s*\{[^}]*flex:\s*1/)
+  assert.match(controlBar, /\.capture-control-row\s*\{[^}]*flex-direction:\s*row[^}]*align-items:\s*center/)
+})
+
+/**
+ * 底部版式：取消固定在最左侧，已拍照片区排在控制条之后，留在整个页面最下方。
+ */
+test('cancel sits leftmost and the captured media strip stays at the very bottom', async () => {
+  const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
+  const controlBar = await readFile('components/camera/CaptureControlBar.uvue', 'utf8')
+
+  const leftGroupStart = controlBar.indexOf('control-side-left')
+  const cancelIndex = controlBar.indexOf("translateText('取消')")
+  const albumIndex = controlBar.indexOf("translateText('相册')")
+  assert.ok(leftGroupStart >= 0 && leftGroupStart < cancelIndex, '取消必须位于左侧操作组内')
+  assert.ok(cancelIndex < albumIndex, '取消必须是左侧操作组的第一项（最左侧）')
+
+  assert.ok(page.indexOf('<CaptureControlBar') < page.indexOf('<CaptureStrip'), '照片区必须排在控制条之后')
+  assert.ok(page.indexOf('<CaptureStrip') > page.indexOf('class="capture-panel"'), '照片区必须留在页面最下方')
+  assert.doesNotMatch(page, /<CaptureStrip[\s\S]*?<CaptureControlBar/)
+})
+
+/**
+ * 倍率不再平铺所有档位：底部只展示当前档位一个按钮，点一次切到下一档并循环。
+ */
+test('zoom control shows a single chip and cycles the level on each tap', async () => {
+  const controlBar = await readFile('components/camera/CaptureControlBar.uvue', 'utf8')
+
+  assert.doesNotMatch(controlBar, /v-for="\(zoom, index\) in zoomLevels"/)
+  assert.match(controlBar, /import \{ resolveNextCameraZoom \}/)
+  assert.match(controlBar, /class="zoom-chip" @click="cycleZoom"/)
+  assert.match(controlBar, /zoomLabel\(activeZoom\)/)
+  assert.match(controlBar, /emit\('change-zoom', resolveNextCameraZoom\(levels, props\.activeZoom\)\)/)
+  assert.match(controlBar, /zoomLevels\.length > 1/)
+  assert.doesNotMatch(controlBar, /selectZoom/)
+})
+
+/**
+ * 相机回调返回的是原生绝对路径，缩略图必须先补成 file:// 形式，否则 image 组件一直空白。
+ */
+test('captured thumbnails normalize native absolute paths before rendering', async () => {
+  const strip = await readFile('components/camera/CaptureStrip.uvue', 'utf8')
+
+  assert.match(strip, /import \{ resolveLocalMediaDisplayPath \} from '\.\.\/\.\.\/domain\/deviceCapture\.uts'/)
+  assert.match(strip, /<image v-else class="capture-thumb" :src="item\.previewPath" mode="aspectFill"[^>]*\/>/)
+  assert.match(strip, /@error="handleThumbError"/)
+  assert.doesNotMatch(strip, /:src="item\.path"/)
+  assert.match(strip, /previewPath: resolveLocalMediaDisplayPath\(\(item\['previewPath'\] \?\? item\['path'\] \?\? ''\)\.toString\(\)\)/)
 })

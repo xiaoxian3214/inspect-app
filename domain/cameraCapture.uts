@@ -26,18 +26,30 @@ export function normalizeCameraResultPaths(payload: UTSJSONObject | string[] | n
 }
 
 /**
- * 将新拍摄或相册选择的路径追加到连拍列表，并按最大数量保持首次出现顺序。
+ * 将新拍摄或相册选择的路径追加到拍摄列表，按首次出现顺序去重。
+ * 业务上不限制单次拍摄的累计张数，因此不再截断；重复路径只保留最早出现的那次。
  * @param currentPaths 已拍摄的本地路径列表
  * @param incomingPaths 本次新增的本地路径列表
- * @param maxCount 连拍列表允许保留的最大路径数量
- * @returns 合并去重并截断后的本地路径列表
+ * @returns 去重保序后的完整本地路径列表
  */
-export function appendCapturePaths(currentPaths: string[], incomingPaths: string[], maxCount: number = 9): string[] {
-  const normalizedMaxCount = Math.max(1, parseInt(String(maxCount ?? 9)))
+export function appendCapturePaths(currentPaths: string[], incomingPaths: string[]): string[] {
   return normalizeCameraResultPaths([
     ...(Array.isArray(currentPaths) ? currentPaths : ([] as string[])),
     ...(Array.isArray(incomingPaths) ? incomingPaths : ([] as string[]))
-  ]).slice(0, normalizedMaxCount)
+  ])
+}
+
+/**
+ * 用标注后的本地图片原位替换本次拍摄的目标路径，保持其它图片与顺序不变。
+ * 下标越界或新路径为空时保留原列表；永不修改传入数组。
+ * @param paths 当前拍摄列表
+ * @param index 被编辑图片的下标
+ * @param editedPath 已写入本地的编辑结果路径
+ * @returns 替换后的新路径列表
+ */
+export function replaceCapturePath(paths: string[], index: number, editedPath: string): string[] {
+  if (index < 0 || index >= paths.length || editedPath.trim() === '') return paths
+  return paths.map((path: string, position: number): string => position === index ? editedPath.trim() : path)
 }
 
 /**

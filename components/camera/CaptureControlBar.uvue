@@ -1,0 +1,134 @@
+<template>
+	<view class="capture-control-row">
+		<view class="control-side control-side-left">
+			<view class="control-action" @click="handleCancel">
+				<text class="control-label">{{ translateText('取消') }}</text>
+			</view>
+			<view class="control-action" @click="pickAlbum">
+				<image class="control-icon" src="/static/camera/xiangce.png" mode="aspectFit" />
+				<text class="control-label">{{ translateText('相册') }}</text>
+			</view>
+			<view class="control-action" @click="toggleFlash">
+				<image class="control-icon" :src="flashIcon" mode="aspectFit" />
+			</view>
+			<view v-if="zoomLevels.length > 1" class="zoom-chip" @click="cycleZoom">
+				<text class="zoom-chip-text">{{ zoomLabel(activeZoom) }}</text>
+			</view>
+		</view>
+		<view class="shutter-wrap" :class="{ disabled: shutterDisabled }" @click="pressShutter">
+			<image class="shutter-icon" :src="shutterIcon" mode="aspectFit" />
+		</view>
+		<view class="control-side control-side-right">
+			<view class="control-action" @click="switchMode">
+				<image class="control-icon" :src="modeIcon" mode="aspectFit" />
+				<text class="control-label">{{ modeLabel }}</text>
+			</view>
+			<view class="control-action" :class="{ disabled: recording }" @click="switchCamera">
+				<image class="control-icon" src="/static/camera/flip.png" mode="aspectFit" />
+				<text class="control-label">{{ translateText('翻转') }}</text>
+			</view>
+			<view class="control-action" :class="{ disabled: !finishEnabled }" @click="finishCapture">
+				<text class="control-label">{{ translateText('完成') }}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { t } from '../../i18n/index.uts'
+	import { computed } from 'vue'
+	import { resolveNextCameraZoom } from '../../domain/cameraCapture.uts'
+
+	const props = defineProps({
+		flashOn: { type: Boolean, default: false },
+		zoomOptions: { type: Array, default: () => [] as number[] },
+		activeZoom: { type: Number, default: 1 },
+		captureMode: { type: String, default: 'photo' },
+		recording: { type: Boolean, default: false },
+		shutterDisabled: { type: Boolean, default: false },
+		finishEnabled: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera', 'pick-album', 'press-shutter', 'finish-capture'])
+
+	/** 为原生模板提供可调用的翻译方法。 */
+	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
+
+	/** 可用倍率档位；相机尚未上报能力时兜底为 1x，避免出现空档位。 */
+	const zoomLevels = computed((): number[] => {
+		const options = props.zoomOptions as number[]
+		return options.length > 0 ? options : ([1] as number[])
+	})
+	/** 闪光灯图标：开启时使用点亮图标，关闭时使用熄灭图标。 */
+	const flashIcon = computed((): string => props.flashOn ? '/static/camera/flashon.png' : '/static/camera/flashoff.png')
+	/** 模式切换按钮图标：当前为录像时显示录像图标，否则显示拍照图标。 */
+	const modeIcon = computed((): string => props.captureMode === 'video' ? '/static/camera/doing.png' : '/static/camera/snapshot.png')
+	/** 模式切换按钮文案，点击后进入另一模式。 */
+	const modeLabel = computed((): string => translateText(props.captureMode === 'video' ? '录像' : '拍照'))
+	/** 快门图标：拍照用相机图标，录像待录制用录像图标，录制中用停止图标。 */
+	const shutterIcon = computed((): string => {
+		if (props.captureMode === 'video') return props.recording ? '/static/camera/stop.png' : '/static/camera/doing.png'
+		return '/static/camera/shutter.png'
+	})
+
+	/** 倍率档位文案，如 2x。 */
+	function zoomLabel(zoom: number): string {
+		return `${zoom}x`
+	}
+	/** 通知页面取消本次拍摄并退出取景页。 */
+	function handleCancel(): void {
+		emit('cancel-capture')
+	}
+	/** 通知页面切换闪光灯开关。 */
+	function toggleFlash(): void {
+		emit('toggle-flash')
+	}
+	/**
+	 * 通知页面把倍率切到下一个档位。
+	 * 倍率按钮只展示当前档位，每点一次循环往后一档；只有一个可用档位时不显示该按钮。
+	 */
+	function cycleZoom(): void {
+		const levels = zoomLevels.value
+		if (levels.length <= 1) return
+		emit('change-zoom', resolveNextCameraZoom(levels, props.activeZoom))
+	}
+	/** 通知页面在拍照与录像模式之间切换。 */
+	function switchMode(): void {
+		emit('switch-capture-mode', props.captureMode === 'video' ? 'photo' : 'video')
+	}
+	/** 通知页面翻转前后摄像头；录像过程中禁止翻转，避免中断录像会话。 */
+	function switchCamera(): void {
+		if (props.recording) return
+		emit('switch-camera')
+	}
+	/** 通知页面从系统相册补充照片。 */
+	function pickAlbum(): void {
+		emit('pick-album')
+	}
+	/** 通知页面按下快门；录像进行中即使限流也可以点击停止。 */
+	function pressShutter(): void {
+		if (props.shutterDisabled && !props.recording) return
+		emit('press-shutter')
+	}
+	/** 通知页面完成拍摄并回传已拍媒体；没有媒体时由页面给出提示。 */
+	function finishCapture(): void {
+		emit('finish-capture')
+	}
+</script>
+
+<style>
+	/* 相册、取消、闪光灯、倍率、快门、模式、翻转、完成合并成一行：左右两侧等宽，快门保持居中。 */
+	.capture-control-row { height: 124rpx; flex-direction: row; align-items: center; padding: 0 16rpx; background-color: #0f172a; }
+	.control-side { flex: 1; height: 112rpx; flex-direction: row; align-items: center; }
+	.control-side-left { justify-content: space-between; padding-right: 8rpx; }
+	.control-side-right { justify-content: space-between; padding-left: 8rpx; }
+	.control-action { height: 112rpx; flex-direction: row; align-items: center; justify-content: center; }
+	.control-action.disabled { opacity: 0.4; }
+	.control-icon { width: 44rpx; height: 44rpx; }
+	.control-label { margin-left: 4rpx; color: #e2e8f0; font-size: 22rpx; }
+	/* 倍率常亮表示可直接点击循环切换。 */
+	.zoom-chip { min-width: 64rpx; height: 44rpx; padding: 0 12rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: #facc15; }
+	.zoom-chip-text { color: #0f172a; font-size: 22rpx; }
+	.shutter-wrap { width: 112rpx; height: 112rpx; align-items: center; justify-content: center; }
+	.shutter-wrap.disabled { opacity: 0.4; }
+	.shutter-icon { width: 104rpx; height: 104rpx; }
+</style>

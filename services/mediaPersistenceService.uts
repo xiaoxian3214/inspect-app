@@ -1,0 +1,208 @@
+/**
+ * 判断路径是否已经位于应用持久目录：拍摄过程中拿到的是相机临时路径，需要转存；
+ * 已经落盘的路径（相机页完成时复制过的、标注编辑器写出的）必须原样复用，避免重复复制。
+ * @param path 待判断的本地路径
+ * @param persistentDir 当前应用的持久媒体目录；为空时只按约定目录名判断
+ * @returns 已位于持久目录（无需再次复制）时返回 true
+ */
+export function isPersistentMediaPath(path: string, persistentDir: string = ''): boolean {
+  const normalizedPath = String(path ?? '').trim()
+  if (normalizedPath === '') return false
+  const dir = String(persistentDir ?? '').trim()
+  if (dir !== '' && normalizedPath.startsWith(dir)) return true
+  return normalizedPath.includes('/inspection_media/')
+    || normalizedPath.includes('/inspection-edit-')
+    || normalizedPath.includes('_doc/')
+    || normalizedPath.includes('uniapp_save')
+}
+
+/**
+ * 归一化本地文件路径：相机、编辑与选择接口可能带回 file:// 前缀，
+ * 而 uni.getFileSystemManager 的接口只认真实路径，带前缀时会被判成沙盒外路径。
+ * @param path 相机、相册或编辑接口返回的本地路径
+ * @returns 去掉 file:// 前缀后的本地路径；网络地址与非 file:// 路径原样返回
+ */
+export function normalizeLocalFilePath(path: string): string {
+  const normalizedPath = String(path ?? '').trim()
+  if (normalizedPath.toLowerCase().startsWith('file://')) return normalizedPath.slice('file://'.length)
+  return normalizedPath
+}
+
+/**
+ * 判断本地媒体路径是否落在设备外置存储上（/storage、/mnt、/sdcard）。
+ * 应用内 camera 组件拍出的照片与录像通常写在本应用外置缓存目录；是否跳过复制
+ * 由 needsPersistentMediaCopy 精确识别 /Android/data/<包名>/cache/uni-media/，而非所有外置路径。
+ * @param path 相机或录像返回的本地路径
+ * @returns 位于外置存储时返回 true
+ */
+export function isExternalStorageMediaPath(path: string): boolean {
+  const normalizedPath = normalizeLocalFilePath(path)
+  if (normalizedPath === '') return false
+  return normalizedPath.startsWith('/storage/') || normalizedPath.startsWith('/mnt/') || normalizedPath.startsWith('/sdcard/')
+}
+
+/**
+ * 判断媒体是否需要复制进应用持久目录。
+ * 自定义相机生成的本应用 cache/uni-media 临时路径供 uploadFile 直接使用，不能交给
+ * 文件 API copyFile（Android 对它返回 1300002）；已存入持久目录的路径也不重复复制。
+ * 系统相机、相册等其余来源继续沿用原复制流程。
+ * @param path 相机、相册或录像返回的本地路径
+ * @param persistentDir 当前应用的持久媒体目录；为空时只按约定目录名判断
+ * @returns 需要复制时返回 true
+ */
+export function needsPersistentMediaCopy(path: string, persistentDir: string = ''): boolean {
+  const normalizedPath = normalizeLocalFilePath(path)
+  if (normalizedPath === '') return false
+  if (isPersistentMediaPath(normalizedPath, persistentDir)) return false
+  if (/\/Android\/data\/[^/]+\/cache\/uni-media\//.test(normalizedPath)) return false
+  return true
+}
+
+/**
+ * 提取临时媒体的文件扩展名：优先沿用原扩展名，缺失或异常时按媒体类型给默认值。
+ * @param tempPath 相机或相册返回的临时路径
+ * @param isVideo 是否为视频
+ * @returns 以点号开头的扩展名，如 .jpg / .mp4
+ */
+function resolveMediaFileExtension(tempPath: string, isVideo: boolean): string {
+  const fallback = isVideo ? '.mp4' : '.jpg'
+  const normalizedPath = String(tempPath ?? '').trim()
+  const dotIndex = normalizedPath.lastIndexOf('.')
+  if (dotIndex < 0 || dotIndex === normalizedPath.length - 1) return fallback
+  const extension = normalizedPath.slice(dotIndex).toLowerCase()
+  if (extension.length > 5 || extension.includes('/')) return fallback
+  return extension
+}
+
+/**
+ * 生成持久媒体目录下的目标文件名，避免同一毫秒内多张照片互相覆盖。
+ * @param tempPath 相机或相册返回的临时路径，用于沿用扩展名
+ * @param isVideo 是否为视频
+ * @param timestamp 生成时间戳（毫秒），由调用方注入便于测试
+ * @param sequence 同一批次内的递增序号
+ * @returns 形如 1750000000000-3.jpg 的文件名（不含目录）
+ */
+export function buildPersistedMediaFileName(tempPath: string, isVideo: boolean, timestamp: number, sequence: number): string {
+  const parsedTimestamp = Number(timestamp ?? 0)
+  const safeTimestamp = Number.isNaN(parsedTimestamp) ? 0 : Math.max(0, Math.round(parsedTimestamp))
+  const parsedSequence = Number(sequence ?? 0)
+  const safeSequence = Number.isNaN(parsedSequence) ? 0 : Math.max(0, Math.round(parsedSequence))
+  return `${safeTimestamp}-${safeSequence}${resolveMediaFileExtension(tempPath, isVideo)}`
+}
+
+/**
+ * 生成带错误码的保存失败文案：不能像旧实现那样只读 errMsg，否则失败原因会在提示里丢失。
+ * @param error 文件系统回调的失败对象，可能只有 errCode
+ * @param isVideo 是否为视频，决定“图片/视频”前缀
+ * @returns 供页面直接展示的中文原因文本
+ */
+function buildMediaPersistErrorMessage(error: any, isVideo: boolean): string {
+  const errMsg = String(error?.errMsg ?? '').trim()
+  const errCode = String(error?.errCode ?? '').trim()
+  const label = isVideo ? '视频' : '图片'
+  if (errCode === '' && errMsg === '') return `${label}本地保存失败，请重试`
+  if (errCode === '') return `${label}本地保存失败，请重试（${errMsg}）`
+  if (errMsg === '') return `${label}本地保存失败，请重试（错误码 ${errCode}）`
+  return `${label}本地保存失败，请重试（错误码 ${errCode}：${errMsg}）`
+}
+
+/** 媒体持久化服务的依赖注入项：复制能力与持久目录都由调用方提供，便于在 Node 测试中替换。 */
+export type MediaPersistenceServiceOptions = {
+  /** 复制函数：把源文件复制到目标路径，成功与失败各回调一次 */
+  copyFile: (srcPath: string, destPath: string, onSuccess: () => void, onFailure: (error: FileSystemManagerFail) => void) => void,
+  /** 持久媒体目录（固定值）；与 resolvePersistentDir 二选一 */
+  persistentDir?: string | null,
+  /** 惰性读取持久媒体目录；优先于 persistentDir */
+  resolvePersistentDir?: (() => string) | null
+}
+
+/**
+ * 创建“相机/相册临时媒体 → 应用持久目录”的本地保存服务。
+ * 拍摄过程中只保留相机返回的临时文件路径，只有用户点击“完成”时才调用 persistMediaPath 落盘。
+ * @param options 依赖注入项：copyFile 必传，persistentDir 与 resolvePersistentDir 二选一
+ */
+export function createMediaPersistenceService(options: MediaPersistenceServiceOptions) {
+  const copyFile = options.copyFile
+  const customResolvePersistentDir = options.resolvePersistentDir
+  const resolvePersistentDir = customResolvePersistentDir != null
+    ? customResolvePersistentDir
+    : (): string => String(options.persistentDir ?? '').trim()
+  let sequence = 0
+
+  /** 读取当前持久媒体目录；目录为空时拒绝落盘，避免将临时地址加入上传队列。 */
+  function persistentDir(): string {
+    return String(resolvePersistentDir() ?? '').trim()
+  }
+
+  /**
+   * 复制单个文件到目标路径，把回调式 copyFile 包装成 Promise。
+   * 失败时抛出带 errCode/errMsg 的错误，便于提示与排查。
+   * @param srcPath 相机回调或系统选择的源文件路径
+   * @param destPath 持久目录下的目标路径
+   * @param isVideo 是否为视频，决定错误文案中的“图片/视频”前缀
+   * @returns 复制成功的文件路径；文件 API 失败则保留真实错误码与路径用于诊断
+   */
+  function copyIntoPersistentDir(srcPath: string, destPath: string, isVideo: boolean): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      copyFile(srcPath, destPath, (): void => resolve(destPath), (error: FileSystemManagerFail): void => {
+        reject(new Error(`${buildMediaPersistErrorMessage(error, isVideo)}；源文件: ${srcPath}；目标文件: ${destPath}`))
+      })
+    })
+  }
+
+  /**
+   * 把单条临时媒体保存为可入库、可上传的本地路径。
+   * 自定义相机的 takePhoto 临时路径直接复用，避免文件 API 对该路径返回 1300002；
+   * 系统相机及相册等其他临时路径仍复制到应用用户目录。
+   * @param tempPath 相机、相册或录像返回的临时文件路径
+   * @param isVideo 是否为视频，决定默认扩展名与错误文案
+   * @returns 持久目录下的本地文件路径（输入本就处于该目录时原样返回）
+   */
+  async function persistMediaPath(tempPath: string, isVideo: boolean): Promise<string> {
+    const normalizedPath = normalizeLocalFilePath(tempPath)
+    if (normalizedPath === '') throw new Error('媒体本地路径不能为空')
+    const dir = persistentDir()
+    if (!needsPersistentMediaCopy(normalizedPath, dir)) return normalizedPath
+    if (dir === '') throw new Error('媒体持久目录不可用，请重试')
+    sequence = sequence + 1
+    const destPath = `${dir}/${buildPersistedMediaFileName(normalizedPath, isVideo, Date.now(), sequence)}`
+    return await copyIntoPersistentDir(normalizedPath, destPath, isVideo)
+  }
+
+  /**
+   * 按拍摄顺序保存整批媒体，返回与入参等长的持久路径列表。
+   * 任一条失败即抛出，由调用方决定是否保留临时文件让用户重试。
+   * @param entries 媒体条目列表，每项包含 path 与 mediaType/mediaKind
+   * @returns 持久目录下的本地绝对路径列表
+   */
+  async function persistMediaPaths(entries: UTSJSONObject[]): Promise<string[]> {
+    const source = Array.isArray(entries) ? entries : ([] as UTSJSONObject[])
+    const paths: string[] = []
+    for (const entry of source) {
+      const mediaType = String(entry?.mediaType ?? entry?.mediaKind ?? '').toLowerCase()
+      paths.push(await persistMediaPath(String(entry?.path ?? ''), mediaType === 'video'))
+    }
+    return paths
+  }
+
+  return { persistMediaPath, persistMediaPaths }
+}
+
+/**
+ * 创建 App 媒体路径服务：自定义相机返回的临时路径原样用于图片上传；系统相机与相册的
+ * 其他临时文件通过文件 API 复制到 inspection_media，保留既有的离线保存路径。
+ */
+export function createAppMediaPersistenceService() {
+  return createMediaPersistenceService({
+    resolvePersistentDir: (): string => `${uni.env.USER_DATA_PATH}/inspection_media`,
+    copyFile: (srcPath: string, destPath: string, onSuccess: () => void, onFailure: (error: FileSystemManagerFail) => void): void => {
+      // copyFile 会自动递归创建缺失的上级目录，无需先 mkdir。
+      uni.getFileSystemManager().copyFile({
+        srcPath: srcPath,
+        destPath: destPath,
+        success: onSuccess,
+        fail: onFailure
+      } as CopyFileOptions)
+    }
+  })
+}

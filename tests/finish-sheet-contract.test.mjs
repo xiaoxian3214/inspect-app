@@ -82,6 +82,18 @@ test('finish sheet keeps its original final submission flow', async () => {
   assert.match(page, /saveDetailSnapshot\(planId\.value, completed\)/)
 })
 
+/** 报告生成后若详情页已卸载，不应继续更新被销毁的原生视图或预约延迟返回。 */
+test('final submission does not mutate unmounted detail page or retain a navigation timer', async () => {
+  const page = await readFile('pages/report/detail.uvue', 'utf8')
+  const submit = page.split('async function submitFinalReport()')[1].split('/** 打开详情更多操作菜单')[0]
+  assert.match(submit, /await reportRepository\.saveDetailSnapshot\(planId\.value, completed\)/)
+  assert.match(submit, /if \(pageDisposed\) return/)
+  assert.match(submit, /scheduleFinishNavigation\(\)/)
+  assert.doesNotMatch(submit, /setTimeout\(\(\) => uni\.navigateBack\(\), 500\)/)
+  assert.match(page, /function handlePageUnload\(\)[^{]*\{[^}]*clearFinishNavigation\(\)/)
+  assert.match(page, /finally \{ if \(!pageDisposed\) submitting\.value = false \}/)
+})
+
 /** 每次重新打开总结弹层时，失败检查点应恢复为 H5 默认展开状态。 */
 test('reopening finish summary expands failed checkpoints', async () => {
   const source = await readFile('components/detail/FinishInspectionSheet.uvue', 'utf8')

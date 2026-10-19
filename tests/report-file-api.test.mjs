@@ -4,6 +4,21 @@ import { loadUtsModule } from './load-uts-module.mjs'
 
 const apiModule = await loadUtsModule('api/reportFileApi.uts')
 
+/** 裸 /storage 原生路径不能直接给 uni.uploadFile，否则被当成项目相对路径拼到 apps/.../www/storage。 */
+test('Android camera absolute file paths use file URI in native upload transport', async () => {
+  const uploads = []
+  const api = apiModule.createReportFileApi({
+    apiClient: { request: async () => null }, baseUrl: 'https://example.com',
+    uploadTransport: async (request) => { uploads.push(request); return { statusCode: 200, data: { code: 200, data: { fileId: 'saved' } } } }
+  })
+  const path = '/storage/emulated/0/Android/data/uni.app.UNI1FFA0B1/cache/uni-media/Pic_1792402502873.jpg'
+  await api.uploadInspectFile(path, { bizId: 'item-1', bizType: 'checkResult' })
+  assert.equal(uploads[0].filePath, `file://${path}`)
+  assert.equal(apiModule.normalizeUploadLocalPath('file:///storage/emulated/0/a.jpg'), 'file:///storage/emulated/0/a.jpg')
+  assert.equal(apiModule.normalizeUploadLocalPath('unifile://cache/uni-media/a.jpg'), 'unifile://cache/uni-media/a.jpg')
+  assert.equal(apiModule.normalizeUploadLocalPath('/local/photo.jpg'), '/local/photo.jpg')
+})
+
 test('uploads local files with auth and inspection metadata', async () => {
   const uploads = []
   const api = apiModule.createReportFileApi({

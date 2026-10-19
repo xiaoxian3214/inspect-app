@@ -1,0 +1,65 @@
+<template>
+	<view v-if="visible" class="capture-preview-overlay">
+		<TopSafeArea background-color="#000000" />
+		<view class="preview-header">
+			<text class="preview-action" @click="closePreview">{{ translateText('关闭') }}</text>
+			<text class="preview-position">{{ index + 1 }}</text>
+			<text v-if="!isVideo" class="preview-action edit-action" @click="openImageEditor">{{ translateText('编辑图片') }}</text>
+			<text v-else class="preview-action"></text>
+		</view>
+		<view class="preview-content">
+			<video v-if="isVideo" class="preview-media" :src="displaySource" />
+			<image v-else class="preview-media" :src="displaySource" mode="aspectFit" />
+		</view>
+	</view>
+	<ImageMarkupEditor :visible="editing" :source="displaySource" @cancel="closeImageEditor" @edited="finishImageEdit" />
+</template>
+
+<script setup lang="uts">
+	import { computed, ref, watch } from 'vue'
+	import TopSafeArea from '../common/TopSafeArea.uvue'
+	import ImageMarkupEditor from '../detail/ImageMarkupEditor.uvue'
+	import { resolveLocalMediaDisplayPath } from '../../domain/deviceCapture.uts'
+	import { t } from '../../i18n/index.uts'
+
+	const props = defineProps({
+		visible: { type: Boolean, default: false },
+		source: { type: String, default: '' },
+		index: { type: Number, default: 0 },
+		isVideo: { type: Boolean, default: false },
+		saving: { type: Boolean, default: false }
+	})
+	const emit = defineEmits(['close-preview', 'edited'])
+	const editing = ref(false)
+
+	/** 将相机返回的原生绝对路径转换为原生图片和画布可加载的地址。 */
+	const displaySource = computed((): string => resolveLocalMediaDisplayPath(props.source))
+
+	/** 返回预览操作的当前语言文案。 */
+	function translateText(key: string): string { return t(key) }
+
+	/** 关闭大图预览；正在保存标注时不允许退出。 */
+	function closePreview(): void { if (!props.saving && !editing.value) emit('close-preview') }
+
+	/** 只允许图片进入已复用的画布标注编辑器，录像只提供播放。 */
+	function openImageEditor(): void { if (!props.saving && !props.isVideo && displaySource.value !== '') editing.value = true }
+
+	/** 关闭图片编辑器而不更改已拍媒体。 */
+	function closeImageEditor(): void { editing.value = false }
+
+	/** 将编辑器导出的本地路径交给拍照页落库，完成前保持预览开启。 */
+	function finishImageEdit(path: string): void { if (!props.saving && path.trim() !== '') { editing.value = false; emit('edited', path) } }
+
+	/** 首次打开预览时重置编辑状态；关闭期间不写已销毁的原生弹层。 */
+	watch((): boolean => props.visible, (visible: boolean): void => { if (visible) editing.value = false })
+</script>
+
+<style>
+	.capture-preview-overlay { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 2300; background-color: #000000; }
+	.preview-header { height: 100rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 0 28rpx; }
+	.preview-action { min-width: 140rpx; color: #ffffff; font-size: 28rpx; }
+	.edit-action { text-align: right; color: #22c55e; }
+	.preview-position { color: #ffffff; font-size: 26rpx; }
+	.preview-content { flex: 1; align-items: center; justify-content: center; }
+	.preview-media { width: 100%; height: 100%; }
+</style>

@@ -1,0 +1,91 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { loadUtsModule } from './load-uts-module.mjs'
+const { createAppUpdateService } = await loadUtsModule('services/appUpdateService.uts')
+
+/** 检查更新使用匿名请求、真实安装包版本号及三语参数，不经过会话守卫。 */
+test('update check uses anonymous Android version code and locale', async () => {
+  const calls = []
+  const service = createAppUpdateService({
+    baseUrl: 'https://example.com/qcm/',
+    request: async (options) => { calls.push(options); return { statusCode: 200, data: { code: 200, data: { needUpdate: true, forceUpdate: true, versionName: '1.2', downloadUrl: 'https://example.com/qcm/api/app/version/download/a.apk' } } } }
+  })
+  const update = await service.check(101, 'vi')
+  assert.equal(update.forceUpdate, true)
+  assert.match(calls[0].url, /\/api\/app\/version\/check\?platform=android&versionCode=101&lang=vi_VN$/)
+  assert.equal(calls[0].timeout, 5000)
+  assert.equal(calls[0].header.Authorization, undefined)
+  assert.equal(calls[0].header['Accept-Language'], 'vi_VN')
+})
+
+/** 无更新无需下载；错误状态或不合法的 APK 下载地址必须拒绝安装。 */
+test('update check rejects failed responses and unsafe packages', async () => {
+  for (const data of [{ code: 500, message: 'failed' }, { code: 200, data: { needUpdate: true, downloadUrl: 'http://evil.test/a.apk' } }]) {
+    const service = createAppUpdateService({ baseUrl: 'https://example.com', request: async () => ({ statusCode: 200, data }) })
+    await assert.rejects(() => service.check(101, 'zh'))
+  }
+  const service = createAppUpdateService({ baseUrl: 'https://example.com', request: async () => ({ statusCode: 200, data: { code: 200, data: { needUpdate: false } } }) })
+  assert.equal(await service.check(101, 'en'), null)
+})
+
+/** 后端返回 500 时保留 HTTP 状态和服务端提示，避免笼统地误报网络故障。 */
+test('update check surfaces backend status and message', async () => {
+  const service = createAppUpdateService({
+    baseUrl: 'https://example.com/qcm',
+    request: async () => ({ statusCode: 500, data: { code: 500, message: '系统错误，请联系管理员' } })
+  })
+  await assert.rejects(() => service.check(101, 'zh'), /HTTP 500.*系统错误，请联系管理员/)
+})
+
+/** 即使服务器只返回通用错误，也需打印匿名请求的路径、状态和时间便于后端关联日志。 */
+test('update check logs safe request and full backend response on HTTP 500', async () => {
+  const original = console.error
+  const logs = []
+  console.error = (...values) => logs.push(values)
+  try {
+    const service = createAppUpdateService({
+      baseUrl: 'https://example.com/qcm',
+      request: async () => ({ statusCode: 500, header: { 'x-request-id': 'trace-123' }, data: { code: 500, message: '系统错误，请联系管理员', timestamp: 1792395792971, success: false } })
+    })
+    await assert.rejects(() => service.check(101, 'zh'))
+    const serialized = JSON.stringify(logs)
+    assert.match(serialized, /\/api\/app\/version\/check\?platform=android&versionCode=101&lang=zh_CN/)
+    assert.match(serialized, /1792395792971/)
+    assert.match(serialized, /trace-123/)
+    assert.match(serialized, /系统错误，请联系管理员/)
+    assert.doesNotMatch(serialized, /Authorization|Bearer/)
+  } finally { console.error = original }
+})
+
+/** 只有 HTTP 200 且确实拿到本地文件时才允许触发原生安装。 */
+test('download validates status and path before APK install', async () => {
+  const installed = []
+  let statusCode = 404
+  const service = createAppUpdateService({
+    baseUrl: 'https://example.com',
+    download: async (_url, onProgress) => { onProgress(35); return { statusCode, tempFilePath: '/local/app.apk' } },
+    install: async (path) => { installed.push(path) }
+  })
+  await assert.rejects(() => service.downloadAndInstall('https://example.com/app.apk', () => {}))
+  assert.deepEqual(installed, [])
+  statusCode = 200
+  const progress = []
+  await service.downloadAndInstall('https://example.com/app.apk', (value) => progress.push(value))
+  assert.deepEqual(progress, [35])
+  assert.deepEqual(installed, ['/local/app.apk'])
+})
+
+/** 列表页面将手动入口接入真实更新服务，并确保强更不显示取消键及下载进度。 */
+test('user drawer starts native APK update flow', async () => {
+  const page = await readFile('pages/report/list.uvue', 'utf8')
+  assert.match(page, /@check-for-updates="handleCheckForUpdates"/)
+  assert.match(page, /uni\.getAppBaseInfo\(\)\.appVersionCode/)
+  assert.match(page, /appUpdateService\.check\(/)
+  assert.match(page, /showCancel: !update\.forceUpdate/)
+  assert.match(page, /appUpdateService\.downloadAndInstall\(/)
+  assert.doesNotMatch(page, /检查更新功能待接入/)
+  const service = await readFile('services/appUpdateService.uts', 'utf8')
+  assert.match(service, /uni\.installApk\(/)
+  assert.doesNotMatch(service, /plus\.|document\.|window\.|localStorage/)
+})

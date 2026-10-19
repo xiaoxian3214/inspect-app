@@ -1,0 +1,117 @@
+/**
+ * 单张照片的回正结果。
+ * path 为回正后可入库、可上传的本地路径；不需要回正或回正失败时保持入参原路径，拍摄流程不因此中断。
+ */
+export type MediaUprightResult = {
+  /** 回正后的本地图片路径；未旋转或旋转失败时等于入参原路径 */
+  path: string,
+  /** 该照片需要的回正角度：0 表示原图已经是正向（未改动字节） */
+  rotation: number,
+  /** 回正是否失败；失败时页面按原图继续，只提示不阻断 */
+  failed: boolean
+}
+
+/**
+ * 媒体回正服务的依赖注入项：读取方向、方向映射与旋转落盘都由调用方提供，便于在 Node 测试中替换原生实现。
+ */
+export type MediaOrientationServiceOptions = {
+  /** 读取图片的 EXIF 方向文本；读取失败时返回空串 */
+  readExifOrientation: (path: string) => Promise<string>,
+  /** 把 EXIF 方向文本换算成回正角度：注入领域函数，服务本身不复制方向映射规则 */
+  resolveUprightRotation: (exifOrientation: string) => number,
+  /** 按顺时针角度旋转图片并重新落盘，成功后返回可入库的新路径 */
+  rotateImageToUpright: (path: string, rotation: number) => Promise<string>
+}
+
+/**
+ * 创建「按设备写入的方向回正图片」的本地服务。
+ * 相机拍照时会把机身横竖姿态写进 JPEG 的 EXIF 方向，这里读取它并把像素真正转正：
+ * 回正后的文件不再依赖各端是否识别 EXIF，缩略图、详情页、服务端与 PDF 都按正向展示；
+ * 原图已经正向时不做任何编码，避免无谓地二次压缩掉画质。
+ * @param options 依赖注入项：读取方向、方向映射与旋转落盘
+ */
+export function createMediaOrientationService(options: MediaOrientationServiceOptions) {
+  const readExifOrientation = options.readExifOrientation
+  const resolveUprightRotation = options.resolveUprightRotation
+  const rotateImageToUpright = options.rotateImageToUpright
+
+  /**
+   * 读取图片方向；原生接口异常时按「方向未知」处理，不能因为读不到 EXIF 就让拍摄失败。
+   * @param path 本地图片路径
+   * @returns EXIF 方向文本；读取失败返回空串
+   */
+  async function resolveExifOrientation(path: string): Promise<string> {
+    try {
+      return await readExifOrientation(path)
+    } catch (error) {
+      console.log('read media exif orientation failed', path, (error as Error)?.message ?? '')
+      return ''
+    }
+  }
+
+  /**
+   * 按设备写入的方向把单张照片回正。
+   * 方向为 0 或读取失败时原样返回原路径；需要回正时按 100 质量旋转落盘；
+   * 旋转失败时同样回退到原路径并标记 failed，由页面提示用户，不阻断后续拍摄与上传。
+   * @param path 相机、相册或系统相机返回的本地图片路径
+   * @returns 回正结果：可入库路径、该照片需要的回正角度与失败标记
+   */
+  async function normalizeUpright(path: string): Promise<MediaUprightResult> {
+    const sourcePath = String(path ?? '').trim()
+    if (sourcePath === '') return { path: '', rotation: 0, failed: false }
+    const exifOrientation = await resolveExifOrientation(sourcePath)
+    const rotation = resolveUprightRotation(exifOrientation)
+    if (rotation === 0) return { path: sourcePath, rotation: 0, failed: false }
+    try {
+      const uprightPath = String(await rotateImageToUpright(sourcePath, rotation)).trim()
+      if (uprightPath === '') return { path: sourcePath, rotation: rotation, failed: true }
+      return { path: uprightPath, rotation: rotation, failed: false }
+    } catch (error) {
+      console.log('rotate media upright failed', sourcePath, rotation, (error as Error)?.message ?? '')
+      return { path: sourcePath, rotation: rotation, failed: true }
+    }
+  }
+
+  return { normalizeUpright }
+}
+
+/**
+ * 使用 App 运行时环境创建媒体回正服务。
+ * 方向来自 uni.getImageInfo 读取的 EXIF（App 端由系统能力解析，不依赖 H5 的 Image 与 canvas）；
+ * 像素回正使用 uni.compressImage 的原生旋转能力，按 quality 100 写出 JPEG，避免回正过程二次掉画质。
+ * @param resolveUprightRotation 由调用方注入的方向映射函数（domain/imageOrientation.uts 的 resolveUprightRotation）
+ */
+export function createAppMediaOrientationService(resolveUprightRotation: (exifOrientation: string) => number) {
+  return createMediaOrientationService({
+    resolveUprightRotation: resolveUprightRotation,
+    readExifOrientation: (path: string): Promise<string> => new Promise<string>((resolve) => {
+      try {
+        uni.getImageInfo({
+          src: path,
+          success: (info) => resolve(String(info.orientation ?? '').trim()),
+          fail: (error) => {
+            console.log('get image info failed', path, error?.errMsg ?? '')
+            resolve('')
+          }
+        })
+      } catch (error) {
+        console.log('get image info threw', path, (error as Error)?.message ?? '')
+        resolve('')
+      }
+    }),
+    rotateImageToUpright: (path: string, rotation: number): Promise<string> => new Promise<string>((resolve, reject) => {
+      try {
+        uni.compressImage({
+          src: path,
+          // 回正只改变像素方向，编码质量必须保持 100，否则这一步会二次压缩掉原图画质。
+          quality: 100,
+          rotate: rotation,
+          success: (result) => resolve(String(result.tempFilePath ?? '').trim()),
+          fail: (error) => reject(new Error(error?.errMsg ?? '图片旋转失败'))
+        })
+      } catch (error) {
+        reject(new Error((error as Error)?.message ?? '图片旋转失败'))
+      }
+    })
+  })
+}

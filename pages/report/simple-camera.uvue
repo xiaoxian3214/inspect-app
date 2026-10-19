@@ -12,16 +12,21 @@
 					<text class="recording-label">{{ recordingLabel }}</text>
 				</view>
 			</view>
+			<view class="system-camera-entry">
+				<AppButton variant="nav" :disabled="systemCameraDisabled" @press="captureFromSystemCamera">{{ translateText('系统拍照') }}</AppButton>
+			</view>
 		</view>
 		<view class="capture-panel" :style="{ paddingBottom: panelBottomPadding }">
-			<CaptureStrip :items="captureItems" :max-count="maxCaptureCount" @remove-photo="removeCapture" />
-			<CaptureSettingBar :flash-on="flashOn" :zoom-options="zoomOptions" :active-zoom="activeZoom" :capture-mode="captureMode"
-				:recording="recording" @cancel-capture="handleCancelCapture" @toggle-flash="toggleFlash" @change-zoom="applyZoom"
-				@switch-capture-mode="switchCaptureMode" @switch-camera="switchCamera" />
-			<CaptureToolbar :capture-mode="captureMode" :recording="recording" :disabled="shutterDisabled"
-				:finish-enabled="captureEnabled" @pick-album="captureFromAlbum" @press-shutter="takePhoto"
-				@finish-capture="handleFinishCapture" />
+			<CaptureControlBar :flash-on="flashOn" :zoom-options="zoomOptions" :active-zoom="activeZoom" :capture-mode="captureMode"
+				:recording="recording" :shutter-disabled="shutterDisabled" :finish-enabled="captureEnabled"
+				@cancel-capture="handleCancelCapture" @toggle-flash="toggleFlash" @change-zoom="applyZoom"
+				@switch-capture-mode="switchCaptureMode" @switch-camera="switchCamera"
+				@pick-album="captureFromAlbum" @press-shutter="takePhoto" @finish-capture="handleFinishCapture" />
+			<CaptureStrip :items="captureItems" @remove-photo="removeCapture" @preview-photo="openCapturePreview" />
 		</view>
+		<CapturePreview :visible="showCapturePreview" :source="selectedCapturePath" :index="selectedCaptureIndex"
+			:is-video="selectedCaptureIsVideo" :saving="previewEditSaving"
+			@close-preview="closeCapturePreview" @edited="savePreviewEdit" />
 	</view>
 </template>
 
@@ -30,16 +35,20 @@
 	import { onLoad } from '@dcloudio/uni-app'
 	import { t } from '../../i18n/index.uts'
 	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
+	import AppButton from '../../components/common/AppButton.uvue'
 	import CaptureStrip from '../../components/camera/CaptureStrip.uvue'
-	import CaptureToolbar from '../../components/camera/CaptureToolbar.uvue'
-	import CaptureSettingBar from '../../components/camera/CaptureSettingBar.uvue'
-	import { appendCapturePaths, buildCameraCaptureEventName, buildCameraZoomOptions, formatVideoDurationLabel } from '../../domain/cameraCapture.uts'
-	import { isDeviceCaptureCancelledMessage, normalizeDeviceCapturePaths, resolveRemainingCaptureCount } from '../../domain/deviceCapture.uts'
+	import CapturePreview from '../../components/camera/CapturePreview.uvue'
+	import CaptureControlBar from '../../components/camera/CaptureControlBar.uvue'
+	import { appendCapturePaths, buildCameraCaptureEventName, buildCameraZoomOptions, formatVideoDurationLabel, replaceCapturePath } from '../../domain/cameraCapture.uts'
+	import { isDeviceCaptureCancelledMessage, normalizeDeviceCapturePaths } from '../../domain/deviceCapture.uts'
+	import { resolveUprightRotation } from '../../domain/imageOrientation.uts'
 	import { MAX_VIDEO_DURATION_SECONDS } from '../../domain/photoUploadPolicy.uts'
 	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
+	import { createAppMediaPersistenceService } from '../../services/mediaPersistenceService.uts'
+	import { createAppMediaOrientationService } from '../../services/mediaOrientationService.uts'
 
-	/** 单次取景最多保留的媒体数量，超出后必须完成或删除后才能继续拍摄。 */
-	const maxCaptureCount = 9
+	/** 系统相册单次最多可选张数（uni.chooseImage 的默认上限），只影响一次选择，不限制累计拍摄张数。 */
+	const albumPickOnceCount = 9
 	/** 等待相机 initdone 的兜底时长；超过后提示用户检查相机权限。 */
 	const CAMERA_READY_TIMEOUT_MS = 4000
 	/** 录像启动兜底时长：原生回调不返回时也必须恢复快门，避免取景页整体失去响应。 */
@@ -66,8 +75,37 @@
 	const capturedPaths = ref([] as string[])
 	const capturedMediaTypes = ref([] as string[])
 	const capturedDurations = ref([] as number[])
+	const showCapturePreview = ref(false)
+	const selectedCaptureIndex = ref(-1)
+	const previewEditSaving = ref(false)
+	/** 当前预览图片原始路径；空索引时不传入已经销毁的预览子树。 */
+	const selectedCapturePath = computed((): string => selectedCaptureIndex.value >= 0 && selectedCaptureIndex.value < capturedPaths.value.length ? capturedPaths.value[selectedCaptureIndex.value] : '')
+	/** 录像可播放预览，但只允许照片进入标注编辑器。 */
+	const selectedCaptureIsVideo = computed((): boolean => selectedCaptureIndex.value >= 0 && capturedMediaTypes.value[selectedCaptureIndex.value] === 'video')
 	/** 页面销毁标记：相机回调与定时器可能晚于卸载返回，卸载后不再写入响应式状态。 */
 	let disposed = false
+	/** 本次拍摄是否已向调用方广播结果：完成、取消与硬件返回三条路径只允许结算一次。 */
+	let resultEmitted = false
+	/**
+	 * 媒体落盘服务：拍摄过程中只保留相机返回的临时路径，用户点击“完成”时统一结算为本地路径。
+	 * 系统相机、相册与编辑导出的沙盒内文件会复制到 USER_DATA_PATH/inspection_media；
+	 * 应用内相机与录像写在外置缓存的原图不复制、不二次编码，直接以原始路径入库，画质保持原图。
+	 */
+	const mediaPersistenceService = createAppMediaPersistenceService()
+	/**
+	 * 媒体回正服务：读取照片 EXIF 里的机身姿态并把像素转正。
+	 * 回正后的文件不再依赖各端是否识别 EXIF，服务端与 PDF 里同样正向展示。
+	 * 注意：当前自定义调试基座未注册 uni-accelerometer 模块，方向只能来自照片自身的 EXIF，
+	 * 不能再依赖重力传感器实时判断手机姿态（进入取景页会抛 UTS module _uni-accelerometer is not registered）。
+	 */
+	const mediaOrientationService = createAppMediaOrientationService(resolveUprightRotation)
+	/**
+	 * 回正任务串行链：null 表示当前没有排队任务。
+	 * 相册一次能选多张，串行处理可以避免多张原图同时解码进内存导致 Android 闪退。
+	 */
+	let uprightChain: Promise<void> | null = null
+	/** 回正失败提示只弹一次：方向能力失败通常是整批共用同一原因，避免连续弹窗打断拍摄。 */
+	let uprightFailureNotified = false
 	let readyFallbackTimerId: number | null = null
 	let recordingTimerId: number | null = null
 	let videoWatchdogTimerId: number | null = null
@@ -78,17 +116,19 @@
 	/** 为原生模板提供可调用的翻译方法。 */
 	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
 
-	/** 当前仍可继续拍摄的媒体数量。 */
-	const remainingCount = computed((): number => resolveRemainingCaptureCount(maxCaptureCount, capturedPaths.value.length))
-	/** 快门是否禁用：相机未就绪、正在拍照或已达上限时禁用；录像中始终允许点击停止。 */
+	/**
+	 * 快门是否禁用：相机未就绪、正在拍照、录像启动中或正在结算本次拍摄时禁用；录像中始终允许点击停止。
+	 * 结算期间禁止再拍：正在回正的照片必须一起落盘，否则新照片会漏在本次结果之外。
+	 */
 	const shutterDisabled = computed((): boolean => {
 		if (recording.value) return false
-		if (capturing.value || videoStarting.value) return true
-		if (!cameraReady.value) return true
-		return remainingCount.value <= 0
+		if (capturing.value || videoStarting.value || previewEditSaving.value || finishing.value) return true
+		return !cameraReady.value
 	})
 	/** 完成按钮是否可用：至少拍到一条媒体，且录像已结束。 */
-	const captureEnabled = computed((): boolean => capturedPaths.value.length > 0 && !recording.value && !finishing.value)
+	const captureEnabled = computed((): boolean => capturedPaths.value.length > 0 && !recording.value && !finishing.value && !previewEditSaving.value)
+	/** 右上角“系统拍照”入口是否禁用：应用内相机正在拍照/录像或正在落盘时禁止跳出应用，避免取景会话被系统相机打断。 */
+	const systemCameraDisabled = computed((): boolean => capturing.value || recording.value || videoStarting.value || finishing.value || previewEditSaving.value)
 	/** 闪光灯开关状态，开启时常亮补光。 */
 	const flashOn = computed((): boolean => flashMode.value === 'torch')
 	/** 取景状态文案：相机就绪时不显示任何提示。 */
@@ -99,7 +139,7 @@
 	})
 	/** 录像走秒文案，与 60 秒上限一起展示。 */
 	const recordingLabel = computed((): string => `${formatVideoDurationLabel(recordedSeconds.value)} / ${formatVideoDurationLabel(MAX_VIDEO_DURATION_SECONDS)}`)
-	/** 传给底部照片区的媒体列表，路径、类型与时长一一对应。 */
+	/** 传给底部照片区的媒体列表，路径、类型与时长一一对应；路径已按设备方向回正。 */
 	const captureItems = computed((): UTSJSONObject[] => capturedPaths.value.map((path: string, index: number): UTSJSONObject => {
 		const mediaType = index < capturedMediaTypes.value.length ? capturedMediaTypes.value[index] : 'image'
 		const durationSeconds = index < capturedDurations.value.length ? capturedDurations.value[index] : 0
@@ -137,45 +177,12 @@
 		uni.showToast({ title: t('未获取到照片，请重试'), icon: 'none' })
 	}
 
-	/** 达到单次拍摄上限时提示先完成或删除已拍媒体。 */
-	function notifyCaptureLimit(): void {
-		uni.showToast({ title: t('最多拍摄 {count} 张，请先完成或删除已拍照片', { count: maxCaptureCount }), icon: 'none' })
-	}
-
 	/** 录像开始或停止失败时提示用户重试。 */
 	function notifyRecordingFailure(): void {
 		uni.showToast({ title: t('录像失败，请重试'), icon: 'none' })
 	}
 
-	/** 媒体保存到应用持久目录失败时提示用户重新拍摄。 */
-	function notifyPersistFailure(): void {
-		uni.showToast({ title: t('本地保存失败'), icon: 'none' })
-	}
-
-	/** 将单条临时媒体保存到应用持久目录；路径为空或保存失败时返回空串。 */
-	function persistCapturePath(tempPath: string): Promise<string> {
-		const normalizedPath = tempPath.trim()
-		if (normalizedPath === '') return Promise.resolve('')
-		return new Promise<string>((resolve) => {
-			uni.getFileSystemManager().saveFile({
-				tempFilePath: normalizedPath,
-				success: (result) => resolve(result.savedFilePath ?? ''),
-				fail: (error) => resolve('')
-			})
-		})
-	}
-
-	/** 按拍摄顺序把全部临时媒体保存到持久目录；保存失败的条目会被丢弃，由调用方决定是否回传。 */
-	async function persistCapturePaths(tempPaths: string[]): Promise<string[]> {
-		const savedPaths: string[] = []
-		for (let index = 0; index < tempPaths.length; index++) {
-			const savedPath = await persistCapturePath(tempPaths[index])
-			if (savedPath !== '') savedPaths.push(savedPath)
-		}
-		return savedPaths
-	}
-
-	/** 通过上一页暴露的 setImage 方法回传持久化后的媒体路径，并关闭取景页。 */
+	/** 通过上一页暴露的 setImage 方法回传待上传的本地媒体路径，并关闭取景页。 */
 	function goBackWithResult(savedPaths: string[]): void {
 		const pages = getCurrentPages()
 		if (pages.length >= 2) {
@@ -190,29 +197,107 @@
 		uni.navigateBack()
 	}
 
-	/** 补齐新加入媒体的类型与时长，使元数据与新路径列表一一对应。 */
-	function syncCaptureMetadata(previousCount: number, mediaType: string, durationSeconds: number): void {
-		const mediaTypes = capturedMediaTypes.value.slice()
-		const durations = capturedDurations.value.slice()
-		for (let index = previousCount; index < capturedPaths.value.length; index++) {
-			mediaTypes[index] = mediaType
-			durations[index] = durationSeconds
+	/**
+	 * 按设备写入的 EXIF 方向回正单张照片：需要旋转时把像素真正转正并原位替换清单路径。
+	 * 结果按路径回查当前下标，用户在等待期间删除照片也不会写错位置；
+	 * 失败时保留原图并只提示一次，绝不因为方向能力异常阻断拍摄。
+	 * @param path 原始图片路径
+	 */
+	async function uprightCapturedMedia(path: string): Promise<void> {
+		if (disposed) return
+		const result = await mediaOrientationService.normalizeUpright(path)
+		if (disposed) return
+		if (result.path !== path) {
+			const currentIndex = capturedPaths.value.indexOf(path)
+			if (currentIndex >= 0) capturedPaths.value = replaceCapturePath(capturedPaths.value, currentIndex, result.path)
 		}
-		capturedMediaTypes.value = mediaTypes.slice(0, capturedPaths.value.length)
-		capturedDurations.value = durations.slice(0, capturedPaths.value.length)
+		if (result.failed) {
+			console.log('upright captured media failed', path)
+			if (!uprightFailureNotified) {
+				uprightFailureNotified = true
+				uni.showToast({ title: t('图片方向处理失败，已按原图保存'), icon: 'none' })
+			}
+		}
 	}
 
-	/** 追加一条已确认的图片或视频，并同步记录其媒体类型与视频时长。 */
-	function appendCapturedMedia(mediaPath: string, mediaType: string, durationSeconds: number): void {
-		const previousCount = capturedPaths.value.length
-		capturedPaths.value = appendCapturePaths(capturedPaths.value, [mediaPath], maxCaptureCount)
-		syncCaptureMetadata(previousCount, mediaType, durationSeconds)
+	/**
+	 * 执行一次回正任务并吞掉意外异常：串行链一旦 reject，“完成”时的等待就会中断，拍摄结果无法结算。
+	 * @param path 需要回正的本地图片路径
+	 */
+	async function runUprightTask(path: string): Promise<void> {
+		try {
+			await uprightCapturedMedia(path)
+		} catch (error) {
+			console.log('run upright task failed', path, (error as Error)?.message ?? '')
+		}
 	}
 
-	/** 向调用方广播本次拍摄结果，供示例页等事件订阅方接收；取消时不携带媒体。 */
-	function emitCaptureResult(cancelled: boolean): void {
-		const paths = cancelled ? ([] as string[]) : capturedPaths.value
-		const items = cancelled ? ([] as UTSJSONObject[]) : captureItems.value
+	/**
+	 * 把照片排入回正队列：已有任务时追加到链尾串行执行，队列空闲时立即开始。
+	 * @param path 相机、相册或系统相机返回的本地图片路径
+	 */
+	function enqueueMediaUpright(path: string): void {
+		if (disposed) return
+		const previous = uprightChain
+		if (previous == null) uprightChain = runUprightTask(path)
+		else uprightChain = previous.then((): Promise<void> => runUprightTask(path))
+	}
+
+	/**
+	 * 等待本轮拍摄的全部回正任务结束，“完成”落盘前必须等待，避免把还没回正的歪图入库并上传。
+	 * 等待期间可能又有新照片入队（相册批量选择），链被替换说明还有任务，继续等待到链不再变化为止。
+	 */
+	async function waitPendingMediaUpright(): Promise<void> {
+		let pending = uprightChain
+		while (pending != null) {
+			await pending
+			const latest = uprightChain
+			pending = latest === pending ? null : latest
+		}
+	}
+
+	/**
+	 * 拍照/相册成功即记录相机已生成的临时路径以供预览，拍摄期间不做复制、不落盘。
+	 * 只有新增的非重复路径才补充类型与时长，顺序与最终回传列表一致；
+	 * 图片同时排入回正队列，按设备写入的 EXIF 方向把像素转正，视频不做处理。
+	 * @param paths 相机或相册返回的本地路径列表
+	 * @param mediaType image 或 video
+	 * @param durationSeconds 视频时长（照片传 0）
+	 */
+	function appendCapturedMedia(paths: string[], mediaType: string, durationSeconds: number): void {
+		if (disposed) return
+		for (const path of paths) {
+			if (capturedPaths.value.includes(path)) continue
+			capturedPaths.value = appendCapturePaths(capturedPaths.value, [path])
+			capturedMediaTypes.value = [...capturedMediaTypes.value, mediaType]
+			capturedDurations.value = [...capturedDurations.value, durationSeconds]
+			if (mediaType === 'image') enqueueMediaUpright(path)
+		}
+	}
+
+	/**
+	 * 按回传顺序重建媒体清单，保证事件里的 items 与待上传路径一一对应。
+	 * 同时带 mediaKind（领域归一契约字段）与 mediaType（既有消费方字段），避免视频被当成图片入库。
+	 */
+	function buildResultItems(paths: string[]): UTSJSONObject[] {
+		return paths.map((path: string, index: number): UTSJSONObject => {
+			const mediaType = index < capturedMediaTypes.value.length ? capturedMediaTypes.value[index] : 'image'
+			const durationSeconds = index < capturedDurations.value.length ? capturedDurations.value[index] : 0
+			return { path: path, mediaKind: mediaType, mediaType: mediaType, durationSeconds: durationSeconds }
+		})
+	}
+
+	/**
+	 * 向调用方广播本轮拍摄结果：完成时回传自定义相机临时路径或系统相机持久路径。
+	 * 同一轮只广播一次，硬件返回触发的取消不会覆盖已经结算的结果。
+	 * @param cancelled 是否为取消本次拍摄
+	 * @param savedPaths 完成拍摄时可交给上传队列的本地文件路径列表
+	 */
+	function emitCaptureResult(cancelled: boolean, savedPaths: string[] = []): void {
+		if (resultEmitted) return
+		resultEmitted = true
+		const paths = cancelled ? ([] as string[]) : savedPaths
+		const items = cancelled ? ([] as UTSJSONObject[]) : buildResultItems(savedPaths)
 		uni.$emit(buildCameraCaptureEventName(requestId.value), { paths: paths, items: items, cancelled: cancelled })
 	}
 
@@ -226,11 +311,7 @@
 			handleVideoShutterPress()
 			return
 		}
-		if (capturing.value) return
-		if (remainingCount.value <= 0) {
-			notifyCaptureLimit()
-			return
-		}
+		if (capturing.value || previewEditSaving.value) return
 		const context = uni.createCameraContext()
 		if (context == null) {
 			notifyCaptureFailure()
@@ -239,7 +320,8 @@
 		capturing.value = true
 		try {
 			context.takePhoto({
-				quality: 'high',
+				// 原图画质：框架按 quality 决定 JPEG 编码质量，original 对应 100，避免拍完先掉一次画质。
+				quality: 'original',
 				selfieMirror: false,
 				success: (result: CameraContextTakePhotoResult) => {
 					if (disposed) return
@@ -249,9 +331,7 @@
 						notifyCaptureFailure()
 						return
 					}
-					const previousCount = capturedPaths.value.length
-					capturedPaths.value = appendCapturePaths(capturedPaths.value, shotPaths, maxCaptureCount)
-					syncCaptureMetadata(previousCount, 'image', 0)
+					appendCapturedMedia(shotPaths, 'image', 0)
 				},
 				fail: (error) => {
 					if (disposed) return
@@ -266,24 +346,21 @@
 		}
 	}
 
-	/** 从系统相册补充照片，按剩余可拍数量限制本次选择张数。 */
+	/**
+	 * 从系统相册补充照片，一次选择不超过系统单次上限，可重复选择继续追加。
+	 * 采用原图选择，避免相册照片在进入验货流程前先被框架压一次。
+	 */
 	function captureFromAlbum(): void {
-		if (disposed || capturing.value || recording.value) return
-		if (remainingCount.value <= 0) {
-			notifyCaptureLimit()
-			return
-		}
+		if (disposed || capturing.value || recording.value || previewEditSaving.value) return
 		uni.chooseImage({
-			count: remainingCount.value,
-			sizeType: ['compressed'],
+			count: albumPickOnceCount,
+			sizeType: ['original'],
 			sourceType: ['album'],
 			success: (result) => {
 				if (disposed) return
 				const pickedPaths = normalizeDeviceCapturePaths(result.tempFilePaths)
 				if (pickedPaths.length === 0) return
-				const previousCount = capturedPaths.value.length
-				capturedPaths.value = appendCapturePaths(capturedPaths.value, pickedPaths, maxCaptureCount)
-				syncCaptureMetadata(previousCount, 'image', 0)
+				appendCapturedMedia(pickedPaths, 'image', 0)
 			},
 			fail: (error) => {
 				if (disposed) return
@@ -293,9 +370,34 @@
 		})
 	}
 
-	/** 从底部照片区移除指定位置的媒体，并同步删除其类型与时长。 */
+	/**
+	 * 用系统相机补拍一张照片，与详情页的系统拍照保持同一套后置逻辑：
+	 * 系统相机按原图画质拍摄并返回沙盒内的临时文件，可直接被持久化服务复制进 inspection_media；
+	 * 应用内相机在 Vapor 基座上返回本应用外置缓存路径；完成时原样交给上传通道，不再强行复制。
+	 */
+	function captureFromSystemCamera(): void {
+		if (disposed || capturing.value || recording.value || videoStarting.value || previewEditSaving.value) return
+		uni.chooseImage({
+			count: 1,
+			sizeType: ['original'],
+			sourceType: ['camera'],
+			success: (result) => {
+				if (disposed) return
+				const shotPaths = normalizeDeviceCapturePaths(result.tempFilePaths)
+				if (shotPaths.length === 0) return
+				appendCapturedMedia(shotPaths, 'image', 0)
+			},
+			fail: (error) => {
+				if (disposed) return
+				if (isDeviceCaptureCancelledMessage(error.errMsg)) return
+				uni.showToast({ title: t('打开系统相机失败，请重试'), icon: 'none' })
+			}
+		})
+	}
+
+	/** 从底部预览列表移除指定位置的本地媒体路径，并同步调整类型与录像时长。 */
 	function removeCapture(index: number): void {
-		if (index < 0 || index >= capturedPaths.value.length) return
+		if (index < 0 || index >= capturedPaths.value.length || previewEditSaving.value || finishing.value) return
 		const paths = capturedPaths.value.slice()
 		const mediaTypes = capturedMediaTypes.value.slice()
 		const durations = capturedDurations.value.slice()
@@ -305,9 +407,36 @@
 		capturedPaths.value = paths
 		capturedMediaTypes.value = mediaTypes
 		capturedDurations.value = durations
+		if (selectedCaptureIndex.value === index) closeCapturePreview()
+		else if (selectedCaptureIndex.value > index) selectedCaptureIndex.value -= 1
 	}
 
-	/** 完成拍摄：把全部媒体持久化后回传给上一页，并关闭取景页。 */
+	/** 点击缩略图打开可复用的大图/视频预览，保持原始文件路径以供编辑。 */
+	function openCapturePreview(index: number): void {
+		if (index < 0 || index >= capturedPaths.value.length) return
+		selectedCaptureIndex.value = index
+		showCapturePreview.value = true
+	}
+
+	/** 关闭预览时只切换可见性，不立刻清空路径，避免 vapor 已销毁子树读取新入参。 */
+	function closeCapturePreview(): void {
+		if (!previewEditSaving.value) showCapturePreview.value = false
+	}
+
+	/** 编辑器已把 canvas 图片写入本地文件；原位替换预览路径及完成回传路径，不二次复制。 */
+	function savePreviewEdit(localPath: string): void {
+		if (disposed || !showCapturePreview.value || selectedCaptureIsVideo.value) return
+		const index = selectedCaptureIndex.value
+		if (index < 0 || index >= capturedPaths.value.length || localPath.trim() === '') return
+		capturedPaths.value = replaceCapturePath(capturedPaths.value, index, localPath)
+		showCapturePreview.value = false
+	}
+
+	/**
+	 * 完成拍摄：先等照片回正结束，再把拍摄结果结算为可入库的本地路径并回传调用页。
+	 * 自定义相机保留 takePhoto 返回的临时路径供上传；系统相机及相册仍复制进持久目录。
+	 * 非自定义相机路径保存失败则留在取景页提示原因，不向调用页回传半截路径。
+	 */
 	async function handleFinishCapture(): Promise<void> {
 		if (disposed) return
 		if (recording.value) {
@@ -315,30 +444,46 @@
 			return
 		}
 		if (capturedPaths.value.length === 0) {
-			uni.showToast({ title: t('还没有照片，点击下方快门开始拍摄'), icon: 'none' })
+			uni.showToast({ title: t('还没有照片，点击快门开始拍摄'), icon: 'none' })
 			return
 		}
-		if (finishing.value || capturing.value) return
+		if (finishing.value || capturing.value || previewEditSaving.value) return
 		finishing.value = true
-		const savedPaths = await persistCapturePaths(capturedPaths.value)
+		// 还在回正的照片此刻仍指向原图，必须先等回正结束，否则会把歪图落盘并上传。
+		await waitPendingMediaUpright()
 		if (disposed) return
-		if (savedPaths.length < capturedPaths.value.length) {
-			// 只要有媒体没能落到持久目录就不回传，保留临时文件让用户重试。
-			finishing.value = false
-			notifyPersistFailure()
-			return
+		const tempPaths = capturedPaths.value.slice()
+		const mediaTypes = capturedMediaTypes.value.slice()
+		const savedPaths: string[] = []
+		for (let index = 0; index < tempPaths.length; index++) {
+			const isVideo = index < mediaTypes.length && mediaTypes[index] === 'video'
+			try {
+				savedPaths.push(await mediaPersistenceService.persistMediaPath(tempPaths[index], isVideo))
+			} catch (error) {
+				if (disposed) return
+				finishing.value = false
+				const failure = error?.message ?? ''
+				console.log('persist capture failed', tempPaths[index], failure)
+				uni.showToast({
+					title: failure !== '' ? failure : t(isVideo ? '视频本地保存失败，请重试' : '图片本地保存失败，请重试'),
+					icon: 'none'
+				})
+				return
+			}
 		}
-		emitCaptureResult(false)
+		if (disposed) return
+		emitCaptureResult(false, savedPaths)
 		goBackWithResult(savedPaths)
 	}
 
-	/** 取消本次拍摄：直接退出取景页并广播取消结果，不保存任何临时媒体。 */
+	/** 取消本次拍摄：退出取景页并广播取消结果，不向上一页回传已保存的本地媒体。 */
 	function handleCancelCapture(): void {
 		if (disposed) return
 		if (recording.value) {
 			uni.showToast({ title: t('录制中，请先停止录像'), icon: 'none' })
 			return
 		}
+		if (previewEditSaving.value || finishing.value) return
 		emitCaptureResult(true)
 		uni.navigateBack()
 	}
@@ -370,7 +515,7 @@
 			return
 		}
 		if (!wasActive) return
-		appendCapturedMedia(videoPaths[0], 'video', Math.max(1, Math.round(durationSeconds)))
+		appendCapturedMedia(videoPaths, 'video', Math.max(1, Math.round(durationSeconds)))
 		recordedSeconds.value = 0
 	}
 
@@ -440,10 +585,6 @@
 			return
 		}
 		if (videoStarting.value) return
-		if (remainingCount.value <= 0) {
-			notifyCaptureLimit()
-			return
-		}
 		startVideoRecording()
 	}
 
@@ -453,13 +594,19 @@
 		flashMode.value = flashMode.value === 'torch' ? 'off' : 'torch'
 	}
 
-	/** 应用用户选择的变焦倍率，相机不支持数字变焦时保持档位展示。 */
+	/**
+	 * 应用用户点击后要切换到的变焦倍率。
+	 * 倍率先按相机上报的 [1, maxZoom] 范围收窄再写入，避免越界值被相机静默忽略；
+	 * 相机不支持数字变焦时保持档位展示。
+	 */
 	function applyZoom(zoom: number): void {
 		const context = uni.createCameraContext()
 		if (context == null) return
-		activeZoom.value = zoom
+		const limit = Math.max(1, maxZoomLevel.value)
+		const appliedZoom = Math.min(Math.max(1, zoom), limit)
+		activeZoom.value = appliedZoom
 		try {
-			context.setZoom({ zoom: zoom })
+			context.setZoom({ zoom: appliedZoom })
 		} catch (error) {
 			console.log('set zoom failed', error)
 		}
@@ -483,7 +630,8 @@
 		cameraReady.value = true
 		cameraErrorText.value = ''
 		clearReadyFallbackTimer()
-		zoomOptions.value = buildCameraZoomOptions(Math.max(1, event.detail.maxZoom ?? 1))
+		maxZoomLevel.value = Math.max(1, event.detail.maxZoom ?? 1)
+		zoomOptions.value = buildCameraZoomOptions(maxZoomLevel.value)
 		activeZoom.value = 1
 	}
 
@@ -522,6 +670,8 @@
 		disposed = true
 		clearReadyFallbackTimer()
 		stopRecordingTimer()
+		// 硬件返回/侧滑返回不会走取消按钮：这里补一次取消广播，避免调用页一直等结果。
+		emitCaptureResult(true)
 	})
 
 	onUnmounted(() => {
@@ -537,6 +687,8 @@
 	.camera-preview { flex: 1; width: 100%; }
 	.preview-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; align-items: center; justify-content: center; }
 	.preview-state-text { padding: 16rpx 28rpx; color: #f8fafc; font-size: 26rpx; border-radius: 16rpx; background-color: rgba(15, 23, 42, 0.72); }
+	/* 系统拍照入口固定在取景画面右上角，避免与应用内相机的快门操作行抢位。 */
+	.system-camera-entry { position: absolute; top: 24rpx; right: 24rpx; }
 	.recording-badge { position: absolute; top: 24rpx; flex-direction: row; align-items: center; padding: 8rpx 20rpx; border-radius: 24rpx; background-color: rgba(15, 23, 42, 0.76); }
 	.recording-dot { width: 16rpx; height: 16rpx; margin-right: 10rpx; border-radius: 8rpx; background-color: #ef4444; }
 	.recording-label { color: #f8fafc; font-size: 24rpx; }

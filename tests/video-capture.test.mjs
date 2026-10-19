@@ -165,14 +165,16 @@ test('upload transport receives the H5 uni-channel fileType field', async () => 
   assert.equal(uploads[1].fileType, 'image')
   assert.equal(uploads[1].timeout, 120000)
 })
-test('detail page keeps generic media persistence while the active system camera returns images', async () => {
+test('detail page keeps generic media persistence while the capture page returns captured media', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
 
-  assert.match(source, /sourceType:\s*\['camera'\]/)
-  assert.match(source, /mediaKind:\s*'image'/)
+  assert.match(source, /buildCameraCaptureEventName/)
+  assert.match(source, /mediaKind:\s*String\(item\?\.mediaKind \?\? 'image'\)/)
   assert.match(source, /mediaType/)
   assert.match(source, /'video'/)
   assert.match(source, /durationSeconds/)
+  assert.match(source, /durationByPath/)
+  assert.match(source, /isVideo/)
 })
 
 test('media grid renders video cells with a play badge and duration label', async () => {

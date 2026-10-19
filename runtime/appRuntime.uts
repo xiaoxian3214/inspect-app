@@ -8,6 +8,7 @@ import { createReportRepository } from '../repositories/reportRepository.uts'
 import { createChecklistRepository } from '../repositories/checklistRepository.uts'
 import { createDefectRepository } from '../repositories/defectRepository.uts'
 import { createPhotoRepository } from '../repositories/photoRepository.uts'
+import { createCameraCaptureRepository } from '../repositories/cameraCaptureRepository.uts'
 import { createRequestQueueRepository } from '../repositories/requestQueueRepository.uts'
 import { createApiClient } from '../api/apiClient.uts'
 import { createAuthApi } from '../api/authApi.uts'
@@ -59,6 +60,7 @@ const reportRepository = createReportRepository(database)
 const checklistRepository = createChecklistRepository(database)
 const defectRepository = createDefectRepository(database)
 const photoRepository = createPhotoRepository(database)
+const cameraCaptureRepository = createCameraCaptureRepository(database)
 const requestQueueRepository = createRequestQueueRepository(database)
 const requestQueue = createApiRequestQueue()
 
@@ -149,14 +151,15 @@ const persistentOperationService = createPersistentOperationService({ requestQue
 const syncQueueOverviewService = createSyncQueueOverviewService({ reportRepository, photoRepository, requestQueueRepository, isPlanPendingSync })
 
 /**
- * 将已上传图片重新写回本地详情和普通草稿 payload，确保随后同步包含服务端文件 ID。
+ * 将已上传图片写回本地详情；仅已有待同步业务草稿时更新其 payload，纯拍照不生成报告任务。
  */
 async function refreshDraftPhotosAfterUpload(planId) {
   const localDetail = await reportRepository.getPlanById(planId)
   if (localDetail == null) return null
   const photos = await photoRepository.listByReportId(planId)
   const refreshed = detailViewModel.mergeDetailPhotos(localDetail, photos)
-  return inspectionDetailService.saveDraft(localDetail.planId, refreshed, { markDirty: true })
+  const hasPendingDraft = localDetail.syncStatus === 'DIRTY' && localDetail.pendingSyncPayload != null
+  return inspectionDetailService.saveDraft(localDetail.planId, refreshed, { markDirty: hasPendingDraft })
 }
 
 /** 查找尚未到期的照片重试记录，供自动同步在退避时间结束时重新运行。 */
@@ -282,6 +285,7 @@ export {
   checklistRepository,
   defectRepository,
   photoRepository,
+  cameraCaptureRepository,
   requestQueueRepository,
   reportFileApi,
   defectApi,

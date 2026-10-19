@@ -23,6 +23,13 @@ test('skips every synchronization queue while the device is offline', async () =
   assert.deepEqual(calls, [])
 })
 
+/** 自动上传后的照片状态回填不应自动把干净的报告改为 DIRTY。 */
+test('runtime photo upload refresh preserves clean draft status', async () => {
+  const runtime = await readFile('runtime/appRuntime.uts', 'utf8')
+  assert.match(runtime, /refreshDraftPhotosAfterUpload[\s\S]*?const hasPendingDraft = localDetail\.syncStatus === 'DIRTY' && localDetail\.pendingSyncPayload != null/)
+  assert.match(runtime, /saveDraft\(localDetail\.planId, refreshed, \{ markDirty: hasPendingDraft \}\)/)
+})
+
 test('uploads all local photos before automatically synchronizing ordinary drafts', async () => {
   const calls = []
   const service = automaticSyncModule.createAutomaticSyncService({

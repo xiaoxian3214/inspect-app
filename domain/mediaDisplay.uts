@@ -24,7 +24,11 @@ export function getMediaDisplayUrl(media: UTSJSONObject | null, mode: string = '
   if (media == null) return ''
   if (typeof media === 'string') return normalizeRemoteMediaUrl(media, apiBaseUrl)
   const localPath = String(media?.localPath ?? '').trim()
-  if (localPath !== '') return localPath
+  if (localPath !== '') {
+    // Android 自定义相机的原生绝对路径必须补 file:// 才能被 image 组件加载；入库与上传仍保留原始路径。
+    if (localPath.startsWith('/storage/') || localPath.startsWith('/mnt/') || localPath.startsWith('/sdcard/')) return `file://${localPath}`
+    return localPath
+  }
   const fileId = String(media?.fileId ?? '').trim()
   if (fileId !== '') {
     const endpoint = mode === 'preview' ? 'preview' : 'thumbnail'

@@ -78,6 +78,8 @@
 	import { resolveReportPdfDownloadId } from '../../domain/reportPdf.uts'
 	import { createChecklistCopyService } from '../../services/checklistCopyService.uts'
 	import { createOnlineMediaService } from '../../services/onlineMediaService.uts'
+	import { createAppMediaPersistenceService } from '../../services/mediaPersistenceService.uts'
+	import { buildCameraCaptureEventName, normalizeCameraCaptureMedia } from '../../domain/cameraCapture.uts'
 	import {
 			defectCatalogService,
 			getCurrentSession,
@@ -151,8 +153,9 @@
 	const showDeleteChecklistPhotoConfirm = ref(false)
 	const pendingChecklistPhoto = ref({})
 	const deleteChecklistPhotoSubmitting = ref(false)
-	const fileSystemManager = uni.getFileSystemManager()
 	const previewOwnerType = ref('checklist')
+	/** 媒体落盘服务：相机页点击“完成”时已复制到持久目录，这里只兜住仍是临时路径的入口。 */
+	const mediaPersistenceService = createAppMediaPersistenceService()
 	const showSampleQuantity = ref(false)
 	const sampleQuantitySubmitting = ref(false)
 	const showDeleteDefectConfirm = ref(false)
@@ -170,6 +173,8 @@
 	let localReportRequestId = 0
 	const validationTriggered = ref(false)
 	let saveTimer: number | null = null
+	/** 最终提交后的返回定时器仅在详情页存活时有效，离页后必须取消。 */
+	let finishNavigationTimer: number | null = null
 	/**
 	 * 标记详情页是否已经被卸载。
 	 * 定时器与 await 之后的续写都可能晚于页面销毁才执行；此时写入响应式状态会让 vapor 原生渲染线程
@@ -384,7 +389,7 @@
 					}
 					draftTouched.value = pendingItemIds.size + pendingDefectIds.size + removedDefectIds.size > 0 || fullDraftSave
 				}
-				if (!pageDisposed && markDirty && options?.deferSync !== true) processSyncQueueAfterChange()
+				if (!pageDisposed && (markDirty || options?.syncPhotosOnly === true) && options?.deferSync !== true) processSyncQueueAfterChange()
 				if (!pageDisposed && changes == null) await refreshSyncOverview()
 				return saved
 			} catch (error) {
@@ -452,41 +457,83 @@
 	/** 相机选择结果：媒体条目列表与视频路径对应的时长（秒）。 */
 	type CapturedMediaResult = { entries: CapturedMediaEntry[], durationByPath: Map<string, number> }
 
-	/** 调用手机系统相机拍摄单张照片，并返回与现有媒体入库流程兼容的结果。 */
+	/** 自定义拍照页的调用序号，保证同一次详情会话内每轮拍摄的事件名互不串扰。 */
+	let cameraCaptureSequence = 0
+	/** 当前等待结果的拍摄事件名；空串表示没有进行中的拍摄。 */
+	let pendingCaptureEventName = ''
+	/** 当前等待结果的拍摄 Promise resolve；取消、离页或跳转失败时必须结算，避免调用方永久悬挂。 */
+	let pendingCaptureResolve: ((result: CapturedMediaResult) => void) | null = null
+
+	/** 生成空拍摄结果，供取消、硬件返回与跳转失败共用。 */
+	function emptyCapturedMediaResult(): CapturedMediaResult {
+		return { entries: [] as CapturedMediaEntry[], durationByPath: new Map<string, number>() }
+	}
+
+	/**
+	 * 把拍照页的结果载荷转换为媒体入库结果。
+	 * 媒体条目沿用领域层去重与类型归一规则；视频时长按路径回填，供后续上传元数据使用。
+	 * @param payload 拍照页 uni.$emit 的结果载荷
+	 * @returns 媒体条目列表与视频时长映射
+	 */
+	function buildCapturedMediaResult(payload: UTSJSONObject): CapturedMediaResult {
+		const durationByPath = new Map<string, number>()
+		const rawItems = Array.isArray(payload?.items) ? payload.items as UTSJSONObject[] : ([] as UTSJSONObject[])
+		rawItems.forEach((item: UTSJSONObject) => {
+			const path = String(item?.path ?? '').trim()
+			if (path !== '') durationByPath.set(path, Number(item?.durationSeconds ?? 0))
+		})
+		const entries: CapturedMediaEntry[] = normalizeCameraCaptureMedia(payload).map((item: UTSJSONObject): CapturedMediaEntry => ({
+			path: String(item?.path ?? ''),
+			mediaKind: String(item?.mediaKind ?? 'image')
+		}))
+		return { entries: entries, durationByPath: durationByPath }
+	}
+
+	/**
+	 * 结算当前拍摄请求：退订事件并按取消或结果回填 Promise。
+	 * 重复调用只生效一次，页面销毁后调用也不会再触碰已失效的事件频道。
+	 * @param payload 拍照页结果载荷；传 null 表示取消、硬件返回或跳转失败
+	 */
+	function settleCameraCapture(payload: UTSJSONObject | null): void {
+		const settle = pendingCaptureResolve
+		if (settle == null) return
+		const eventName = pendingCaptureEventName
+		pendingCaptureEventName = ''
+		pendingCaptureResolve = null
+		if (eventName !== '') uni.$off(eventName)
+		settle(payload == null ? emptyCapturedMediaResult() : buildCapturedMediaResult(payload))
+	}
+
+	/**
+	 * 打开自定义拍照页并等待本轮拍摄结果，替代系统相机单拍入口。
+	 * 拍照页“完成”时返回自定义相机原始临时路径或系统相机已复制的路径；
+	 * 取消、硬件返回或跳转失败都按空结果结算，保持调用方流程不阻塞。
+	 */
 	function chooseCapturedMedia(): Promise<CapturedMediaResult> {
-		return new Promise<CapturedMediaResult>((resolve, reject) => {
-			uni.chooseImage({
-				count: 1,
-				sizeType: ['compressed'],
-				sourceType: ['camera'],
-				success: (result) => {
-					const rawPaths = Array.isArray(result?.tempFilePaths) ? result.tempFilePaths as string[] : []
-					const entries: CapturedMediaEntry[] = rawPaths
-						.map((path: string): CapturedMediaEntry => ({ path: String(path ?? '').trim(), mediaKind: 'image' }))
-						.filter((entry: CapturedMediaEntry): boolean => entry.path !== '')
-					resolve({ entries, durationByPath: new Map<string, number>() })
-				},
+		settleCameraCapture(null)
+		return new Promise<CapturedMediaResult>((resolve) => {
+			cameraCaptureSequence = cameraCaptureSequence + 1
+			const requestId = `inspection-detail-${Date.now()}-${cameraCaptureSequence}`
+			const eventName = buildCameraCaptureEventName(requestId)
+			const handler = (payload: UTSJSONObject): void => {
+				if (pendingCaptureEventName !== eventName) return
+				settleCameraCapture(payload?.cancelled === true ? null : payload)
+			}
+			pendingCaptureEventName = eventName
+			pendingCaptureResolve = resolve
+			uni.$on(eventName, handler)
+			uni.navigateTo({
+				url: `/pages/report/simple-camera?requestId=${encodeURIComponent(requestId)}`,
 				fail: (error) => {
-					if (String(error?.errMsg ?? '').toLowerCase().includes('cancel')) {
-						resolve({ entries: [], durationByPath: new Map<string, number>() })
-						return
-					}
-					reject(error)
+					console.log('open capture page failed', error?.errMsg ?? '')
+					settleCameraCapture(null)
 				}
 			})
 		})
 	}
-	/** 原生照片或视频已在持久目录；相册临时文件必须保存成功才允许入库。 */
+	/** 相机路径统一入口：自定义相机保留临时路径，系统相机及相册路径按既有策略复制。 */
 	function persistMediaPath(tempPath: string, isVideo: boolean): Promise<string> {
-		const normalizedPath = String(tempPath ?? '')
-		if (normalizedPath.includes('/inspection_media/') || normalizedPath.includes('_doc/') || normalizedPath.includes('uniapp_save')) return Promise.resolve(normalizedPath)
-		return new Promise<string>((resolve, reject) => {
-			fileSystemManager.saveFile({
-				tempFilePath: tempPath,
-				success: (result) => result?.savedFilePath ? resolve(String(result.savedFilePath)) : reject(new Error(isVideo ? '视频未能保存到持久目录' : '图片未能保存到持久目录')),
-				fail: (error) => reject(new Error(String(error?.errMsg ?? '') !== '' ? String(error?.errMsg) : (isVideo ? '视频本地保存失败，请重试' : '图片本地保存失败，请重试')))
-			})
-		})
+		return mediaPersistenceService.persistMediaPath(tempPath, isVideo)
 	}
 	/** 选择并持久化照片或视频，生成离线待上传媒体记录及服务端业务标识；视频记录额外携带 mediaType 与 durationSeconds。 */
 	async function createLocalPhotos(ownerType: string, ownerId: string, metadata: UTSJSONObject = {}): Promise<UTSJSONObject[]> {
@@ -502,10 +549,10 @@
 		}
 		return photos
 	}
-	/** 为普通或合并子行添加手机本地图片并立即保存草稿。 */
-	async function addChecklistPhoto(item: UTSJSONObject, sonPlanId: string = '') { try { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').split('__')[0]; const childPlanId = String(sonPlanId ?? item?.sonPlanId ?? ''); const itemKey = makeChecklistDataKey(baseId, childPlanId); const current = detail.value?.checklistData?.[itemKey] ?? {}; const uploadMetadata = buildChecklistMediaMetadata(detail.value, item, childPlanId, (current?.photos ?? []).length + 1); const photos = await createLocalPhotos('checklist', itemKey, { ...uploadMetadata, dataKey: itemKey, baseItemId: baseId, sonPlanId: childPlanId || null }); if (photos.length === 0) return; detail.value = updateChecklistItem(detail.value, itemKey, { photos: [...(current?.photos ?? []), ...photos], completed: current?.completed === true || String(current?.result ?? '') !== '' }) as UTSJSONObject; editingItemId.value = itemKey; scheduleDraftSave('item', itemKey) } catch (error) { showToast(String(error?.message ?? t('添加图片失败'))) } }
+	/** 为普通或合并子行添加手机本地图片；只持久化照片及展示关联，不生成普通报告同步任务。 */
+	async function addChecklistPhoto(item: UTSJSONObject, sonPlanId: string = '') { try { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').split('__')[0]; const childPlanId = String(sonPlanId ?? item?.sonPlanId ?? ''); const itemKey = makeChecklistDataKey(baseId, childPlanId); const current = detail.value?.checklistData?.[itemKey] ?? {}; const uploadMetadata = buildChecklistMediaMetadata(detail.value, item, childPlanId, (current?.photos ?? []).length + 1); const photos = await createLocalPhotos('checklist', itemKey, { ...uploadMetadata, dataKey: itemKey, baseItemId: baseId, sonPlanId: childPlanId || null }); if (photos.length === 0) return; detail.value = updateChecklistItem(detail.value, itemKey, { photos: [...(current?.photos ?? []), ...photos], completed: current?.completed === true || String(current?.result ?? '') !== '' }) as UTSJSONObject; editingItemId.value = itemKey; await persistDraft({ markDirty: false, changes: { itemIds: [itemKey] }, syncPhotosOnly: true }) } catch (error) { showToast(String(error?.message ?? t('添加图片失败'))) } }
 	/** 拍摄检查点图片并以独立 bizType 持久化，保留原有检查结果媒体。 */
-	async function addCheckPointPhoto(item: UTSJSONObject): Promise<void> { try { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').split('__')[0]; const childPlanId = String(item?.sonPlanId ?? ''); const itemKey = makeChecklistDataKey(baseId, childPlanId); const current = detail.value?.checklistData?.[itemKey] ?? {}; const metadata = buildChecklistMediaMetadata(detail.value, item, childPlanId, (current?.photos ?? []).length + 1); const photos = await createLocalPhotos('checklist', itemKey, { ...metadata, bizType: 'checkPoint', dataKey: itemKey, baseItemId: baseId, sonPlanId: childPlanId || null }); if (photos.length === 0) return; detail.value = updateChecklistItem(detail.value, itemKey, { photos: [...(current?.photos ?? []), ...photos] }) as UTSJSONObject; await persistDraft({ markDirty: true, changes: { itemIds: [itemKey] } }) } catch (error) { showToast(String(error?.message ?? t('添加检查点图片失败'))) } }
+	async function addCheckPointPhoto(item: UTSJSONObject): Promise<void> { try { const baseId = String(item?.baseItemId ?? item?.id ?? item?.itemId ?? '').split('__')[0]; const childPlanId = String(item?.sonPlanId ?? ''); const itemKey = makeChecklistDataKey(baseId, childPlanId); const current = detail.value?.checklistData?.[itemKey] ?? {}; const metadata = buildChecklistMediaMetadata(detail.value, item, childPlanId, (current?.photos ?? []).length + 1); const photos = await createLocalPhotos('checklist', itemKey, { ...metadata, bizType: 'checkPoint', dataKey: itemKey, baseItemId: baseId, sonPlanId: childPlanId || null }); if (photos.length === 0) return; detail.value = updateChecklistItem(detail.value, itemKey, { photos: [...(current?.photos ?? []), ...photos] }) as UTSJSONObject; await persistDraft({ markDirty: false, changes: { itemIds: [itemKey] }, syncPhotosOnly: true }) } catch (error) { showToast(String(error?.message ?? t('添加检查点图片失败'))) } }
 	/** 请求二次确认当前检查项的离线重置。 */
 	function confirmResetChecklistItem(item: UTSJSONObject): void { resetItemId.value = String(item?.itemId ?? editingItemId.value); showResetItemConfirm.value = true }
 	/** 关闭重置确认弹层，不改变检查项草稿。 */
@@ -710,6 +757,18 @@
 	function closeMissingDataConfirm() { showMissingDataConfirm.value = false }
 	/** 同意强制性数据缺失提示后关闭总结弹层，并跳回检查项页签查看高亮的必填与必传图片项。 */
 	function confirmMissingData() { showMissingDataConfirm.value = false; showFinishSheet.value = false; activeTab.value = 'checklist' }
+	/** 取消最终提交完成后的延迟返回，避免详情页销毁后仍持有原生导航回调。 */
+	function clearFinishNavigation(): void {
+		if (finishNavigationTimer != null) { clearTimeout(finishNavigationTimer); finishNavigationTimer = null }
+	}
+	/** 在页面仍存活时延迟返回列表；定时器完成或离页时立即解除引用。 */
+	function scheduleFinishNavigation(): void {
+		clearFinishNavigation()
+		finishNavigationTimer = setTimeout(() => {
+			finishNavigationTimer = null
+			if (!pageDisposed) uni.navigateBack()
+		}, 500)
+	}
 	/** 联网上传全部图片并直接完成最终提交。 */
 	async function submitFinalReport() {
 		if (submitting.value) return
@@ -736,12 +795,13 @@
 			if (!reported) throw new Error('提交成功，但报告状态尚未更新为已报告，请稍后重试')
 			const completed = { ...(detail.value ?? {}), status: 3, plan: { ...(detail.value?.plan ?? {}), status: 3 }, inspectionPlans: (detail.value?.inspectionPlans ?? []).map((row) => ({ ...row, status: 3 })), overallResult: overallResult.value, overallRemarks: overallRemarks.value, syncStatus: 'SYNCED', pendingSyncPayload: null, updatedAt: new Date().toISOString() }
 			await reportRepository.saveDetailSnapshot(planId.value, completed)
+			if (pageDisposed) return
 			detail.value = completed as UTSJSONObject
 			validationTriggered.value = false
 			showFinishSheet.value = false
 			showToast('验货报告提交成功')
-			setTimeout(() => uni.navigateBack(), 500)
-		} catch (error) { showToast(String(error?.message ?? t('提交失败，请重试'))) } finally { submitting.value = false }
+			scheduleFinishNavigation()
+		} catch (error) { if (!pageDisposed) showToast(String(error?.message ?? t('提交失败，请重试'))) } finally { if (!pageDisposed) submitting.value = false }
 	}
 
 	/** 打开详情更多操作菜单。 */
@@ -904,8 +964,8 @@
 	function handlePageLoad(options: OnLoadOptions): void { planId.value = decodeURIComponent(String(options['planId'] ?? '')).trim(); if (planId.value === '') { loading.value = false; errorMessage.value = '计划ID缺失，无法加载详情'; return }; unsubscribeAutomaticSyncStatus = subscribeAutomaticSyncStatus(handleAutomaticSyncStatus); loadDetail() }
 	/** 页面进入后台前仅刷新尚未保存的新修改。 */
 	function handlePageHide() { flushTouchedDraft() }
-	/** 页面销毁前复用同一个离页保存任务，避免与隐藏事件重复入队。 */
-	function handlePageUnload() { pageDisposed = true; if (unsubscribeAutomaticSyncStatus != null) { unsubscribeAutomaticSyncStatus(); unsubscribeAutomaticSyncStatus = null }; flushTouchedDraft(); pageLoaded = false }
+	/** 页面销毁前结算仍在等待的拍摄请求，并复用同一个离页保存任务，避免与隐藏事件重复入队。 */
+	function handlePageUnload() { clearFinishNavigation(); settleCameraCapture(null); pageDisposed = true; if (unsubscribeAutomaticSyncStatus != null) { unsubscribeAutomaticSyncStatus(); unsubscribeAutomaticSyncStatus = null }; flushTouchedDraft(); pageLoaded = false }
 	/** 页面恢复前台后仅刷新队列展示，不主动执行云端保存。 */
 	function handlePageShow() { if (pageLoaded) refreshSyncOverview() }
 

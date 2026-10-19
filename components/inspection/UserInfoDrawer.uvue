@@ -1,6 +1,6 @@
 <template>
-	<view v-if="visible" class="user-drawer-overlay" @click="closeDrawer">
-		<view class="user-drawer" @click.stop>
+	<page-container :show="visible" position="left" :overlay="true" :z-index="2100" :custom-style="drawerContainerStyle" @clickoverlay="closeDrawer">
+		<view class="user-drawer">
 			<TopSafeArea background-color="#ffffff" />
 			<view class="user-drawer-header">
 				<text class="user-drawer-title">{{ translateText('用户信息') }}</text>
@@ -27,7 +27,7 @@
 				<view class="user-action danger" @click="logout"><text class="user-action-label danger">{{ translateText('退出登录') }}</text></view>
 			</view>
 		</view>
-	</view>
+	</page-container>
 </template>
 
 <script setup lang="uts">
@@ -51,11 +51,13 @@
 	})
 	const emit = defineEmits(['close', 'change-language', 'invite-vendor', 'view-local-data', 'clear-cache', 'check-for-updates', 'logout', 'open-custom-camera'])
 	const footerBottomPadding = safeBottomPaddingPx(28)
+	/** 将左侧原生弹层限制在原抽屉的屏幕宽度内，右侧空白交由遮罩接收点击。 */
+	const drawerContainerStyle = `width: ${Math.min(uni.getWindowInfo().windowWidth * 0.82, uni.rpx2px(640))}px; height: 100%; right: auto;`
 	/** 将语言代码属性收窄为字符串数组，供原生模板循环并传给语言切换事件。 */
 	const localeCodes = computed((): string[] => (props.locales as string[]).map((code: string): string => String(code)))
 
-	/** 点击抽屉外遮罩时通知列表关闭用户信息。 */
-	function closeDrawer() { emit('close') }
+	/** 点击原生弹层的遮罩时通知列表关闭用户信息；抽屉内容不再依赖冒泡拦截。 */
+	function closeDrawer(): void { emit('close') }
 	/** 把 H5 同源语言代码交给列表持久化并立即刷新翻译。 */
 	function changeLanguage(code: string) { emit('change-language', code) }
 	/** 进入自定义拍照页面，供离线验货现场拍摄独立使用。 */
@@ -73,8 +75,7 @@
 </script>
 
 <style>
-	.user-drawer-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2100; flex-direction: row; background-color: rgba(0, 0, 0, 0.42); }
-	.user-drawer { width: 82%; max-width: 640rpx; height: 100%; flex-direction: column; background-color: #ffffff; box-shadow: 12rpx 0 48rpx rgba(15, 23, 42, 0.16); }
+	.user-drawer { width: 100%; height: 100%; flex-direction: column; background-color: #ffffff; box-shadow: 12rpx 0 48rpx rgba(15, 23, 42, 0.16); }
 	.user-drawer-header { padding: 40rpx 32rpx 28rpx; border-bottom-width: 2rpx; border-bottom-color: #e5e7eb; }
 	.user-drawer-title { color: #111827; font-size: 36rpx; font-weight: 700; }
 	.user-drawer-content { flex: 1; min-height: 0; }

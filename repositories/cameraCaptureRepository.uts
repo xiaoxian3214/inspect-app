@@ -1,0 +1,41 @@
+/** 将拍摄或标注后的媒体列表保存到独立 SQLite 拍摄表，不伪造报告 ID 或待上传队列。 */
+export function createCameraCaptureRepository(database: any) {
+  /** 按稳定排序读取一次拍摄的媒体，供预览和重启后恢复使用。 */
+  async function listBySessionId(sessionId: string): Promise<UTSJSONObject[]> {
+    const key = sessionId.trim()
+    if (key === '') return [] as UTSJSONObject[]
+    return (database.readTable('camera_capture') as UTSJSONObject[])
+      .filter((row: UTSJSONObject): boolean => String(row?.sessionId ?? '') === key)
+      .sort((left: UTSJSONObject, right: UTSJSONObject): number => Number(left?.sortNo ?? 0) - Number(right?.sortNo ?? 0))
+      .map((row: UTSJSONObject): UTSJSONObject => ({
+        path: String(row?.localPath ?? ''),
+        mediaType: String(row?.mediaType ?? 'image'),
+        durationSeconds: Number(row?.durationSeconds ?? 0)
+      }))
+  }
+
+  /** 原子替换一次拍摄的完整列表；编辑后的路径只在事务成功后才对读取者可见。 */
+  async function saveAll(sessionId: string, items: UTSJSONObject[]): Promise<void> {
+    const key = sessionId.trim()
+    if (key === '') throw new Error('拍摄会话ID不能为空')
+    const source: UTSJSONObject[] = Array.isArray(items) ? items : ([] as UTSJSONObject[])
+    for (let index = 0; index < source.length; index++) {
+      if (String(source[index]?.path ?? '').trim() === '') throw new Error('媒体本地路径不能为空')
+    }
+    await database.transaction(async (transaction: any): Promise<void> => {
+      transaction.removeWhere('camera_capture', (row: UTSJSONObject): boolean => String(row?.sessionId ?? '') === key)
+      source.forEach((item: UTSJSONObject, index: number): void => {
+        transaction.upsert('camera_capture', 'captureId', {
+          captureId: `${key}::${index}`,
+          sessionId: key,
+          localPath: String(item?.path ?? '').trim(),
+          mediaType: String(item?.mediaType ?? 'image'),
+          durationSeconds: Number(item?.durationSeconds ?? 0),
+          sortNo: index
+        })
+      })
+    })
+  }
+
+  return { listBySessionId, saveAll }
+}
