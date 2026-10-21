@@ -31,7 +31,7 @@
 
 
 		<CheckItemSheet :visible="showItemSheet" :item="editingItem" :defects="editingItemDefects" :goods-flag="editingItemGoodsFlag" :is-online="online" :sorting="sortSubmitting" :sort-saved-revision="sortSavedRevision" @close="closeItemSheet" @select-result="selectChecklistItemResult" @auto-save="autoSaveChecklistItem" @photos-sorted="sortChecklistPhotos" @add-photo="addChecklistPhoto" @remove-photo="requestChecklistPhotoRemoval" @preview-photo="openPhotoEditor" @retry-photo="retryMediaUpload" @open-defect="openDefect" @copy-items="openItemCopySheet" @batch-move="openItemBatchMoveSheet" @reset-item="confirmResetChecklistItem" @add-checkpoint-photo="addCheckPointPhoto" />
-		<QuickDefectSheet :visible="showDefectSheet" :editing="isEditingDefect" :defect="editingDefect" :items="baseChecklistItems" :level-options="defectLevels" :category-tree="defectTree" @close="closeDefectSheet" @save="saveDefect" @delete="confirmRemoveDefect" @add-photo="addDefectPhoto" @remove-photo="removeDefectPhoto" @preview-photo="openPhotoEditor" @retry-photo="retryMediaUpload" />
+		<QuickDefectSheet :visible="showDefectSheet" :editing="isEditingDefect" :defect="editingDefect" :items="baseChecklistItems" :level-options="defectLevels" :category-tree="defectTree" @close="discardDefectSheet" @save="saveDefect" @delete="confirmRemoveDefect" @add-photo="addDefectPhoto" @remove-photo="removeDefectPhoto" @preview-photo="openPhotoEditor" @retry-photo="retryMediaUpload" />
 		<FinishInspectionSheet :visible="showFinishSheet" :product-title="String(detail?.plan?.goodsName ?? '')" :quantity-totals="finishQuantities" :overall-result="overallResult" :overall-remarks="overallRemarks" :pending-upload-count="pendingUploadCount" :submitting="submitting" :defect-stats="finishSummary.defectStats" :exceeds-aql="finishSummary.exceedsAql" :failed-checkpoints="finishSummary.failedCheckpoints" @close="closeFinishSheet" @set-ready-quantity="openReadyQuantity" @update-result="updateOverallResult" @update-remarks="updateOverallRemarks" @submit="submitFinalReport" />
 		<BottomActionSheet :visible="showMoreSheet" title="详情操作" :actions="moreActions" :show-icons="true" @select="handleMoreAction" @cancel="closeMoreActions" />
 		<ReadyQuantitySheet :visible="showReadyQuantity" :rows="quantityRows" :submitting="quantitySubmitting" @close="closeReadyQuantity" @update-quantity="updateReadyQuantity" @save="saveReadyQuantities" />
@@ -650,16 +650,50 @@
 	 * 在 vapor 原生渲染下会驱动已销毁的渲染子树重新渲染并闪退；openNewDefect/openDefect 每次都会重建入参。
 	 */
 	function closeDefectSheet() { showDefectSheet.value = false }
-	/** 保存新增或编辑后的疵点记录。 */
-	async function saveDefect(defect: UTSJSONObject): Promise<void> { const defectId = String(defect?.defectId || defect?.id || `defect-${Date.now()}`); const next = { ...defect, id: defect?.id || defectId, defectId }; const defects = [...(detail.value?.defects ?? [])]; const index = defects.findIndex((item) => String(item?.defectId ?? item?.id ?? '') === defectId); if (index >= 0) defects[index] = next; else defects.push(next); const retainedPhotos = (detail.value?.photos ?? []).filter((photo) => !(photo?.ownerType === 'defect' && String(photo?.ownerId ?? '') === defectId)); detail.value = normalizeInspectionDetail({ ...(detail.value ?? {}), defects, photos: retainedPhotos }, planId.value) as UTSJSONObject; closeDefectSheet(); await persistDraft({ markDirty: true, changes: { defectIds: [defectId] } }) }
+	/** 用户取消编辑疵点时删除本轮未保存的 draft 照片记录，避免下次打开或普通报告保存恢复废弃图片。 */
+	async function discardDefectSheet(): Promise<void> {
+		closeDefectSheet()
+		const photos = (editingDefect.value?.photos ?? []) as UTSJSONObject[]
+		for (const photo of photos) {
+			if (String(photo?.uploadStatus ?? '') !== 'draft' || !photo?.photoId) continue
+			await photoRepository.remove(planId.value, photo.photoId)
+		}
+	}
+	/** 将已保存疵点中的草稿照片激活为待上传，且同步更新页面引用，避免报告快照把状态覆盖回 draft。 */
+	async function activateDefectPhotos(photos: UTSJSONObject[]): Promise<UTSJSONObject[]> {
+		const activated: UTSJSONObject[] = []
+		for (const photo of photos) {
+			if (String(photo?.uploadStatus ?? '') !== 'draft') { activated.push(photo); continue }
+			const pending = { ...photo, uploadStatus: 'pending' } as UTSJSONObject
+			await photoRepository.save(planId.value, pending)
+			activated.push(pending)
+		}
+		return activated
+	}
+	/** 保存新增或编辑后的疵点，成功后激活已拍草稿照片，再启动既有同步流程。 */
+	async function saveDefect(defect: UTSJSONObject): Promise<void> {
+		const defectId = String(defect?.defectId || defect?.id || `defect-${Date.now()}`)
+		const next = { ...defect, id: defect?.id || defectId, defectId } as UTSJSONObject
+		const defects = [...(detail.value?.defects ?? [])] as UTSJSONObject[]
+		const index = defects.findIndex((item: UTSJSONObject): boolean => String(item?.defectId ?? item?.id ?? '') === defectId)
+		if (index >= 0) defects[index] = next
+		else defects.push(next)
+		const retainedPhotos = (detail.value?.photos ?? []).filter((photo: UTSJSONObject): boolean => !(photo?.ownerType === 'defect' && String(photo?.ownerId ?? '') === defectId))
+		detail.value = normalizeInspectionDetail({ ...(detail.value ?? {}), defects, photos: retainedPhotos }, planId.value) as UTSJSONObject
+		closeDefectSheet()
+		await persistDraft({ markDirty: true, changes: { defectIds: [defectId] }, deferSync: true })
+		const photos = await activateDefectPhotos((next.photos ?? []) as UTSJSONObject[])
+		detail.value = { ...detail.value, defects: (detail.value?.defects ?? []).map((item: UTSJSONObject): UTSJSONObject => String(item?.defectId ?? item?.id ?? '') === defectId ? { ...item, photos: photos } : item) } as UTSJSONObject
+		await persistDraft({ markDirty: true, changes: { defectIds: [defectId] } })
+	}
 	/** 打开删除疵点二次确认底部弹层并保存待删除记录。 */
 	function confirmRemoveDefect(defect: UTSJSONObject): void { pendingDeleteDefect.value = defect ?? {}; showDeleteDefectConfirm.value = true }
 	/** 关闭删除疵点确认弹层并清空待处理记录。 */
 	function closeDeleteDefectConfirm() { if (deleteDefectSubmitting.value) return; showDeleteDefectConfirm.value = false; pendingDeleteDefect.value = {} }
 	/** 删除已确认的疵点、关联本地图片和报告快照。 */
 	async function deleteConfirmedDefect() { const defect = pendingDeleteDefect.value ?? {}; deleteDefectSubmitting.value = true; try { const defectId = String(defect?.defectId ?? defect?.id ?? ''); for (const photo of ((defect?.photos ?? []) as UTSJSONObject[])) await removePhotoRecord(photo); const retainedPhotos = (detail.value?.photos ?? []).filter((photo) => !(photo?.ownerType === 'defect' && String(photo?.ownerId ?? '') === defectId)); detail.value = normalizeInspectionDetail({ ...(detail.value ?? {}), defects: (detail.value?.defects ?? []).filter((item) => item !== defect && String(item?.defectId ?? item?.id ?? '') !== defectId), photos: retainedPhotos }, planId.value) as UTSJSONObject; await persistDraft({ markDirty: true, changes: { removedDefectIds: [defectId] } }); showDeleteDefectConfirm.value = false; pendingDeleteDefect.value = {}; if (showDefectSheet.value) closeDefectSheet() } catch (error) { showToast(String(error?.message ?? t('删除疵点失败'))) } finally { deleteDefectSubmitting.value = false } }
-	/** 为当前疵点添加手机本地图片。 */
-	async function addDefectPhoto(defect: UTSJSONObject): Promise<void> { try { const defectId = String(defect?.defectId || defect?.id || editingDefect.value?.defectId || `defect-${Date.now()}`); const currentPhotos = (defect?.photos || editingDefect.value?.photos) ?? []; const uploadMetadata = buildDefectMediaMetadata(detail.value, defectId, currentPhotos.length + 1); const photos = await createLocalPhotos('defect', defectId, uploadMetadata); editingDefect.value = { ...editingDefect.value, ...defect, id: defect?.id || defectId, defectId, photos: [...currentPhotos, ...photos] } } catch (error) { showToast(String(error?.message ?? t('添加图片失败'))) } }
+	/** 为当前疵点添加手机本地图片；拍照页“完成”只生成 draft，本弹层保存成功后才上传。 */
+	async function addDefectPhoto(defect: UTSJSONObject): Promise<void> { try { const defectId = String(defect?.defectId || defect?.id || editingDefect.value?.defectId || `defect-${Date.now()}`); const currentPhotos = (defect?.photos || editingDefect.value?.photos) ?? []; const uploadMetadata = buildDefectMediaMetadata(detail.value, defectId, currentPhotos.length + 1); const photos = await createLocalPhotos('defect', defectId, { ...uploadMetadata, uploadStatus: 'draft' }); editingDefect.value = { ...editingDefect.value, ...defect, id: defect?.id || defectId, defectId, photos: [...currentPhotos, ...photos] } } catch (error) { showToast(String(error?.message ?? t('添加图片失败'))) } }
 	/** 删除疵点图片并更新当前编辑草稿。 */
 	async function removeDefectPhoto(payload: UTSJSONObject): Promise<void> { await removePhotoRecord(payload?.photo as UTSJSONObject); editingDefect.value = { ...editingDefect.value, photos: (editingDefect.value?.photos ?? []).filter((photo) => photo !== payload?.photo && photo?.photoId !== payload?.photo?.photoId) } }
 	/** 将上传失败的本地媒体重置为 pending（同时清空退避计数），并立即请求统一自动同步。 */

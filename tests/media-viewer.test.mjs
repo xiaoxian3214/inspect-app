@@ -164,6 +164,26 @@ test('image editor rotates stage dimensions and draws source with original aspec
   assert.match(editor, /rc\.drawImage\(img, -drawWidth \/ 2, -drawHeight \/ 2, drawWidth, drawHeight\)/)
 })
 
+/** 原生 2D canvas 的 width/height 模板属性未必重置底层像素缓冲，必须从实际 context 显式设置位图尺寸。 */
+test('image editor sets actual canvas bitmap dimensions before drawing the whole photo', async () => {
+  const editor = await readFile('components/detail/ImageMarkupEditor.uvue', 'utf8')
+  const exportFlow = editor.split("const rc = ctx.getContext('2d')")[1]?.split('rc.clearRect')[0] ?? ''
+  assert.match(exportFlow, /const cw = saveCanvasWidth\.value; const ch = saveCanvasHeight\.value/)
+  assert.match(exportFlow, /rc\.canvas\.width = cw/)
+  assert.match(exportFlow, /rc\.canvas\.height = ch/)
+  assert.ok(exportFlow.indexOf('rc.canvas.width = cw') < exportFlow.indexOf('rc.canvas.height = ch'))
+  assert.match(editor, /rc\.drawImage\(img, -drawWidth \/ 2, -drawHeight \/ 2, drawWidth, drawHeight\)/)
+})
+
+/** 保存后确认实际生成图片的宽高，防止只有默认画布左上角区域被导出仍误报成功。 */
+test('image editor checks exported image dimensions before replacing the photo', async () => {
+  const editor = await readFile('components/detail/ImageMarkupEditor.uvue', 'utf8')
+  assert.match(editor, /function verifyExportedImage\(path: string, width: number, height: number,/)
+  assert.match(editor, /Math\.round\(Number\(info\.width\)\) !== width/)
+  assert.match(editor, /Math\.round\(Number\(info\.height\)\) !== height/)
+  assert.match(editor, /verifyExportedImage\(path, cw, ch, settle\)/)
+})
+
 /** 导出画布必须限制单边像素：大图按原分辨率合成会瞬间占用上百 MB，在 Android 上直接 OOM 闪退。 */
 test('photo editor caps canvas export size to avoid out-of-memory crash on save', async () => {
   const editor = await readFile('components/detail/ImageMarkupEditor.uvue', 'utf8')
@@ -191,7 +211,8 @@ test('image export uses Kotlin-compatible promise and completion callbacks', asy
   assert.match(editor, /const settle = \(error: Error \| null, resultPath: string\) =>/)
   assert.doesNotMatch(editor, /const settle = \(error: Error \| null, resultPath: string =/)
   const exportFlow = editor.split('const settle = ')[1]?.split('\n\t\t\t})')[0] ?? ''
-  assert.match(exportFlow, /settle\(null, path\)/)
+  assert.match(exportFlow, /verifyExportedImage\(path, cw, ch, settle\)/)
+  assert.match(editor, /function verifyExportedImage[\s\S]*?settle\(null, path\)/)
   const errorCalls = exportFlow.split('\n').filter((line) => line.includes('settle(new Error('))
   assert.ok(errorCalls.length >= 5, '需覆盖画布、图片加载及文件写入错误')
   for (const line of errorCalls) assert.match(line, /settle\(new Error\(.*\), ''\)/)

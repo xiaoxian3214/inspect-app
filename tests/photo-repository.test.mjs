@@ -19,6 +19,18 @@ test('lists every report that still has local photos waiting for upload', async 
   assert.deepEqual(await repository.listPendingReportIds(), ['plan-1', 'plan-2'])
 })
 
+/** 疵点编辑中暂存的图片不参与自动同步，点击疵点保存后才进入待上传列表。 */
+test('draft defect photos stay out of upload queue until activated on save', async () => {
+  const repository = photoModule.createPhotoRepository(memoryModule.createMemoryDatabase())
+  await repository.save('plan-1', { photoId: 'draft-1', ownerType: 'defect', ownerId: 'defect-1', localPath: '/local/draft.jpg', uploadStatus: 'draft' })
+  assert.deepEqual(await repository.listPendingReportIds(), [])
+  assert.deepEqual(await repository.listPendingByReportId('plan-1'), [])
+  const draft = (await repository.listByReportId('plan-1'))[0]
+  await repository.save('plan-1', { ...draft, uploadStatus: 'pending' })
+  assert.deepEqual(await repository.listPendingReportIds(), ['plan-1'])
+  assert.deepEqual((await repository.listPendingByReportId('plan-1')).map((photo) => photo.photoId), ['draft-1'])
+})
+
 test('simultaneous photo additions do not replace each other', async () => {
   const sqlite = new DatabaseSync(':memory:')
   const schemaModule = await loadUtsModule('database/schema.uts')

@@ -16,7 +16,7 @@ export function createInspectionMediaService(options) {
   const activeUploads = new Map<string, any>()
 
   /**
-   * 将手机本地文件立即保存为 pending 照片记录，确保离线拍摄可恢复。
+   * 将手机本地文件保存为媒体记录，疵点未保存时允许 draft 暂存，其他来源保持 pending。
    */
   async function addLocalPhoto(planId, localPath, metadata: any = {}) {
     const normalizedPlanId = String(planId ?? '').trim()
@@ -28,7 +28,7 @@ export function createInspectionMediaService(options) {
       photoId: String(metadata?.photoId || createId()),
       reportId: normalizedPlanId,
       localPath: normalizedPath,
-      uploadStatus: 'pending',
+      uploadStatus: metadata?.uploadStatus === 'draft' ? 'draft' : 'pending',
       uploadError: '',
       createdAt: metadata?.createdAt || new Date().toISOString()
     }

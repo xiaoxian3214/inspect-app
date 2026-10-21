@@ -57,7 +57,7 @@ test('custom camera page previews in page and captures one photo per shutter pre
   assert.doesNotMatch(page, /\bthis\./)
   assert.doesNotMatch(page, /ima-camerax-view|xview-camera-view|\$refs/)
   // 应用内快门必须继续走 camera 组件；系统相机只作为右上角的独立补拍入口存在。
-  const shutterSection = page.split('function takePhoto()')[1].split('function captureFromAlbum()')[0]
+  const shutterSection = page.split('function takePhoto()')[1].split('function captureFromSystemCamera()')[0]
   assert.doesNotMatch(shutterSection, /chooseImage|sourceType/)
   assert.match(page, /sourceType:\s*\['camera'\]/)
   assert.doesNotMatch(page, /DeviceBurstCamera/)
@@ -66,7 +66,7 @@ test('custom camera page previews in page and captures one photo per shutter pre
   assert.match(page, /id="camera"/)
   assert.match(page, /:device-position="devicePosition"/)
   assert.match(page, /:resolution="'high'"/)
-  assert.match(page, /photo-resolution="high"/)
+  assert.match(page, /photo-resolution="original"/)
   assert.match(page, /@initdone="handleCameraInitDone"/)
   assert.match(page, /@error="handleCameraError"/)
   assert.match(page, /@stop="handleCameraStop"/)
@@ -78,66 +78,78 @@ test('custom camera page previews in page and captures one photo per shutter pre
   assert.doesNotMatch(page, /quality: 'high'|quality: 'normal'|quality: 'low'/)
   assert.match(page, /selfieMirror: false/)
   assert.match(page, /normalizeDeviceCapturePaths\(\[result\.tempImagePath \?\? ''\]\)/)
-  assert.match(page, /appendCapturedMedia\(shotPaths, 'image', 0\)/)
+  assert.match(page, /appendCapturedMedia\(shotPaths, 'image', 0, shutterRotation\)/)
 
   assert.match(page, /if \(!cameraReady\.value\) \{\s*uni\.showToast\(\{ title: t\('正在启动相机…'\), icon: 'none' \}\)\s*return\s*\}/)
   assert.match(page, /try \{\s*context\.takePhoto\(\{/)
   assert.match(page, /catch \(error\) \{\s*capturing\.value = false\s*notifyCaptureFailure\(\)/)
 
   assert.match(page, /uni\.chooseImage\(/)
-  assert.match(page, /sourceType:\s*\['album'\]/)
+  assert.doesNotMatch(page, /sourceType:\s*\['album'\]/)
 
   assert.ok(page.indexOf('preview-wrap') < page.indexOf('<CaptureControlBar'), '取景框必须排在底部控制条之前')
   assert.ok(page.indexOf('<CaptureControlBar') < page.indexOf('<CaptureStrip'), '已拍照片必须留在整个页面最下方的照片区')
 })
 
 /**
- * 拍完的照片必须先按设备写入的 EXIF 方向回正再展示与上传：
- * 自定义调试基座没有注册 uni-accelerometer 模块（此前 onShow 直接抛 UTS module _uni-accelerometer is not registered 崩溃），
- * 所以方向只来自照片自身的 EXIF；回正后文件本身已经正向，缩略图与大图都不再叠加 CSS 旋转，避免二次旋转。
+ * 拍完的照片优先按 EXIF 回正，EXIF 缺失时按自定义快门的原生机身姿态回正；
+ * 陀螺仪不可用时按压快门的方向保持未知，回正逻辑退回纯 EXIF。底部缩略图另随手机实时旋转。
  */
-test('captured photos are uprighted from the device EXIF orientation without sensor modules', async () => {
+test('captured photos are uprighted from the device EXIF orientation while the strip follows the handset', async () => {
   const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
   const strip = await readFile('components/camera/CaptureStrip.uvue', 'utf8')
   const preview = await readFile('components/camera/CapturePreview.uvue', 'utf8')
 
-  // 基座未注册加速度计模块：页面必须完全不调用传感器 API，否则取景页一进入就会崩溃。
-  assert.doesNotMatch(page, /uni\.(?:on|off|start|stop)Accelerometer/)
-  assert.doesNotMatch(page, /OnAccelerometerChangeCallbackResult/)
-  assert.doesNotMatch(page, /onShow|onHide/)
-  assert.doesNotMatch(page, /deviceRotation|shutterRotation|capturedRotations|resolveMediaDisplayRotation/)
+  // 加速度计给绝对方向；基座未注册加速度计模块时自动退回陀螺仪积分，两条链路都不能依赖浏览器 API。
+  assert.match(page, /uni\.startAccelerometer\(\{/)
+  assert.match(page, /uni\.onAccelerometerChange\(handleAccelerometerChange\)/)
+  assert.match(page, /OnAccelerometerChangeCallbackResult/)
+  assert.match(page, /fallbackToGyroscope\(/)
+  assert.match(page, /startDeviceRotationTracking\(\)/)
+  assert.match(page, /uni\.onGyroscopeChange\(handleGyroscopeChange\)/)
+  assert.doesNotMatch(page, /document\.|window\./)
+  assert.match(page, /onShow\(\(\) =>/)
+  assert.match(page, /onHide\(\(\) =>/)
+  // 陀螺仪不可用时方向保持 -1：底部照片退回按文件自身方向展示，不叠加任何旋转。
+  assert.match(page, /const deviceRotation = ref\(DEVICE_ROTATION_UNKNOWN\)/)
+  assert.match(page, /deviceRotation\.value = DEVICE_ROTATION_UNKNOWN/)
+  assert.match(page, /const shutterRotation = deviceRotation\.value/)
 
-  // 方向来自 uni.getImageInfo 读取的 EXIF，由领域函数换算成回正角度后注入回正服务。
-  assert.match(page, /import \{ resolveUprightRotation \} from '\.\.\/\.\.\/domain\/imageOrientation\.uts'/)
-  assert.match(page, /const mediaOrientationService = createAppMediaOrientationService\(resolveUprightRotation\)/)
-
-  // 每一张新增图片都排入回正队列，串行执行避免相册批量选择时同时解码多张原图。
-  assert.match(page, /if \(mediaType === 'image'\) enqueueMediaUpright\(path\)/)
-  assert.match(page, /uprightChain = previous\.then\(\(\): Promise<void> => runUprightTask\(path\)\)/)
-  assert.match(page, /if \(previous == null\) uprightChain = runUprightTask\(path\)/)
+  // EXIF 优先；照片缺失 EXIF 时用快门角度，回正仍走串行队列。
+  assert.match(page, /import \{[^}]*needsOrientationReset[^}]*resolveCaptureRotation[^}]*resolveUprightRotation[^}]*\} from '\.\.\/\.\.\/domain\/imageOrientation\.uts'/)
+  assert.match(page, /const mediaOrientationService = createAppMediaOrientationService\(resolveUprightRotation, resolveCaptureRotation, needsOrientationReset\)/)
+  assert.match(page, /if \(mediaType === 'image'\) \{\s*learnCaptureAspectRatio\(path\)\s*enqueueMediaUpright\(path, shutterRotation\)\s*\}/)
+  assert.match(page, /uprightChain = previous\.then\(\(\): Promise<void> => runUprightTask\(path, shutterRotation\)\)/)
+  assert.match(page, /if \(previous == null\) uprightChain = runUprightTask\(path, shutterRotation\)/)
   assert.match(page, /pending = latest === pending \? null : latest/)
-  assert.match(page, /const result = await mediaOrientationService\.normalizeUpright\(path\)/)
+  assert.match(page, /const result = await mediaOrientationService\.normalizeUpright\(path, shutterRotation\)/)
   // 回正结果按路径回查下标后原位替换：用户等待期间删除照片也不会写错位置。
   assert.match(page, /const currentIndex = capturedPaths\.value\.indexOf\(path\)/)
   assert.match(page, /capturedPaths\.value = replaceCapturePath\(capturedPaths\.value, currentIndex, result\.path\)/)
-  // 回正失败只提示一次并保留原图，绝不阻断拍摄。
-  assert.match(page, /title: t\('图片方向处理失败，已按原图保存'\)/)
+  // 回正失败保留原图供重拍，但禁止作为已回正照片交给详情页。
+  assert.match(page, /failedUprightPaths\.value\.includes\(path\)/)
+  assert.match(page, /pendingUprightPaths\.value\.includes\(path\)/)
+  assert.doesNotMatch(page, /图片方向处理失败，已按原图保存/)
   // 视频保留原始文件，不参与回正。
   assert.match(page, /appendCapturedMedia\(videoPaths, 'video', Math\.max\(1, Math\.round\(durationSeconds\)\)\)/)
 
-  // “完成”落盘前必须等回正结束，否则会把还没转正的歪图入库并上传。
+  // “完成”仅持久化本地文件；落盘前必须等回正结束，不在取景页上传。
   const finish = page.split('async function handleFinishCapture()')[1].split('/** 取消本次拍摄')[0]
   const waitIndex = finish.indexOf('await waitPendingMediaUpright()')
   assert.ok(waitIndex > 0, '完成拍摄前必须等待回正任务结束')
   assert.ok(waitIndex < finish.indexOf('mediaPersistenceService.persistMediaPath'), '等待回正必须发生在落盘之前')
+  assert.match(finish, /if \(failedUprightPaths\.value\.length > 0\) \{[\s\S]*?return[\s\S]*?\}/)
 
-  // 展示层不再叠加 EXIF 旋转：App 端 image 组件已按 EXIF 展示，回正后的文件本身也是正向的。
+  // 底部缩略图按当前握持角反向补角；大图直接展示拍摄时已回正的文件，不叠加展示旋转。
   assert.doesNotMatch(page, /:rotation="selectedCaptureRotation"/)
-  assert.doesNotMatch(strip, /imageStyle|transform: `rotate/)
+  assert.doesNotMatch(page, /<CapturePreview[^>]*:device-rotation/)
+  assert.match(strip, /resolveThumbnailRotation\(props\.deviceRotation\)/)
+  assert.match(strip, /item\.processing \|\| item\.failed/)
+  assert.match(page, /if \(pendingUprightPaths\.value\.includes\(path\) \|\| failedUprightPaths\.value\.includes\(path\)\) return/)
   assert.doesNotMatch(preview, /rotation: \{ type: Number|imageStyle/)
 })
 
-/** 连拍与「使用 N 张照片」都已按需求移除，快捷键位改为相册 / 快门 / 完成（合并进底部单行控制条）。 */
+/** 连拍与「使用 N 张照片」都已按需求移除，底部只保留取消、快门与完成等操作。 */
 test('custom camera page drops burst and confirm button in favor of a finish action', async () => {
   const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
   const controlBar = await readFile('components/camera/CaptureControlBar.uvue', 'utf8')
@@ -146,10 +158,8 @@ test('custom camera page drops burst and confirm button in favor of a finish act
   assert.doesNotMatch(page, /连拍|使用 \{count\} 张照片|continuous|shouldContinueBurstCapture|continueTimer/)
   assert.doesNotMatch(controlBar, /连拍|使用 \{count\} 张照片|AppButton/)
 
-  assert.match(controlBar, /translateText\('相册'\)/)
   assert.match(controlBar, /translateText\('完成'\)/)
-  assert.match(controlBar, /defineEmits\(\['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera', 'pick-album', 'press-shutter', 'finish-capture'\]\)/)
-  assert.match(page, /@pick-album="captureFromAlbum"/)
+  assert.match(controlBar, /defineEmits\(\['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera', 'press-shutter', 'finish-capture'\]\)/)
   assert.match(page, /@press-shutter="takePhoto"/)
   assert.match(page, /@finish-capture="handleFinishCapture"/)
 
@@ -170,8 +180,33 @@ test('captured photos render large and without a session photo limit', async () 
 
   assert.doesNotMatch(strip, /maxCount|max-count|capture-strip-count|countLabel/)
   assert.match(strip, /class="capture-thumb-number"/)
-  assert.match(page, /<CaptureStrip :items="captureItems" @remove-photo="removeCapture" @preview-photo="openCapturePreview" \/>/)
+  assert.match(page, /<CaptureStrip :items="captureItems" :device-rotation="deviceRotation" @remove-photo="removeCapture" @preview-photo="openCapturePreview" \/>/)
   assert.doesNotMatch(page, /maxCaptureCount|最多拍摄/)
+})
+
+/** 取景框按成片比例铺满中间区域（裁切不拉伸），照片条贴到屏幕最下方，可用高度因此不再留底部安全区。 */
+test('custom camera fills the viewfinder area with the photo ratio and pins the strip to the bottom', async () => {
+  const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
+  const controlBar = await readFile('components/camera/CaptureControlBar.uvue', 'utf8')
+  const strip = await readFile('components/camera/CaptureStrip.uvue', 'utf8')
+
+  assert.match(page, /<view class="preview-frame" :style="previewFrameStyle">/)
+  assert.match(page, /<camera v-if="cameraMounted"[\s\S]*?class="camera-preview"/)
+  assert.match(page, /\.camera-preview \{ width: 100%; height: 100%; \}/)
+  // 取景区裁掉取景框溢出部分，照片条不再留底部安全区，中间的取景画面因此可以铺满。
+  assert.match(page, /\.preview-wrap \{[^}]*overflow: hidden;/)
+  assert.doesNotMatch(page, /panelBottomPadding|safeBottomPaddingPx/)
+  assert.match(page, /resolveCaptureFrameSize\(info\.windowWidth, availableHeight, captureAspectRatio\.value\)/)
+  // 首张成片读出真实像素后校正取景比例，读取失败时保持 4:3 默认值；临时标定行已随方向问题定位完成移除。
+  assert.match(page, /learnCaptureAspectRatio\(path\)/)
+  assert.match(page, /resolveCaptureAspectRatio\(info\.width, info\.height\)/)
+  assert.doesNotMatch(page, /captureDiagnostic|normalizeExifText/)
+
+  // 取景可用高度按底部面板实测高度扣减：控制条 140rpx + 照片区 168rpx，照片条贴底后没有额外留白。
+  const controlHeight = parseInt(/\.capture-control-row \{ height: (\d+)rpx/.exec(controlBar)?.[1] ?? '0')
+  const stripHeight = parseInt(/\.capture-strip \{ height: (\d+)rpx/.exec(strip)?.[1] ?? '0')
+  const panelHeight = parseInt(/CAPTURE_PANEL_HEIGHT_RPX = (\d+)/.exec(page)?.[1] ?? '0')
+  assert.equal(panelHeight, controlHeight + stripHeight, `取景可用高度常量必须与底部面板实际高度一致：${panelHeight}`)
 })
 
 /** 拍照页文案全部走页面级翻译方法，必须能在英文和越南语下取到译文。 */
@@ -209,7 +244,7 @@ test('custom camera page guards post-unmount callbacks and timers', async () => 
   const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
 
   assert.match(page, /onMounted\(\(\) => \{\s*armCameraReadyFallback\(\)/)
-  assert.match(page, /onBeforeUnmount\(\(\) => \{\s*disposed = true\s*clearReadyFallbackTimer\(\)/)
+  assert.match(page, /onBeforeUnmount\(\(\) => \{\s*disposed = true\s*stopDeviceRotationTracking\(\)\s*clearReadyFallbackTimer\(\)/)
   assert.match(page, /onUnmounted\(\(\) => \{\s*disposed = true\s*clearReadyFallbackTimer\(\)/)
   assert.match(page, /function clearReadyFallbackTimer\(\): void \{/)
   assert.match(page, /function armCameraReadyFallback\(\): void \{/)

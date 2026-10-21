@@ -27,6 +27,21 @@ test('creates a pending local photo before any upload starts', async () => {
   assert.equal(saved[0].photo.localPath, '/local/photo.jpg')
 })
 
+/** 疵点拍照只登记本地草稿，不应在用户保存疵点前加入待上传状态。 */
+test('records defect camera photos as drafts until the owning defect is saved', async () => {
+  const saved = []
+  const service = serviceModule.createInspectionMediaService({
+    photoRepository: { save: async (planId, photo) => saved.push(photo) },
+    reportFileApi: { uploadInspectFile: async () => { throw new Error('unexpected upload') } },
+    isOnline: async () => true,
+    createId: () => 'draft-1'
+  })
+  const draft = await service.addLocalPhoto('plan-1', '/local/defect.jpg', { ownerType: 'defect', ownerId: 'defect-1', uploadStatus: 'draft' })
+  assert.equal(draft.uploadStatus, 'draft')
+  assert.equal(saved[0].uploadStatus, 'draft')
+  assert.equal(draft.localPath, '/local/defect.jpg')
+})
+
 test('uploads pending local photos and stores remote file ids', async () => {
   const uploaded = []
   const marked = []

@@ -2,7 +2,7 @@
 	"name": "中艺验货",
 	"appid": "__UNI__1FFA0B1",
 	"description": "支持 Android 与 iOS 的离线验货应用",
-	"versionName": "1.0.1",
+	"versionName": "1.0.0",
 	"versionCode": "101",
 	"uni-app-x": {
 		"styleIsolationVersion": "2",
@@ -50,7 +50,11 @@
 	"app-android": {
 		"distribute": {
 			"modules": {
-				"uni-barcode-scanning": {}
+				"uni-barcode-scanning": {},
+				/* 机身方向优先由加速度计给绝对方向，自定义基座/打包需要在这里声明；
+				   陀螺仪作为基座缺加速度计模块时的兜底链路，一并保留。 */
+				"uni-accelerometer": {},
+				"uni-gyroscope": {}
 			},
 			"icons": {
 				"hdpi": "static/icons/inspection-hdpi.png",
@@ -66,7 +70,10 @@
 	"app-ios": {
 		"distribute": {
 			"modules": {
-				"uni-barcode-scanning": {}
+				"uni-barcode-scanning": {},
+				/* 与 Android 保持一致：加速度计给绝对方向，陀螺仪作为缺模块时的兜底链路。 */
+				"uni-accelerometer": {},
+				"uni-gyroscope": {}
 			},
 			"icons": {
 				"appstore": "static/icons/inspection-appstore.png"

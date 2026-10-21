@@ -58,34 +58,46 @@ test('update check logs safe request and full backend response on HTTP 500', asy
   } finally { console.error = original }
 })
 
-/** 只有 HTTP 200 且确实拿到本地文件时才允许触发原生安装。 */
-test('download validates status and path before APK install', async () => {
-  const installed = []
-  let statusCode = 404
-  const service = createAppUpdateService({
-    baseUrl: 'https://example.com',
-    download: async (_url, onProgress) => { onProgress(35); return { statusCode, tempFilePath: '/local/app.apk' } },
-    install: async (path) => { installed.push(path) }
-  })
-  await assert.rejects(() => service.downloadAndInstall('https://example.com/app.apk', () => {}))
-  assert.deepEqual(installed, [])
-  statusCode = 200
-  const progress = []
-  await service.downloadAndInstall('https://example.com/app.apk', (value) => progress.push(value))
-  assert.deepEqual(progress, [35])
-  assert.deepEqual(installed, ['/local/app.apk'])
-})
-
-/** 列表页面将手动入口接入真实更新服务，并确保强更不显示取消键及下载进度。 */
-test('user drawer starts native APK update flow', async () => {
+/** 列表页面把手动入口接入真实匿名接口，强更不显示取消键，确认后把下载直链交给系统浏览器。 */
+test('user drawer starts the browser based update flow', async () => {
   const page = await readFile('pages/report/list.uvue', 'utf8')
   assert.match(page, /@check-for-updates="handleCheckForUpdates"/)
   assert.match(page, /uni\.getAppBaseInfo\(\)\.appVersionCode/)
   assert.match(page, /appUpdateService\.check\(/)
   assert.match(page, /showCancel: !update\.forceUpdate/)
-  assert.match(page, /appUpdateService\.downloadAndInstall\(/)
+  assert.match(page, /if \(result\.confirm\) openUpdateDownloadPage\(update\.downloadUrl\)/)
   assert.doesNotMatch(page, /检查更新功能待接入/)
   const service = await readFile('services/appUpdateService.uts', 'utf8')
-  assert.match(service, /uni\.installApk\(/)
   assert.doesNotMatch(service, /plus\.|document\.|window\.|localStorage/)
+})
+
+/** 确认更新后不得在应用内下载：直接把 downloadUrl 交给系统浏览器，调起失败才提示。 */
+test('list page opens the APK link in the system browser', async () => {
+  const page = await readFile('pages/report/list.uvue', 'utf8')
+  assert.match(page, /import \{ openSystemBrowser \} from '@\/uni_modules\/qcm-open-url'/)
+  assert.match(page, /function openUpdateDownloadPage\(downloadUrl: string\): void/)
+  assert.match(page, /if \(openSystemBrowser\(downloadUrl\)\) return/)
+  assert.match(page, /uni\.showToast\(\{ title: t\('唤起浏览器失败'\), icon: 'none' \}\)/)
+  assert.doesNotMatch(page, /uni\.downloadFile\(/)
+  assert.doesNotMatch(page, /uni\.openURL\s*\(/)
+  assert.doesNotMatch(page, /uni\.showLoading/)
+  assert.doesNotMatch(page, /downloadAndOpen|cancelDownload|cancelAvailableUpdate|UpdateProgressDialog/)
+  const service = await readFile('services/appUpdateService.uts', 'utf8')
+  assert.doesNotMatch(service, /uni\.downloadFile|uni\.openDocument|uni\.installApk|downloadAndOpen|cancelDownload/)
+})
+
+/** uts 插件用 Android ACTION_VIEW 调起系统浏览器，失败返回 false 供页面提示；uni-app x 没有内置 uni.openURL。 */
+test('browser plugin uses the Android ACTION_VIEW intent', async () => {
+  const plugin = await readFile('uni_modules/qcm-open-url/utssdk/app-android/index.uts', 'utf8')
+  assert.match(plugin, /export function openSystemBrowser\(url: string\): boolean/)
+  assert.match(plugin, /const target = url\.trim\(\)/)
+  assert.doesNotMatch(plugin, /String\(url/)
+  assert.match(plugin, /new Intent\(Intent\.ACTION_VIEW, Uri\.parse\(target\)\)/)
+  assert.match(plugin, /UTSAndroid\.getUniActivity\(\)/)
+  assert.match(plugin, /activity\.startActivity\(intent\)/)
+  assert.doesNotMatch(plugin, /plus\./)
+  const manifest = JSON.parse(await readFile('uni_modules/qcm-open-url/package.json', 'utf8'))
+  assert.equal(manifest.id, 'qcm-open-url')
+  const iface = await readFile('uni_modules/qcm-open-url/utssdk/interface.uts', 'utf8')
+  assert.match(iface, /export type OpenSystemBrowser = \(url: string\) => boolean;/)
 })

@@ -1,26 +1,32 @@
 /**
  * 单张照片的回正结果。
- * path 为回正后可入库、可上传的本地路径；不需要回正或回正失败时保持入参原路径，拍摄流程不因此中断。
+ * path 为回正后可入库、可上传的本地路径；回正失败时保持原路径供页面重拍，不能作为已回正照片完成。
  */
 export type MediaUprightResult = {
   /** 回正后的本地图片路径；未旋转或旋转失败时等于入参原路径 */
   path: string,
   /** 该照片需要的回正角度：0 表示原图已经是正向（未改动字节） */
   rotation: number,
-  /** 回正是否失败；失败时页面按原图继续，只提示不阻断 */
+  /** 回正是否失败；失败时页面禁止把原图作为已回正照片回传 */
   failed: boolean
 }
 
 /**
  * 媒体回正服务的依赖注入项：读取方向、方向映射与旋转落盘都由调用方提供，便于在 Node 测试中替换原生实现。
  */
+export type MediaImageInfo = { orientation: string, width: number, height: number }
+
 export type MediaOrientationServiceOptions = {
-  /** 读取图片的 EXIF 方向文本；读取失败时返回空串 */
-  readExifOrientation: (path: string) => Promise<string>,
+  /** 读取图片 EXIF 方向与像素尺寸；失败时拒绝 Promise */
+  readImageInfo: (path: string) => Promise<MediaImageInfo>,
   /** 把 EXIF 方向文本换算成回正角度：注入领域函数，服务本身不复制方向映射规则 */
   resolveUprightRotation: (exifOrientation: string) => number,
   /** 按顺时针角度旋转图片并重新落盘，成功后返回可入库的新路径 */
-  rotateImageToUpright: (path: string, rotation: number) => Promise<string>
+  rotateImageToUpright: (path: string, rotation: number) => Promise<string>,
+  /** EXIF 缺失时结合像素尺寸与快门方向判断，-1 表示无法确认方向 */
+  resolveCaptureRotation?: (exifOrientation: string, shutterRotation: number, width: number, height: number) => number,
+  /** 原始像素已正向但 EXIF 仍要求旋转时，需要清除旧方向标记 */
+  needsOrientationReset?: (exifOrientation: string, pixelRotation: number) => boolean
 }
 
 /**
@@ -31,40 +37,55 @@ export type MediaOrientationServiceOptions = {
  * @param options 依赖注入项：读取方向、方向映射与旋转落盘
  */
 export function createMediaOrientationService(options: MediaOrientationServiceOptions) {
-  const readExifOrientation = options.readExifOrientation
+  const readImageInfo = options.readImageInfo
   const resolveUprightRotation = options.resolveUprightRotation
   const rotateImageToUpright = options.rotateImageToUpright
 
   /**
-   * 读取图片方向；原生接口异常时按「方向未知」处理，不能因为读不到 EXIF 就让拍摄失败。
+   * 读取照片方向与尺寸；原生接口异常时返回 null，避免把无法确认方向的图片误认为已经回正。
    * @param path 本地图片路径
-   * @returns EXIF 方向文本；读取失败返回空串
+   * @returns 图片信息；读取失败返回 null，EXIF 确实缺失时 orientation 为空串
    */
-  async function resolveExifOrientation(path: string): Promise<string> {
+  async function resolveImageInfo(path: string): Promise<MediaImageInfo | null> {
     try {
-      return await readExifOrientation(path)
+      return await readImageInfo(path)
     } catch (error) {
       console.log('read media exif orientation failed', path, (error as Error)?.message ?? '')
-      return ''
+      return null
     }
   }
 
   /**
    * 按设备写入的方向把单张照片回正。
-   * 方向为 0 或读取失败时原样返回原路径；需要回正时按 100 质量旋转落盘；
-   * 旋转失败时同样回退到原路径并标记 failed，由页面提示用户，不阻断后续拍摄与上传。
+   * 方向为 0 时原样返回原路径；方向读取或旋转失败时标记 failed，阻止页面回传未经确认的原图。
    * @param path 相机、相册或系统相机返回的本地图片路径
+   * @param shutterRotation 自定义相机按快门时的机身角度；其他来源不传入
    * @returns 回正结果：可入库路径、该照片需要的回正角度与失败标记
    */
-  async function normalizeUpright(path: string): Promise<MediaUprightResult> {
+  async function normalizeUpright(path: string, shutterRotation: number = -1): Promise<MediaUprightResult> {
     const sourcePath = String(path ?? '').trim()
     if (sourcePath === '') return { path: '', rotation: 0, failed: false }
-    const exifOrientation = await resolveExifOrientation(sourcePath)
-    const rotation = resolveUprightRotation(exifOrientation)
-    if (rotation === 0) return { path: sourcePath, rotation: 0, failed: false }
+    const imageInfo = await resolveImageInfo(sourcePath)
+    if (imageInfo == null) return { path: sourcePath, rotation: 0, failed: true }
+    const rotation = options.resolveCaptureRotation != null
+      ? options.resolveCaptureRotation(imageInfo.orientation, shutterRotation, imageInfo.width, imageInfo.height)
+      : resolveUprightRotation(imageInfo.orientation)
+    if (rotation < 0) return { path: sourcePath, rotation: 0, failed: true }
+    // 已正向的像素若携带残留 EXIF，必须用原生图片接口重写文件，避免相册重复转向。
+    const resetOrientation = shutterRotation >= 0 && options.needsOrientationReset != null
+      && options.needsOrientationReset(imageInfo.orientation, rotation)
+    if (rotation === 0 && !resetOrientation) return { path: sourcePath, rotation: 0, failed: false }
     try {
       const uprightPath = String(await rotateImageToUpright(sourcePath, rotation)).trim()
-      if (uprightPath === '') return { path: sourcePath, rotation: rotation, failed: true }
+      if (uprightPath === '' || uprightPath === sourcePath) return { path: sourcePath, rotation: rotation, failed: true }
+      if (resetOrientation) {
+        // rotate: 0 在某些原生实现中可能只复制 JPEG；确认产物真的移除了旧 EXIF。
+        const uprightInfo = await resolveImageInfo(uprightPath)
+        if (uprightInfo == null || resolveUprightRotation(uprightInfo.orientation) !== 0
+          || uprightInfo.width !== imageInfo.width || uprightInfo.height !== imageInfo.height) {
+          return { path: sourcePath, rotation: 0, failed: true }
+        }
+      }
       return { path: uprightPath, rotation: rotation, failed: false }
     } catch (error) {
       console.log('rotate media upright failed', sourcePath, rotation, (error as Error)?.message ?? '')
@@ -75,43 +96,65 @@ export function createMediaOrientationService(options: MediaOrientationServiceOp
   return { normalizeUpright }
 }
 
+/** 原生相机的绝对路径可能需要 file:// 前缀；仅在原路径失败时尝试 URI，不修改入库路径。 */
+export function nativeImageSourceCandidates(path: string): string[] {
+  const source = path.trim()
+  if (source.startsWith('/') && !source.startsWith('/static/') && !source.startsWith('/uni_modules/')) return [source, `file://${source}`]
+  return [source]
+}
+
 /**
  * 使用 App 运行时环境创建媒体回正服务。
  * 方向来自 uni.getImageInfo 读取的 EXIF（App 端由系统能力解析，不依赖 H5 的 Image 与 canvas）；
  * 像素回正使用 uni.compressImage 的原生旋转能力，按 quality 100 写出 JPEG，避免回正过程二次掉画质。
- * @param resolveUprightRotation 由调用方注入的方向映射函数（domain/imageOrientation.uts 的 resolveUprightRotation）
+ * @param resolveUprightRotation 由调用方注入的 EXIF 方向映射函数
+ * @param resolveCaptureRotation 由调用方注入的 EXIF 优先、快门姿态兜底方向函数
+ * @param needsOrientationReset 由调用方注入的残留 EXIF 检查函数
  */
-export function createAppMediaOrientationService(resolveUprightRotation: (exifOrientation: string) => number) {
+export function createAppMediaOrientationService(resolveUprightRotation: (exifOrientation: string) => number, resolveCaptureRotation: (exifOrientation: string, shutterRotation: number, width: number, height: number) => number, needsOrientationReset?: (exifOrientation: string, pixelRotation: number) => boolean) {
   return createMediaOrientationService({
     resolveUprightRotation: resolveUprightRotation,
-    readExifOrientation: (path: string): Promise<string> => new Promise<string>((resolve) => {
-      try {
-        uni.getImageInfo({
-          src: path,
-          success: (info) => resolve(String(info.orientation ?? '').trim()),
-          fail: (error) => {
-            console.log('get image info failed', path, error?.errMsg ?? '')
-            resolve('')
-          }
-        })
-      } catch (error) {
-        console.log('get image info threw', path, (error as Error)?.message ?? '')
-        resolve('')
+    resolveCaptureRotation: resolveCaptureRotation,
+    needsOrientationReset: needsOrientationReset,
+    readImageInfo: async (path: string): Promise<MediaImageInfo> => {
+      let failure = ''
+      for (const source of nativeImageSourceCandidates(path)) {
+        try {
+          return await new Promise<MediaImageInfo>((resolve, reject) => {
+            uni.getImageInfo({
+              src: source,
+              success: (info) => resolve({ orientation: String(info.orientation ?? '').trim(), width: Number(info.width ?? 0), height: Number(info.height ?? 0) }),
+              fail: (error) => reject(new Error(String(error?.errMsg ?? '读取图片方向失败')))
+            })
+          })
+        } catch (error) {
+          failure = (error as Error)?.message ?? '读取图片方向失败'
+          console.log('get image info failed', source, failure)
+        }
       }
-    }),
-    rotateImageToUpright: (path: string, rotation: number): Promise<string> => new Promise<string>((resolve, reject) => {
-      try {
-        uni.compressImage({
-          src: path,
-          // 回正只改变像素方向，编码质量必须保持 100，否则这一步会二次压缩掉原图画质。
-          quality: 100,
-          rotate: rotation,
-          success: (result) => resolve(String(result.tempFilePath ?? '').trim()),
-          fail: (error) => reject(new Error(error?.errMsg ?? '图片旋转失败'))
-        })
-      } catch (error) {
-        reject(new Error((error as Error)?.message ?? '图片旋转失败'))
+      throw new Error(failure)
+    },
+    rotateImageToUpright: async (path: string, rotation: number): Promise<string> => {
+      let failure = ''
+      for (const source of nativeImageSourceCandidates(path)) {
+        try {
+          const uprightPath = await new Promise<string>((resolve, reject) => {
+            uni.compressImage({
+              src: source,
+              quality: 100,
+              rotate: rotation,
+              success: (result) => resolve(String(result.tempFilePath ?? '').trim()),
+              fail: (error) => reject(new Error(`${String(error?.errMsg ?? '图片旋转失败')} (errCode: ${String(error?.errCode ?? 'unknown')})`))
+            })
+          })
+          if (uprightPath !== '') return uprightPath
+          failure = '图片旋转未生成本地文件'
+        } catch (error) {
+          failure = (error as Error)?.message ?? '图片旋转失败'
+        }
+        console.log('rotate image source failed', source, rotation, failure)
       }
-    })
+      throw new Error(failure)
+    }
   })
 }

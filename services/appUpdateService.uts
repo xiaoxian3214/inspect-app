@@ -12,32 +12,10 @@ function requestUpdate(options: any): Promise<any> {
   })
 }
 
-/** 下载匿名 APK 并将原生任务进度转发给界面；文件只在下载成功后交给安装器。 */
-function downloadApk(url: string, onProgress: (percent: number) => void): Promise<any> {
-  return new Promise<any>((resolve, reject) => {
-    const task = uni.downloadFile({ url, timeout: 300000, success: (response: any) => resolve(response), fail: (error: any) => reject(error) })
-    task.onProgressUpdate((event: any) => onProgress(event.progress))
-  })
-}
-
-/** 调起 Android 系统安装界面；系统要求授权未知来源安装时由安装器提示用户开启。 */
-function installApk(path: string): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    // #ifdef APP-ANDROID
-    uni.installApk({ filePath: path, success: () => resolve(), fail: (error: any) => reject(error) })
-    // #endif
-    // #ifndef APP-ANDROID
-    reject(new Error('仅支持 Android 安装包更新'))
-    // #endif
-  })
-}
-
-/** 创建可注入网络与安装通道的更新服务，便于不依赖原生运行时验证业务流程。 */
+/** 创建可注入匿名请求的更新服务；只查询版本，不在 App 内下载安装包。 */
 export function createAppUpdateService(options: any): any {
   const baseUrl = (options.baseUrl as string).replace(/\/+$/, '')
   const request = options.request ?? requestUpdate
-  const download = options.download ?? downloadApk
-  const install = options.install ?? installApk
 
   /** 使用真实 Android 包版本号和当前语言检查更新；服务端决定是否需要更新及是否强制。 */
   async function check(versionCode: number, locale: string): Promise<any> {
@@ -68,13 +46,5 @@ export function createAppUpdateService(options: any): any {
     return { downloadUrl, forceUpdate: data.forceUpdate === true, versionName: (data.versionName ?? '').toString(), updateNotes: (data.updateNotes ?? '').toString() }
   }
 
-  /** 验证服务器完整返回 APK 后才调用 Android 安装器，HTTP 错误不会被误当作安装包。 */
-  async function downloadAndInstall(url: string, onProgress: (percent: number) => void): Promise<void> {
-    const response = await download(url, onProgress)
-    const path = (response?.tempFilePath ?? '').toString().trim()
-    if (response?.statusCode !== 200 || path === '') throw new Error('更新包下载失败，请重试')
-    await install(path)
-  }
-
-  return { check, downloadAndInstall }
+  return { check }
 }

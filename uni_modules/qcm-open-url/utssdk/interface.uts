@@ -1,0 +1,5 @@
+/**
+ * 用系统浏览器打开外部链接（各平台在 utssdk/app-* 下实现同名函数）。
+ * 返回 false 表示地址非法或系统没有可用的浏览器，调用方据此提示用户。
+ */
+export type OpenSystemBrowser = (url: string) => boolean;

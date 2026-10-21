@@ -1,34 +1,38 @@
 <template>
 	<view class="capture-control-row">
 		<view class="control-side control-side-left">
-			<view class="control-action" @click="handleCancel">
-				<text class="control-label">{{ translateText('取消') }}</text>
+			<view class="control-cell" @click="handleCancel">
+				<view class="cancel-pill">
+					<text class="cancel-pill-text">{{ translateText('取消') }}</text>
+				</view>
 			</view>
-			<view class="control-action" @click="pickAlbum">
-				<image class="control-icon" src="/static/camera/xiangce.png" mode="aspectFit" />
-				<text class="control-label">{{ translateText('相册') }}</text>
-			</view>
-			<view class="control-action" @click="toggleFlash">
+			<view class="control-cell" @click="toggleFlash">
 				<image class="control-icon" :src="flashIcon" mode="aspectFit" />
+				<text class="control-label">{{ translateText('闪光灯') }}</text>
 			</view>
-			<view v-if="zoomLevels.length > 1" class="zoom-chip" @click="cycleZoom">
-				<text class="zoom-chip-text">{{ zoomLabel(activeZoom) }}</text>
+			<view class="control-cell" @click="cycleZoom">
+				<view v-if="zoomLevels.length > 1" class="zoom-circle">
+					<text class="zoom-circle-text">{{ zoomLabel(activeZoom) }}</text>
+				</view>
+				<text v-if="zoomLevels.length > 1" class="control-label">{{ translateText('倍率') }}</text>
 			</view>
 		</view>
 		<view class="shutter-wrap" :class="{ disabled: shutterDisabled }" @click="pressShutter">
 			<image class="shutter-icon" :src="shutterIcon" mode="aspectFit" />
 		</view>
 		<view class="control-side control-side-right">
-			<view class="control-action" @click="switchMode">
+			<view class="control-cell" @click="switchMode">
 				<image class="control-icon" :src="modeIcon" mode="aspectFit" />
 				<text class="control-label">{{ modeLabel }}</text>
 			</view>
-			<view class="control-action" :class="{ disabled: recording }" @click="switchCamera">
+			<view class="control-cell" :class="{ disabled: recording }" @click="switchCamera">
 				<image class="control-icon" src="/static/camera/flip.png" mode="aspectFit" />
 				<text class="control-label">{{ translateText('翻转') }}</text>
 			</view>
-			<view class="control-action" :class="{ disabled: !finishEnabled }" @click="finishCapture">
-				<text class="control-label">{{ translateText('完成') }}</text>
+			<view class="control-cell" :class="{ disabled: !finishEnabled }" @click="finishCapture">
+				<view class="finish-pill">
+					<text class="finish-pill-text">{{ translateText('完成') }}</text>
+				</view>
 			</view>
 		</view>
 	</view>
@@ -48,7 +52,7 @@
 		shutterDisabled: { type: Boolean, default: false },
 		finishEnabled: { type: Boolean, default: false }
 	})
-	const emit = defineEmits(['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera', 'pick-album', 'press-shutter', 'finish-capture'])
+	const emit = defineEmits(['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera', 'press-shutter', 'finish-capture'])
 
 	/** 为原生模板提供可调用的翻译方法。 */
 	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
@@ -84,7 +88,7 @@
 	}
 	/**
 	 * 通知页面把倍率切到下一个档位。
-	 * 倍率按钮只展示当前档位，每点一次循环往后一档；只有一个可用档位时不显示该按钮。
+	 * 圆形倍率按钮只展示当前档位，每点一次循环往后一档；只有一个可用档位时不显示该按钮。
 	 */
 	function cycleZoom(): void {
 		const levels = zoomLevels.value
@@ -100,10 +104,6 @@
 		if (props.recording) return
 		emit('switch-camera')
 	}
-	/** 通知页面从系统相册补充照片。 */
-	function pickAlbum(): void {
-		emit('pick-album')
-	}
 	/** 通知页面按下快门；录像进行中即使限流也可以点击停止。 */
 	function pressShutter(): void {
 		if (props.shutterDisabled && !props.recording) return
@@ -116,18 +116,23 @@
 </script>
 
 <style>
-	/* 相册、取消、闪光灯、倍率、快门、模式、翻转、完成合并成一行：左右两侧等宽，快门保持居中。 */
-	.capture-control-row { height: 124rpx; flex-direction: row; align-items: center; padding: 0 16rpx; background-color: #0f172a; }
-	.control-side { flex: 1; height: 112rpx; flex-direction: row; align-items: center; }
+	/* 取消、闪光灯、倍率、快门、模式、翻转、完成排成一行：左右两组各三个等宽控件，与居中的快门共用一条中心线。 */
+	.capture-control-row { height: 140rpx; flex-direction: row; align-items: center; padding: 0 16rpx; background-color: #0f172a; }
+	.control-side { flex: 1; height: 140rpx; flex-direction: row; align-items: center; }
 	.control-side-left { justify-content: space-between; padding-right: 8rpx; }
 	.control-side-right { justify-content: space-between; padding-left: 8rpx; }
-	.control-action { height: 112rpx; flex-direction: row; align-items: center; justify-content: center; }
-	.control-action.disabled { opacity: 0.4; }
+	/* 控件按固定宽高居中：图标、圆形倍率与胶囊按钮都落在同一条水平中线上，文案统一贴在格子底部。 */
+	.control-cell { position: relative; width: 88rpx; height: 140rpx; align-items: center; justify-content: center; }
+	.control-cell.disabled { opacity: 0.4; }
 	.control-icon { width: 44rpx; height: 44rpx; }
-	.control-label { margin-left: 4rpx; color: #e2e8f0; font-size: 22rpx; }
-	/* 倍率常亮表示可直接点击循环切换。 */
-	.zoom-chip { min-width: 64rpx; height: 44rpx; padding: 0 12rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: #facc15; }
-	.zoom-chip-text { color: #0f172a; font-size: 22rpx; }
+	.control-label { position: absolute; left: 0; right: 0; bottom: 10rpx; color: #cbd5e1; font-size: 20rpx; line-height: 24rpx; text-align: center; }
+	/* 倍率圆形按钮：常亮表示可直接点击循环切换。 */
+	.zoom-circle { width: 44rpx; height: 44rpx; align-items: center; justify-content: center; border-width: 2rpx; border-style: solid; border-color: #facc15; border-radius: 22rpx; background-color: rgba(250, 204, 21, 0.16); }
+	.zoom-circle-text { color: #facc15; font-size: 22rpx; line-height: 24rpx; }
+	.cancel-pill { height: 44rpx; padding: 0 16rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: rgba(255, 255, 255, 0.12); }
+	.cancel-pill-text { color: #e2e8f0; font-size: 22rpx; line-height: 26rpx; }
+	.finish-pill { height: 44rpx; padding: 0 16rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: #facc15; }
+	.finish-pill-text { color: #0f172a; font-size: 22rpx; line-height: 26rpx; }
 	.shutter-wrap { width: 112rpx; height: 112rpx; align-items: center; justify-content: center; }
 	.shutter-wrap.disabled { opacity: 0.4; }
 	.shutter-icon { width: 104rpx; height: 104rpx; }

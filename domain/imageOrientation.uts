@@ -1,3 +1,173 @@
+/** 机身方向未知：陀螺仪模块不可用或尚未收到采样，底部照片退回按文件自身方向展示。 */
+export const DEVICE_ROTATION_UNKNOWN: number = -1
+
+/** 陀螺仪静止噪声死区（弧度/秒）：小于该值的读数按静止处理，避免零偏随时间积分成假转动。 */
+const GYROSCOPE_DEAD_ZONE_RAD_PER_SECOND: number = 0.06
+
+/**
+ * 加速度计基向量的符号标定：uni-app x 真机上报的是重力方向（竖持头朝上时 y 为负），
+ * 乘 -1 换算成「传感器反作用力」语义后，机身顺时针角度才是 atan2(-x, y)。
+ * 真机核对角标原始读数：竖持 y 为负 → 0°；观察值 x 为正 → 90°（landscape）；x 为负 → 270°（reverseLandscape）。
+ */
+export const ACCELEROMETER_READING_SIGN: number = -1
+
+/** 设备接近水平（屏幕朝上或朝下）时 |z| 与向量模长的比值门限：超过它说明重力几乎垂直于屏幕，横竖屏不可判。 */
+const ACCELEROMETER_FLAT_RATIO: number = 0.9
+
+/** 加速度计换档迟滞（度）：越过 45° 中线后还要多转 15° 才改判，与陀螺仪路径保持一致。 */
+const ACCELEROMETER_STEP_THRESHOLD_DEGREES: number = 60
+
+/** 进入下一档所需的越界角度：跨过 45° 分界后再多转 15°，避免临界点来回抖动。 */
+const ROTATION_STEP_THRESHOLD_DEGREES: number = 60
+
+/** 单次采样最长积分时长（秒）：回调卡顿时不能让一次积分直接跨过多档。 */
+const MAX_GYROSCOPE_SAMPLE_SECONDS: number = 0.5
+
+/**
+ * 机身方向跟踪状态：rotation 为量化后的机身顺时针角度，accumulated 为该档位附近的累积角度。
+ */
+export type DeviceRotationState = {
+  /** 已判定的机身顺时针角度：0 / 90 / 180 / 270 */
+  rotation: number,
+  /** 当前档位附近的累积角度，围绕 rotation 波动，用于判断是否跨过下一档 */
+  accumulated: number
+}
+
+/**
+ * 创建机身方向跟踪状态：进入取景页默认按竖持（0°）起算。
+ * @returns 初始状态：档位 0°、累积角 0°
+ */
+export function createDeviceRotationState(): DeviceRotationState {
+  return { rotation: 0, accumulated: 0 }
+}
+
+/**
+ * 用一次陀螺仪采样推进机身方向：把 z 轴角速度积分成顺时针角度，再量化到 90° 档位。
+ * 只忽略落在静止死区内的读数，长时间静止也不会因为零偏漂移出假转动；
+ * 跨过阈值才切换档位，切换后把累积角夹在新档位附近，保证持续转动时还能继续判断方向。
+ * @param state 上一次的跟踪状态
+ * @param zRadiansPerSecond z 轴角速度（弧度/秒），正值为屏幕朝观察者时逆时针旋转
+ * @param elapsedSeconds 距上一次采样的秒数
+ * @returns 新的跟踪状态；读数落在死区内或时长为 0 时原样返回入参状态
+ */
+export function applyGyroscopeSample(state: DeviceRotationState, zRadiansPerSecond: number, elapsedSeconds: number): DeviceRotationState {
+  const rate = Number(zRadiansPerSecond)
+  const safeRate = Number.isNaN(rate) ? 0 : rate
+  const seconds = Number(elapsedSeconds)
+  const safeSeconds = Number.isNaN(seconds) ? 0 : seconds
+  if (safeSeconds <= 0) return state
+  if (Math.abs(safeRate) < GYROSCOPE_DEAD_ZONE_RAD_PER_SECOND) return state
+  const sampledSeconds = safeSeconds > MAX_GYROSCOPE_SAMPLE_SECONDS ? MAX_GYROSCOPE_SAMPLE_SECONDS : safeSeconds
+  // 机身顺时针转动对应 z 轴负角速度，取负号后累积角度与机身顺时针方向一致。
+  const accumulated = state.accumulated - (safeRate * sampledSeconds * 180) / Math.PI
+  const delta = accumulated - state.rotation
+  if (Math.abs(delta) < ROTATION_STEP_THRESHOLD_DEGREES) return { rotation: state.rotation, accumulated: accumulated }
+  const rotation = normalizeRotation(accumulated)
+  return { rotation: rotation, accumulated: clampRotationAccumulation(accumulated, rotation) }
+}
+
+/**
+ * 把累积角度夹在已判定档位 ±135° 内，防止一次误判后要反向补很久才能回到正确档位。
+ * @param accumulated 当前累积角度
+ * @param rotation 已判定档位
+ * @returns 夹紧后的累积角度
+ */
+function clampRotationAccumulation(accumulated: number, rotation: number): number {
+  const lowerBound = rotation - 135
+  const upperBound = rotation + 135
+  if (accumulated < lowerBound) return lowerBound
+  if (accumulated > upperBound) return upperBound
+  return accumulated
+}
+
+/**
+ * 取景页方向角标文案：按当前机身角度给出「横屏 / 竖屏」，传感器不可用时说明方向未知。
+ * 90°/270° 视为横屏（含倒竖持 180° 仍算竖屏），负角度代表陀螺仪没有给出可用方向。
+ * @param rotation 机身顺时针角度，未知时为 DEVICE_ROTATION_UNKNOWN
+ * @returns 中文文案键，由调用页按当前语言翻译
+ */
+export function resolveDeviceOrientationLabel(rotation: number): string {
+  if (rotation < 0) return '方向未知'
+  const quantized = normalizeRotation(rotation)
+  if (quantized === 90 || quantized === 270) return '横屏'
+  return '竖屏'
+}
+
+/**
+ * 把陀螺仪启动异常归类成可直接展示的原因：基座缺模块与设备启动失败要能一眼区分。
+ * @param message 启动异常或失败回调给出的 errMsg
+ * @returns 中文文案键，由调用页按当前语言翻译
+ */
+export function resolveGyroscopeFailureLabel(message: string): string {
+  const detail = String(message ?? '')
+  if (detail.indexOf('not registered') >= 0) return '陀螺仪未注册'
+  return '陀螺仪启动失败'
+}
+
+/**
+ * 用一次加速度计采样判定机身相对竖持方向的顺时针角度。
+ * 重力方向是绝对量，所以进入取景页第一帧就能给出方向，不需要像陀螺仪那样从 0° 起积分、也不会漂移；
+ * 设备接近水平时重力几乎垂直于屏幕、横竖不可判，此时保持上一档而不是误报竖屏。
+ * @param x X 轴加速度
+ * @param y Y 轴加速度
+ * @param z Z 轴加速度
+ * @param previousRotation 上一次判定结果，未知时传 DEVICE_ROTATION_UNKNOWN
+ * @param readingSign 基向量符号标定，见 ACCELEROMETER_READING_SIGN
+ * @returns 机身顺时针角度 0/90/180/270；读数不可用或设备接近水平时原样返回 previousRotation
+ */
+export function resolveAccelerometerRotation(x: number, y: number, z: number, previousRotation: number, readingSign: number = ACCELEROMETER_READING_SIGN): number {
+  const parsedSign = Number(readingSign)
+  const sign = Number.isNaN(parsedSign) ? 1 : parsedSign
+  const parsedX = Number(x)
+  const parsedY = Number(y)
+  const parsedZ = Number(z)
+  const rawX = (Number.isNaN(parsedX) ? 0 : parsedX) * sign
+  const rawY = (Number.isNaN(parsedY) ? 0 : parsedY) * sign
+  const rawZ = (Number.isNaN(parsedZ) ? 0 : parsedZ) * sign
+  const magnitude = Math.sqrt(rawX * rawX + rawY * rawY + rawZ * rawZ)
+  if (magnitude <= 0) return previousRotation
+  // 重力几乎垂直于屏幕（大约 26° 以内接近平放）时无法区分横竖，保持上一档而不是改判。
+  if (Math.abs(rawZ) >= ACCELEROMETER_FLAT_RATIO * magnitude) return previousRotation
+  // 屏幕向下方向就是重力方向：竖持为 +y、顺时针转 90° 为 -x，因此顺时针角度为 atan2(-x, y)。
+  const angle = normalizeDegrees(Math.atan2(-rawX, rawY) * 180 / Math.PI)
+  // 迟滞按连续角度比较：刚越过 45° 中线不换档，越过 60° 才改判，避免临界点抖动。
+  if (previousRotation >= 0 && angularDistanceDegrees(angle, previousRotation) < ACCELEROMETER_STEP_THRESHOLD_DEGREES) return previousRotation
+  return normalizeRotation(angle)
+}
+
+/**
+ * 把加速度计启动异常归类成可直接展示的原因：基座缺模块与设备启动失败要能一眼区分。
+ * @param message 启动异常或失败回调给出的 errMsg
+ * @returns 中文文案键，由调用页按当前语言翻译
+ */
+export function resolveAccelerometerFailureLabel(message: string): string {
+  const detail = String(message ?? '')
+  if (detail.indexOf('not registered') >= 0) return '加速度计未注册'
+  return '加速度计启动失败'
+}
+
+/**
+ * 把任意角度归一到 [0, 360)。
+ * @param angle 原始角度
+ * @returns 归一后的角度
+ */
+function normalizeDegrees(angle: number): number {
+  const parsedAngle = Number(angle)
+  const safeAngle = Number.isNaN(parsedAngle) ? 0 : parsedAngle
+  return ((safeAngle % 360) + 360) % 360
+}
+
+/**
+ * 计算两个角度之间的最小夹角，供换档迟滞判断使用；0° 与 350° 只差 10° 而不是 350°。
+ * @param first 角度一
+ * @param second 角度二
+ * @returns 0-180 之间的最小夹角
+ */
+function angularDistanceDegrees(first: number, second: number): number {
+  const distance = Math.abs(normalizeDegrees(first) - normalizeDegrees(second))
+  return distance > 180 ? 360 - distance : distance
+}
+
 /**
  * 把任意角度归一到 0/90/180/270 四档。
  * 相机与图片信息可能上报负角度或超过 360 的角度，先收敛成可直接用于旋转的最小角度。
@@ -11,17 +181,74 @@ export function normalizeRotation(rotation: number): number {
 }
 
 /**
+ * 把机身角度换算成底部缩略图的旋转角度。
+ * 成片已在拍摄时按快门姿态回正（见 resolveCaptureRotation），因此缩略图只需要按当前握持角反向补角，
+ * 竖着拿手机时是 0、转动手机时跟着补回来，任何姿势下都看到正向图片；文件字节始终不变。
+ * @param deviceRotation 观看时的机身顺时针角度；-1 代表传感器尚未报告
+ * @returns 内容顺时针旋转角度
+ */
+export function resolveThumbnailRotation(deviceRotation: number): number {
+  if (deviceRotation < 0) return 0
+  return (360 - normalizeRotation(deviceRotation)) % 360
+}
+
+/**
+ * 原始像素已经朝向快门方向却带有非正向 EXIF 时，判断是否必须重新编码以清除旧方向标记。
+ * 否则相册在竖屏查看横拍照片时仍会按照旧 EXIF 把它转成竖图。
+ * @param exifOrientation 原始图片 EXIF 方向
+ * @param pixelRotation 已确定的像素回正角度
+ * @returns 像素无需旋转但 EXIF 仍要求旋转时为 true
+ */
+export function needsOrientationReset(exifOrientation: string, pixelRotation: number): boolean {
+  return pixelRotation === 0 && resolveUprightRotation(exifOrientation) !== 0
+}
+
+/**
+ * 决定一张成片需要顺时针旋转多少度才能「拍完即正」：成品在任何竖屏展示（大图预览、详情页、PDF）里都是正的。
+ *
+ * 依据（uni-component 内置相机 app-android/CameraImpl.kt 实测源码）：
+ * takePhoto 先用 image.imageInfo.rotationDegrees 顺时针转像素，而 ImageCapture 的
+ * setTargetRotation(getDisplayRotation()) 取的是 display.rotation；本项目页面锁定竖屏，
+ * display.rotation 恒为 0，所以 rotationDegrees 恒等于传感器朝向（后摄常见 90）。
+ * 该转动只抵消传感器装配、不抵消握持姿态——握持姿态本来就已经体现在传感器帧里，
+ * 因此插件产出的竖图成片相对世界是正的，但相对「竖着拿手机」还差一个按快门时的机身角度。
+ * 结论：插件已转正的成片（竖图像素）再顺时针补一次快门姿态，照片就与手持姿势对齐——横拍得到横图、
+ * 内容朝上，竖着拿手机预览也是正的；竖持时角度为 0，不重新编码、不损画质。
+ * 只有像素仍是传感器原始帧（横图像素，插件未转）时才按「传感器朝向 + 快门姿态」补一次。
+ * @param exifOrientation 相机写入的 EXIF 方向
+ * @param shutterRotation 快门机身顺时针角度；-1 表示系统相机等未知姿态
+ * @param width 原图像素宽度
+ * @param height 原图像素高度
+ * @returns 顺时针回正角度；-1 表示无法确认回正方向，禁止按原图完成
+ */
+export function resolveCaptureRotation(exifOrientation: string, shutterRotation: number, width: number, height: number): number {
+  const orientation = String(exifOrientation ?? '').trim().toLowerCase()
+  const hasExif = orientation !== '' && orientation !== 'unknown' && orientation !== 'undefined'
+  const exifRotation = hasExif ? resolveUprightRotation(orientation) : 0
+  // 系统相机等来源自带可信 EXIF，姿态未知，保持按 EXIF 回正。
+  if (shutterRotation < 0) return exifRotation
+  const shutter = normalizeRotation(shutterRotation)
+  if (width <= 0 || height <= 0) return hasExif ? exifRotation : -1
+  if (width === height) return hasExif ? exifRotation : -1
+  // 竖图像素：插件已转过的成片，补上快门姿态即与手持姿势对齐（竖持为 0，不重编码）。
+  if (height > width) return shutter
+  // 横图像素：拿到的是传感器原始帧，按传感器朝向（EXIF 90/270 可信，否则常见后摄 90）加快门姿态补一次。
+  const sensorRotation = exifRotation === 90 || exifRotation === 270 ? exifRotation : 90
+  return normalizeRotation(sensorRotation + shutter)
+}
+
+/**
  * 把图片的 EXIF 方向换算成「回正需要顺时针旋转的角度」。
  * 相机把机身姿态写进照片的 EXIF 方向：left/right 表示像素横向存放，需要转 90/270 度才能正向展示。
- * 大小写、镜像后缀与 rotate-90 这类等价写法统一按同一档处理，未知方向按不需要旋转处理。
+ * 大小写、镜像后缀、EXIF 数字 3/6/8 与 rotate-90 这类等价写法统一按同一档处理。
  * @param exifOrientation 图片信息里的方向文本，如 up/down/left/right 及其镜像变体
  * @returns 回正照片需要顺时针旋转的角度：0 / 90 / 180 / 270
  */
 export function resolveExifOrientationRotation(exifOrientation: string): number {
   const normalizedOrientation = String(exifOrientation ?? '').trim().toLowerCase()
-  if (normalizedOrientation === 'right' || normalizedOrientation === 'right-mirrored' || normalizedOrientation === 'rotate-90') return 90
-  if (normalizedOrientation === 'down' || normalizedOrientation === 'down-mirrored' || normalizedOrientation === 'rotate-180') return 180
-  if (normalizedOrientation === 'left' || normalizedOrientation === 'left-mirrored' || normalizedOrientation === 'rotate-270') return 270
+  if (normalizedOrientation === 'right' || normalizedOrientation === 'right-mirrored' || normalizedOrientation === 'rotate-90' || normalizedOrientation === '6') return 90
+  if (normalizedOrientation === 'down' || normalizedOrientation === 'down-mirrored' || normalizedOrientation === 'rotate-180' || normalizedOrientation === '3') return 180
+  if (normalizedOrientation === 'left' || normalizedOrientation === 'left-mirrored' || normalizedOrientation === 'rotate-270' || normalizedOrientation === '8') return 270
   return 0
 }
 

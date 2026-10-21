@@ -1,0 +1,25 @@
+import Intent from 'android.content.Intent';
+import Uri from 'android.net.Uri';
+
+/**
+ * 用系统默认浏览器打开外部链接：交给 Android ACTION_VIEW，由浏览器接管页面浏览与文件下载。
+ * @param url 需要打开的 http/https 链接，例如更新包下载直链
+ * @returns 成功调起浏览器返回 true；地址非法或系统没有可用浏览器返回 false
+ */
+export function openSystemBrowser(url: string): boolean {
+	const target = url.trim();
+	// 只放行 http/https，避免通过自定义 scheme 打开任意应用。
+	if (!target.startsWith('http://') && !target.startsWith('https://'))
+		return false;
+	const activity = UTSAndroid.getUniActivity();
+	if (activity == null)
+		return false;
+	try {
+		const intent = new Intent(Intent.ACTION_VIEW, Uri.parse(target));
+		activity.startActivity(intent);
+		return true;
+	} catch (error) {
+		console.warn('[qcm-open-url] 系统未能打开外部链接', { url: target, error });
+		return false;
+	}
+}

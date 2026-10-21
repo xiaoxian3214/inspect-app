@@ -2,9 +2,11 @@
 	<view class="camera-page">
 		<TopSafeArea background-color="#000000" />
 		<view class="preview-wrap">
-			<camera id="camera" class="camera-preview" :resolution="'high'" :device-position="devicePosition" :flash="flashMode"
-				photo-resolution="high" @initdone="handleCameraInitDone" @error="handleCameraError" @stop="handleCameraStop">
-			</camera>
+			<view class="preview-frame" :style="previewFrameStyle">
+				<camera v-if="cameraMounted" :key="cameraSession" id="camera" class="camera-preview" :resolution="'high'" :device-position="devicePosition" :flash="flashMode"
+					photo-resolution="original" :frame-size="'large'" @initdone="handleCameraInitDone" @error="handleCameraError" @stop="handleCameraStop">
+				</camera>
+			</view>
 			<view class="preview-overlay">
 				<text v-if="previewStateText !== ''" class="preview-state-text">{{ previewStateText }}</text>
 				<view v-if="recording" class="recording-badge">
@@ -12,17 +14,23 @@
 					<text class="recording-label">{{ recordingLabel }}</text>
 				</view>
 			</view>
+			<view class="orientation-badge">
+				<text class="orientation-badge-state">{{ orientationStateLabel }}</text>
+				<text v-if="orientationAngleLabel !== ''" class="orientation-badge-angle">{{ orientationAngleLabel }}</text>
+				<text v-if="orientationSampleLabel !== ''" class="orientation-badge-sample">{{ orientationSampleLabel }}</text>
+				<text v-if="orientationDiagnosticText !== ''" class="orientation-badge-reason">{{ orientationDiagnosticText }}</text>
+			</view>
 			<view class="system-camera-entry">
 				<AppButton variant="nav" :disabled="systemCameraDisabled" @press="captureFromSystemCamera">{{ translateText('系统拍照') }}</AppButton>
 			</view>
 		</view>
-		<view class="capture-panel" :style="{ paddingBottom: panelBottomPadding }">
+		<view class="capture-panel">
 			<CaptureControlBar :flash-on="flashOn" :zoom-options="zoomOptions" :active-zoom="activeZoom" :capture-mode="captureMode"
 				:recording="recording" :shutter-disabled="shutterDisabled" :finish-enabled="captureEnabled"
 				@cancel-capture="handleCancelCapture" @toggle-flash="toggleFlash" @change-zoom="applyZoom"
 				@switch-capture-mode="switchCaptureMode" @switch-camera="switchCamera"
-				@pick-album="captureFromAlbum" @press-shutter="takePhoto" @finish-capture="handleFinishCapture" />
-			<CaptureStrip :items="captureItems" @remove-photo="removeCapture" @preview-photo="openCapturePreview" />
+				@press-shutter="takePhoto" @finish-capture="handleFinishCapture" />
+			<CaptureStrip :items="captureItems" :device-rotation="deviceRotation" @remove-photo="removeCapture" @preview-photo="openCapturePreview" />
 		</view>
 		<CapturePreview :visible="showCapturePreview" :source="selectedCapturePath" :index="selectedCaptureIndex"
 			:is-video="selectedCaptureIsVideo" :saving="previewEditSaving"
@@ -32,27 +40,32 @@
 
 <script setup lang="uts">
 	import { computed, onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
-	import { onLoad } from '@dcloudio/uni-app'
+	import { onHide, onLoad, onShow } from '@dcloudio/uni-app'
 	import { t } from '../../i18n/index.uts'
 	import TopSafeArea from '../../components/common/TopSafeArea.uvue'
 	import AppButton from '../../components/common/AppButton.uvue'
 	import CaptureStrip from '../../components/camera/CaptureStrip.uvue'
 	import CapturePreview from '../../components/camera/CapturePreview.uvue'
 	import CaptureControlBar from '../../components/camera/CaptureControlBar.uvue'
-	import { appendCapturePaths, buildCameraCaptureEventName, buildCameraZoomOptions, formatVideoDurationLabel, replaceCapturePath } from '../../domain/cameraCapture.uts'
+	import { appendCapturePaths, buildCameraCaptureEventName, buildCameraZoomOptions, DEFAULT_CAPTURE_ASPECT_RATIO, formatVideoDurationLabel, replaceCapturePath, resolveCaptureAspectRatio, resolveCaptureFrameSize } from '../../domain/cameraCapture.uts'
 	import { isDeviceCaptureCancelledMessage, normalizeDeviceCapturePaths } from '../../domain/deviceCapture.uts'
-	import { resolveUprightRotation } from '../../domain/imageOrientation.uts'
+	import { applyGyroscopeSample, createDeviceRotationState, DEVICE_ROTATION_UNKNOWN, needsOrientationReset, resolveAccelerometerFailureLabel, resolveAccelerometerRotation, resolveCaptureRotation, resolveDeviceOrientationLabel, resolveGyroscopeFailureLabel, resolveUprightRotation } from '../../domain/imageOrientation.uts'
 	import { MAX_VIDEO_DURATION_SECONDS } from '../../domain/photoUploadPolicy.uts'
-	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
 	import { createAppMediaPersistenceService } from '../../services/mediaPersistenceService.uts'
-	import { createAppMediaOrientationService } from '../../services/mediaOrientationService.uts'
+	import { createAppMediaOrientationService, nativeImageSourceCandidates } from '../../services/mediaOrientationService.uts'
 
-	/** 系统相册单次最多可选张数（uni.chooseImage 的默认上限），只影响一次选择，不限制累计拍摄张数。 */
-	const albumPickOnceCount = 9
-	/** 等待相机 initdone 的兜底时长；超过后提示用户检查相机权限。 */
+	/** 等待相机 initdone 的兜底时长；超时只提示仍在启动，不能据此判断权限状态。 */
 	const CAMERA_READY_TIMEOUT_MS = 4000
+	/** 底部面板高度（rpx）：控制条 140 + 照片区 168；照片条贴屏幕最下方，不再留底部安全区。 */
+	const CAPTURE_PANEL_HEIGHT_RPX = 308
 	/** 录像启动兜底时长：原生回调不返回时也必须恢复快门，避免取景页整体失去响应。 */
 	const VIDEO_START_TIMEOUT_MS = 4000
+	/** 陀螺仪首帧等待时长：超时没有任何采样即可判定设备或基座没有可用的陀螺仪。 */
+	const GYROSCOPE_SILENCE_TIMEOUT_MS = 1200
+	/** 加速度计首帧等待时长：超时没有任何采样即判定设备或基座没有加速度计，改由陀螺仪兜底。 */
+	const ACCELEROMETER_SILENCE_TIMEOUT_MS = 1200
+	/** 原始轴读数刷新间隔（毫秒）：核对符号标定要看得见实时值，又不希望每个采样都重渲染原生视图。 */
+	const SENSOR_SAMPLE_LABEL_INTERVAL_MS = 1000
 	/** 录像收尾兜底时长：停止录像的回调不返回时清空录制状态并提示重试。 */
 	const VIDEO_STOP_TIMEOUT_MS = 6000
 
@@ -62,6 +75,13 @@
 	const flashMode = ref('off')
 	const captureMode = ref('photo')
 	const cameraReady = ref(false)
+	/** 系统拍照回来后强制重建 camera 原生节点，重新取得摄像头独占资源。 */
+	const cameraMounted = ref(true)
+	const cameraSession = ref(0)
+	/** 外部系统相机打开时暂停自定义取景与就绪超时判断。 */
+	let externalCameraPending = false
+	/** 系统拍照的回调可能先于页面重新可见，禁止在外部相机还占用镜头时恢复。 */
+	let cameraPageVisible = true
 	const cameraErrorText = ref('')
 	const capturing = ref(false)
 	const recording = ref(false)
@@ -73,8 +93,25 @@
 	const maxZoomLevel = ref(1)
 	const zoomOptions = ref([] as number[])
 	const capturedPaths = ref([] as string[])
+	/** 已拍但像素回正尚未完成的本地照片；处理完前不显示原图预览。 */
+	const pendingUprightPaths = ref([] as string[])
+	/** 原图尚未成功回正的路径；这些照片不得作为最终拍摄结果回传。 */
+	const failedUprightPaths = ref([] as string[])
 	const capturedMediaTypes = ref([] as string[])
 	const capturedDurations = ref([] as number[])
+	/**
+	 * 机身相对竖持方向的顺时针角度，供缩略图动态转正与快门姿态快照使用。
+	 * -1 表示方向传感器不可用（加速度计与陀螺仪都拿不到读数），底部照片退回按文件自身方向展示。
+	 */
+	const deviceRotation = ref(DEVICE_ROTATION_UNKNOWN)
+	/** 方向诊断文案键：为空表示方向链路正常，否则在角标上说明为什么方向是未知的。 */
+	const orientationDiagnostic = ref('')
+	/** 最近一次加速度计原始读数文案（x / y）：真机核对轴向符号标定用，按固定间隔节流刷新。 */
+	const orientationSampleLabel = ref('')
+	/** 取景框使用的成片比例（宽/高）：默认系统相机的 4:3，首张成片读出真实像素后按设备实际输出校正。 */
+	const captureAspectRatio = ref(DEFAULT_CAPTURE_ASPECT_RATIO)
+	/** 成片比例是否已由真实照片校正过：只成功校正一次，避免每张照片都读取图片信息。 */
+	let captureAspectRatioResolved = false
 	const showCapturePreview = ref(false)
 	const selectedCaptureIndex = ref(-1)
 	const previewEditSaving = ref(false)
@@ -88,20 +125,19 @@
 	let resultEmitted = false
 	/**
 	 * 媒体落盘服务：拍摄过程中只保留相机返回的临时路径，用户点击“完成”时统一结算为本地路径。
-	 * 系统相机、相册与编辑导出的沙盒内文件会复制到 USER_DATA_PATH/inspection_media；
+	 * 系统相机与编辑导出的沙盒内文件会复制到 USER_DATA_PATH/inspection_media；
 	 * 应用内相机与录像写在外置缓存的原图不复制、不二次编码，直接以原始路径入库，画质保持原图。
 	 */
 	const mediaPersistenceService = createAppMediaPersistenceService()
 	/**
 	 * 媒体回正服务：读取照片 EXIF 里的机身姿态并把像素转正。
 	 * 回正后的文件不再依赖各端是否识别 EXIF，服务端与 PDF 里同样正向展示。
-	 * 注意：当前自定义调试基座未注册 uni-accelerometer 模块，方向只能来自照片自身的 EXIF，
-	 * 不能再依赖重力传感器实时判断手机姿态（进入取景页会抛 UTS module _uni-accelerometer is not registered）。
+	 * EXIF 缺失时使用传感器跟踪到的快门角度兜底；方向不可用时角度为 -1，退回纯 EXIF 判定。
 	 */
-	const mediaOrientationService = createAppMediaOrientationService(resolveUprightRotation)
+	const mediaOrientationService = createAppMediaOrientationService(resolveUprightRotation, resolveCaptureRotation, needsOrientationReset)
 	/**
 	 * 回正任务串行链：null 表示当前没有排队任务。
-	 * 相册一次能选多张，串行处理可以避免多张原图同时解码进内存导致 Android 闪退。
+	 * 连续拍摄后回正任务串行处理，避免多张原图同时解码进内存导致 Android 闪退。
 	 */
 	let uprightChain: Promise<void> | null = null
 	/** 回正失败提示只弹一次：方向能力失败通常是整批共用同一原因，避免连续弹窗打断拍摄。 */
@@ -109,9 +145,28 @@
 	let readyFallbackTimerId: number | null = null
 	let recordingTimerId: number | null = null
 	let videoWatchdogTimerId: number | null = null
-
-	/** 底部操作面板的安全区留白。 */
-	const panelBottomPadding = safeBottomPaddingPx(12)
+	/** 当前方向来源：空串表示尚未启动，accelerometer 加速度计（绝对方向），gyroscope 陀螺仪兜底（相对转动）。 */
+	let activeRotationSensor = ''
+	/** 加速度计是否已成功开始监听；失败或一直收不到数据时自动退回陀螺仪。 */
+	let accelerometerTracking = false
+	/** 等待加速度计首个采样的兜底定时器：超时说明设备或基座没有可用的加速度计。 */
+	let accelerometerSilenceTimerId: number | null = null
+	/** 已收到的加速度计采样数：0 表示监听期间一直没数据，用于区分「没有传感器」和「方向判错」。 */
+	let accelerometerSampleCount = 0
+	/** 加速度计让位给陀螺仪的原因文案键：两层方向链路都失败时显示在角标上。 */
+	let accelerometerDiagnosticKey = ''
+	/** 最近一次刷新原始读数文案的时间戳（毫秒）。 */
+	let lastSampleLabelAt = 0
+	/** 陀螺仪方向跟踪状态：加速度计不可用时按角速度积分判断机身转到哪一档。 */
+	let deviceRotationState = createDeviceRotationState()
+	/** 上一次陀螺仪采样时间戳（毫秒）；0 表示还没有可用采样，首帧不积分。 */
+	let lastGyroscopeSampleAt = 0
+	/** 陀螺仪是否已成功开始监听；失败时保持未知方向，不打断拍照。 */
+	let gyroscopeTracking = false
+	/** 启动后等待首个采样的兜底定时器：超时仍无数据说明设备（如模拟器）没有陀螺仪。 */
+	let gyroscopeSilenceTimerId: number | null = null
+	/** 已收到的陀螺仪采样数：0 表示监听期间一直没数据，用于区分「没有传感器」和「方向判错」。 */
+	let gyroscopeSampleCount = 0
 
 	/** 为原生模板提供可调用的翻译方法。 */
 	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
@@ -125,10 +180,10 @@
 		if (capturing.value || videoStarting.value || previewEditSaving.value || finishing.value) return true
 		return !cameraReady.value
 	})
-	/** 完成按钮是否可用：至少拍到一条媒体，且录像已结束。 */
-	const captureEnabled = computed((): boolean => capturedPaths.value.length > 0 && !recording.value && !finishing.value && !previewEditSaving.value)
-	/** 右上角“系统拍照”入口是否禁用：应用内相机正在拍照/录像或正在落盘时禁止跳出应用，避免取景会话被系统相机打断。 */
-	const systemCameraDisabled = computed((): boolean => capturing.value || recording.value || videoStarting.value || finishing.value || previewEditSaving.value)
+	/** 完成按钮只在全部照片方向确认无误且录像结束后可用。 */
+	const captureEnabled = computed((): boolean => capturedPaths.value.length > 0 && pendingUprightPaths.value.length === 0 && failedUprightPaths.value.length === 0 && !recording.value && !finishing.value && !previewEditSaving.value)
+	/** 系统拍照入口在外部相机会话及本次拍摄未结束时保持禁用，避免重复抢占镜头。 */
+	const systemCameraDisabled = computed((): boolean => externalCameraPending || capturing.value || recording.value || videoStarting.value || finishing.value || previewEditSaving.value)
 	/** 闪光灯开关状态，开启时常亮补光。 */
 	const flashOn = computed((): boolean => flashMode.value === 'torch')
 	/** 取景状态文案：相机就绪时不显示任何提示。 */
@@ -139,11 +194,29 @@
 	})
 	/** 录像走秒文案，与 60 秒上限一起展示。 */
 	const recordingLabel = computed((): string => `${formatVideoDurationLabel(recordedSeconds.value)} / ${formatVideoDurationLabel(MAX_VIDEO_DURATION_SECONDS)}`)
-	/** 传给底部照片区的媒体列表，路径、类型与时长一一对应；路径已按设备方向回正。 */
+	/** 左上角方向角标：横屏 / 竖屏，方向传感器不可用时明确显示方向未知。 */
+	const orientationStateLabel = computed((): string => translateText(resolveDeviceOrientationLabel(deviceRotation.value)))
+	/** 角标附带量化角度，便于核对方向是否真的在更新；方向未知时不显示。 */
+	const orientationAngleLabel = computed((): string => deviceRotation.value >= 0 ? `${deviceRotation.value}°` : '')
+	/** 方向未知时在角标上说明原因：基座缺模块、启动失败，还是监听成功但收不到数据。 */
+	const orientationDiagnosticText = computed((): string => orientationDiagnostic.value === '' ? '' : translateText(orientationDiagnostic.value))
+	/**
+	 * 取景框样式：按成片比例铺满取景区（短边贴边、长边溢出），溢出的部分由取景区裁掉，
+	 * 因此既不拉伸取景画面也不留黑边；可用高度扣掉顶部安全区与底部面板（控制条 + 照片区）。
+	 */
+	const previewFrameStyle = computed((): UTSJSONObject => {
+		const info = uni.getWindowInfo()
+		const insets = info.safeAreaInsets
+		const availableHeight = info.windowHeight - insets.top - uni.rpx2px(CAPTURE_PANEL_HEIGHT_RPX)
+		const size = resolveCaptureFrameSize(info.windowWidth, availableHeight, captureAspectRatio.value)
+		return { width: `${size.width}px`, height: `${size.height}px` }
+	})
+
+	/** 传给底部照片区的媒体列表；未完成回正的照片只显示占位，不泄露歪图预览。 */
 	const captureItems = computed((): UTSJSONObject[] => capturedPaths.value.map((path: string, index: number): UTSJSONObject => {
 		const mediaType = index < capturedMediaTypes.value.length ? capturedMediaTypes.value[index] : 'image'
 		const durationSeconds = index < capturedDurations.value.length ? capturedDurations.value[index] : 0
-		return { path: path, mediaType: mediaType, durationSeconds: durationSeconds }
+		return { path: path, mediaType: mediaType, durationSeconds: durationSeconds, processing: pendingUprightPaths.value.includes(path), failed: failedUprightPaths.value.includes(path) }
 	}))
 
 	/** 清理相机就绪兜底计时器。 */
@@ -154,13 +227,14 @@
 		}
 	}
 
-	/** 启动相机就绪兜底计时：部分机型不回调 initdone，超时后给出权限提示。 */
+	/** 启动取景就绪兜底：短暂没有 initdone 不能推断为权限被拒，等待原生错误事件给出具体原因。 */
 	function armCameraReadyFallback(): void {
 		clearReadyFallbackTimer()
+		if (disposed || externalCameraPending || !cameraMounted.value) return
 		readyFallbackTimerId = setTimeout(() => {
 			readyFallbackTimerId = null
-			if (disposed || cameraReady.value) return
-			cameraErrorText.value = t('无法使用相机，请检查系统相机权限')
+			if (disposed || externalCameraPending || cameraReady.value || !cameraMounted.value) return
+			cameraErrorText.value = t('相机仍在启动，请稍候')
 		}, CAMERA_READY_TIMEOUT_MS)
 	}
 
@@ -200,22 +274,24 @@
 	/**
 	 * 按设备写入的 EXIF 方向回正单张照片：需要旋转时把像素真正转正并原位替换清单路径。
 	 * 结果按路径回查当前下标，用户在等待期间删除照片也不会写错位置；
-	 * 失败时保留原图并只提示一次，绝不因为方向能力异常阻断拍摄。
+	 * 失败时暂存原图以便用户删除或重拍，但禁止把它作为已回正照片完成保存。
 	 * @param path 原始图片路径
+	 * @param shutterRotation 自定义快门时记录的机身角度，其他来源传 -1
 	 */
-	async function uprightCapturedMedia(path: string): Promise<void> {
+	async function uprightCapturedMedia(path: string, shutterRotation: number): Promise<void> {
 		if (disposed) return
-		const result = await mediaOrientationService.normalizeUpright(path)
+		const result = await mediaOrientationService.normalizeUpright(path, shutterRotation)
 		if (disposed) return
 		if (result.path !== path) {
 			const currentIndex = capturedPaths.value.indexOf(path)
 			if (currentIndex >= 0) capturedPaths.value = replaceCapturePath(capturedPaths.value, currentIndex, result.path)
 		}
-		if (result.failed) {
+		if (result.failed && capturedPaths.value.includes(path)) {
+			if (!failedUprightPaths.value.includes(path)) failedUprightPaths.value = [...failedUprightPaths.value, path]
 			console.log('upright captured media failed', path)
 			if (!uprightFailureNotified) {
 				uprightFailureNotified = true
-				uni.showToast({ title: t('图片方向处理失败，已按原图保存'), icon: 'none' })
+				uni.showToast({ title: t('图片方向处理失败，请删除照片重拍'), icon: 'none' })
 			}
 		}
 	}
@@ -223,29 +299,35 @@
 	/**
 	 * 执行一次回正任务并吞掉意外异常：串行链一旦 reject，“完成”时的等待就会中断，拍摄结果无法结算。
 	 * @param path 需要回正的本地图片路径
+	 * @param shutterRotation 快门角度；系统相机传 -1
 	 */
-	async function runUprightTask(path: string): Promise<void> {
+	async function runUprightTask(path: string, shutterRotation: number): Promise<void> {
 		try {
-			await uprightCapturedMedia(path)
+			await uprightCapturedMedia(path, shutterRotation)
 		} catch (error) {
 			console.log('run upright task failed', path, (error as Error)?.message ?? '')
+			if (!disposed && capturedPaths.value.includes(path) && !failedUprightPaths.value.includes(path)) failedUprightPaths.value = [...failedUprightPaths.value, path]
+		} finally {
+			if (!disposed) pendingUprightPaths.value = pendingUprightPaths.value.filter((pendingPath: string): boolean => pendingPath !== path)
 		}
 	}
 
 	/**
 	 * 把照片排入回正队列：已有任务时追加到链尾串行执行，队列空闲时立即开始。
-	 * @param path 相机、相册或系统相机返回的本地图片路径
+	 * @param path 自定义相机或系统相机返回的本地图片路径
+	 * @param shutterRotation 自定义相机快门角度，其他来源传 -1
 	 */
-	function enqueueMediaUpright(path: string): void {
+	function enqueueMediaUpright(path: string, shutterRotation: number): void {
 		if (disposed) return
+		pendingUprightPaths.value = [...pendingUprightPaths.value, path]
 		const previous = uprightChain
-		if (previous == null) uprightChain = runUprightTask(path)
-		else uprightChain = previous.then((): Promise<void> => runUprightTask(path))
+		if (previous == null) uprightChain = runUprightTask(path, shutterRotation)
+		else uprightChain = previous.then((): Promise<void> => runUprightTask(path, shutterRotation))
 	}
 
 	/**
 	 * 等待本轮拍摄的全部回正任务结束，“完成”落盘前必须等待，避免把还没回正的歪图入库并上传。
-	 * 等待期间可能又有新照片入队（相册批量选择），链被替换说明还有任务，继续等待到链不再变化为止。
+	 * 等待期间可能又有新照片入队，链被替换说明还有任务，继续等待到链不再变化为止。
 	 */
 	async function waitPendingMediaUpright(): Promise<void> {
 		let pending = uprightChain
@@ -257,21 +339,61 @@
 	}
 
 	/**
-	 * 拍照/相册成功即记录相机已生成的临时路径以供预览，拍摄期间不做复制、不落盘。
+	 * 用首张成片校正取景框比例：读的是照片真实像素，设备实际输出不是 4:3 时取景框会自动跟着成片比例。
+	 * 只成功校正一次；读取失败时保持 4:3 默认值，不影响拍照与回正。
+	 * @param path 自定义相机或系统相机返回的本地图片路径
+	 */
+	function learnCaptureAspectRatio(path: string): void {
+		if (disposed) return
+		applyCaptureAspectRatioFromImage(path, 0)
+	}
+
+	/**
+	 * 按候选地址依次读取图片信息：原生绝对路径可能需要 file:// 前缀，某个地址失败时继续试下一个。
+	 * @param path 本地图片路径
+	 * @param candidateIndex 候选地址下标，越界即视为读取失败
+	 */
+	function applyCaptureAspectRatioFromImage(path: string, candidateIndex: number): void {
+		const candidates = nativeImageSourceCandidates(path)
+		if (candidateIndex >= candidates.length) {
+			console.log('capture aspect ratio unavailable, keep the default 4:3 framing', path)
+			return
+		}
+		uni.getImageInfo({
+			src: candidates[candidateIndex],
+			success: (info) => {
+				if (disposed) return
+				if (captureAspectRatioResolved) return
+				captureAspectRatioResolved = true
+				captureAspectRatio.value = resolveCaptureAspectRatio(info.width, info.height)
+			},
+			fail: () => {
+				if (disposed) return
+				applyCaptureAspectRatioFromImage(path, candidateIndex + 1)
+			}
+		})
+	}
+
+	/**
+	 * 拍照成功即记录临时路径；照片回正成功前只显示占位，拍摄期间不做复制、不落盘。
 	 * 只有新增的非重复路径才补充类型与时长，顺序与最终回传列表一致；
-	 * 图片同时排入回正队列，按设备写入的 EXIF 方向把像素转正，视频不做处理。
-	 * @param paths 相机或相册返回的本地路径列表
+	 * 图片同时按成片像素校正取景比例并排入回正队列，优先读取 EXIF；自定义相机缺少 EXIF 时使用快门姿态，视频不做处理。
+	 * @param paths 自定义相机或系统相机返回的本地路径列表
 	 * @param mediaType image 或 video
 	 * @param durationSeconds 视频时长（照片传 0）
+	 * @param shutterRotation 按快门时的机身角度；系统相机按照片 EXIF 自行确定方向
 	 */
-	function appendCapturedMedia(paths: string[], mediaType: string, durationSeconds: number): void {
+	function appendCapturedMedia(paths: string[], mediaType: string, durationSeconds: number, shutterRotation: number = -1): void {
 		if (disposed) return
 		for (const path of paths) {
 			if (capturedPaths.value.includes(path)) continue
 			capturedPaths.value = appendCapturePaths(capturedPaths.value, [path])
 			capturedMediaTypes.value = [...capturedMediaTypes.value, mediaType]
 			capturedDurations.value = [...capturedDurations.value, durationSeconds]
-			if (mediaType === 'image') enqueueMediaUpright(path)
+			if (mediaType === 'image') {
+				learnCaptureAspectRatio(path)
+				enqueueMediaUpright(path, shutterRotation)
+			}
 		}
 	}
 
@@ -318,6 +440,8 @@
 			return
 		}
 		capturing.value = true
+		// 快门时冻结方向，避免原生回调期间用户转动手机把上一张照片按下一姿态回正。
+		const shutterRotation = deviceRotation.value
 		try {
 			context.takePhoto({
 				// 原图画质：框架按 quality 决定 JPEG 编码质量，original 对应 100，避免拍完先掉一次画质。
@@ -331,7 +455,7 @@
 						notifyCaptureFailure()
 						return
 					}
-					appendCapturedMedia(shotPaths, 'image', 0)
+					appendCapturedMedia(shotPaths, 'image', 0, shutterRotation)
 				},
 				fail: (error) => {
 					if (disposed) return
@@ -347,36 +471,17 @@
 	}
 
 	/**
-	 * 从系统相册补充照片，一次选择不超过系统单次上限，可重复选择继续追加。
-	 * 采用原图选择，避免相册照片在进入验货流程前先被框架压一次。
-	 */
-	function captureFromAlbum(): void {
-		if (disposed || capturing.value || recording.value || previewEditSaving.value) return
-		uni.chooseImage({
-			count: albumPickOnceCount,
-			sizeType: ['original'],
-			sourceType: ['album'],
-			success: (result) => {
-				if (disposed) return
-				const pickedPaths = normalizeDeviceCapturePaths(result.tempFilePaths)
-				if (pickedPaths.length === 0) return
-				appendCapturedMedia(pickedPaths, 'image', 0)
-			},
-			fail: (error) => {
-				if (disposed) return
-				if (isDeviceCaptureCancelledMessage(error.errMsg)) return
-				uni.showToast({ title: t('打开相册失败，请重试'), icon: 'none' })
-			}
-		})
-	}
-
-	/**
 	 * 用系统相机补拍一张照片，与详情页的系统拍照保持同一套后置逻辑：
 	 * 系统相机按原图画质拍摄并返回沙盒内的临时文件，可直接被持久化服务复制进 inspection_media；
 	 * 应用内相机在 Vapor 基座上返回本应用外置缓存路径；完成时原样交给上传通道，不再强行复制。
 	 */
 	function captureFromSystemCamera(): void {
-		if (disposed || capturing.value || recording.value || videoStarting.value || previewEditSaving.value) return
+		if (disposed || externalCameraPending || capturing.value || recording.value || videoStarting.value || previewEditSaving.value) return
+		externalCameraPending = true
+		cameraMounted.value = false
+		cameraReady.value = false
+		cameraErrorText.value = ''
+		clearReadyFallbackTimer()
 		uni.chooseImage({
 			count: 1,
 			sizeType: ['original'],
@@ -391,29 +496,49 @@
 				if (disposed) return
 				if (isDeviceCaptureCancelledMessage(error.errMsg)) return
 				uni.showToast({ title: t('打开系统相机失败，请重试'), icon: 'none' })
+			},
+			complete: () => {
+				// 部分设备不触发 onHide/onShow，原生回调同样需重建取景。
+				if (!disposed && externalCameraPending && cameraPageVisible) resumeCameraAfterSystemCapture()
 			}
 		})
 	}
 
-	/** 从底部预览列表移除指定位置的本地媒体路径，并同步调整类型与录像时长。 */
+	/** 系统相机交还摄像头后重建应用内取景节点，避免旧原生相机会话保持停止状态。 */
+	function resumeCameraAfterSystemCapture(): void {
+		if (disposed || !externalCameraPending) return
+		externalCameraPending = false
+		cameraReady.value = false
+		cameraErrorText.value = ''
+		cameraSession.value += 1
+		cameraMounted.value = true
+		armCameraReadyFallback()
+	}
+
+	/** 从底部预览列表移除指定位置的本地媒体路径，并同步清除其方向失败状态、类型与录像时长。 */
 	function removeCapture(index: number): void {
 		if (index < 0 || index >= capturedPaths.value.length || previewEditSaving.value || finishing.value) return
 		const paths = capturedPaths.value.slice()
+		const removedPath = paths[index]
 		const mediaTypes = capturedMediaTypes.value.slice()
 		const durations = capturedDurations.value.slice()
 		paths.splice(index, 1)
 		mediaTypes.splice(index, 1)
 		durations.splice(index, 1)
 		capturedPaths.value = paths
+		pendingUprightPaths.value = pendingUprightPaths.value.filter((path: string): boolean => path !== removedPath)
+		failedUprightPaths.value = failedUprightPaths.value.filter((path: string): boolean => path !== removedPath)
 		capturedMediaTypes.value = mediaTypes
 		capturedDurations.value = durations
 		if (selectedCaptureIndex.value === index) closeCapturePreview()
 		else if (selectedCaptureIndex.value > index) selectedCaptureIndex.value -= 1
 	}
 
-	/** 点击缩略图打开可复用的大图/视频预览，保持原始文件路径以供编辑。 */
+	/** 只允许方向已处理成功的照片或视频打开大图，避免用户看到尚未回正的原图。 */
 	function openCapturePreview(index: number): void {
 		if (index < 0 || index >= capturedPaths.value.length) return
+		const path = capturedPaths.value[index]
+		if (pendingUprightPaths.value.includes(path) || failedUprightPaths.value.includes(path)) return
 		selectedCaptureIndex.value = index
 		showCapturePreview.value = true
 	}
@@ -423,18 +548,21 @@
 		if (!previewEditSaving.value) showCapturePreview.value = false
 	}
 
-	/** 编辑器已把 canvas 图片写入本地文件；原位替换预览路径及完成回传路径，不二次复制。 */
+	/** 只替换已回正图片的编辑结果，不允许通过编辑操作绕过方向失败检查。 */
 	function savePreviewEdit(localPath: string): void {
 		if (disposed || !showCapturePreview.value || selectedCaptureIsVideo.value) return
 		const index = selectedCaptureIndex.value
 		if (index < 0 || index >= capturedPaths.value.length || localPath.trim() === '') return
+		const previousPath = capturedPaths.value[index]
+		if (pendingUprightPaths.value.includes(previousPath) || failedUprightPaths.value.includes(previousPath)) return
 		capturedPaths.value = replaceCapturePath(capturedPaths.value, index, localPath)
+		failedUprightPaths.value = failedUprightPaths.value.filter((path: string): boolean => path !== previousPath)
 		showCapturePreview.value = false
 	}
 
 	/**
-	 * 完成拍摄：先等照片回正结束，再把拍摄结果结算为可入库的本地路径并回传调用页。
-	 * 自定义相机保留 takePhoto 返回的临时路径供上传；系统相机及相册仍复制进持久目录。
+	 * 完成拍摄：先等照片回正结束；仍有方向失败的照片时禁止保存，以免上传歪图。
+	 * 自定义相机保留 takePhoto 返回的临时路径供上传；系统相机照片仍复制进持久目录。
 	 * 非自定义相机路径保存失败则留在取景页提示原因，不向调用页回传半截路径。
 	 */
 	async function handleFinishCapture(): Promise<void> {
@@ -452,6 +580,11 @@
 		// 还在回正的照片此刻仍指向原图，必须先等回正结束，否则会把歪图落盘并上传。
 		await waitPendingMediaUpright()
 		if (disposed) return
+		if (failedUprightPaths.value.length > 0) {
+			finishing.value = false
+			uni.showToast({ title: t('图片方向处理失败，请删除照片重拍'), icon: 'none' })
+			return
+		}
 		const tempPaths = capturedPaths.value.slice()
 		const mediaTypes = capturedMediaTypes.value.slice()
 		const savedPaths: string[] = []
@@ -626,7 +759,7 @@
 
 	/** 相机初始化完成后开放快门，并按 maxZoom 生成可用倍率档位。 */
 	function handleCameraInitDone(event: UniCameraInitDoneEvent): void {
-		if (disposed) return
+		if (disposed || externalCameraPending) return
 		cameraReady.value = true
 		cameraErrorText.value = ''
 		clearReadyFallbackTimer()
@@ -635,18 +768,20 @@
 		activeZoom.value = 1
 	}
 
-	/** 相机初始化或运行报错时关闭快门并提示检查系统相机权限。 */
+	/** 原生相机显式报错时关闭快门；只在权限错误时提示检查权限，其他错误提示重试。 */
 	function handleCameraError(event: UniCameraErrorEvent): void {
-		if (disposed) return
+		if (disposed || externalCameraPending) return
 		cameraReady.value = false
 		clearReadyFallbackTimer()
-		cameraErrorText.value = t('无法使用相机，请检查系统相机权限')
-		console.log('camera error', event.detail.errMsg ?? '')
+		const errorMessage = event.detail.errMsg ?? ''
+		cameraErrorText.value = /permission|权限|denied|authorize/i.test(errorMessage)
+			? t('无法使用相机，请检查系统相机权限') : t('相机暂时不可用，请重新进入拍照页')
+		console.log('camera error', errorMessage)
 	}
 
 	/** 相机停止后回收取景状态，并重新等待相机恢复，避免回到前台后快门一直不可用。 */
 	function handleCameraStop(event: UniCameraStopEvent): void {
-		if (disposed) return
+		if (disposed || externalCameraPending) return
 		cameraReady.value = false
 		capturing.value = false
 		recording.value = false
@@ -662,12 +797,227 @@
 
 	onLoad(handlePageLoad)
 
+	onHide(() => {
+		cameraPageVisible = false
+		if (!externalCameraPending) return
+		clearReadyFallbackTimer()
+		cameraMounted.value = false
+	})
+
+	onShow(() => {
+		cameraPageVisible = true
+		if (!externalCameraPending) return
+		resumeCameraAfterSystemCapture()
+	})
+
+	/**
+	 * 把单个轴读数格式化成两位小数的文案，便于在取景区角标上核对符号标定。
+	 * @param value 加速度分量
+	 * @returns 形如 -9.8 的文案
+	 */
+	function formatSensorAxis(value: number): string {
+		const safeValue = Number.isNaN(value) ? 0 : value
+		return (Math.round(safeValue * 100) / 100).toString()
+	}
+
+	/**
+	 * 节流刷新角标上的原始轴读数：核对符号标定要持续看到 x/y 实时值，但每个采样都写响应式会拖慢原生渲染。
+	 * @param x X 轴加速度
+	 * @param y Y 轴加速度
+	 */
+	function updateOrientationSampleLabel(x: number, y: number): void {
+		const now = Date.now()
+		if (now - lastSampleLabelAt < SENSOR_SAMPLE_LABEL_INTERVAL_MS) return
+		lastSampleLabelAt = now
+		orientationSampleLabel.value = `x ${formatSensorAxis(x)} y ${formatSensorAxis(y)}`
+	}
+
+	/**
+	 * 两层方向链路都不可用时把方向保持为未知，并在角标上写出原因。
+	 * 优先展示加速度计的失败原因（方向链路的起点），陀螺仪的原因同时写进日志供排查。
+	 * @param accelerometerReason 加速度计失败文案键，可为空
+	 * @param gyroscopeReason 陀螺仪失败文案键，可为空
+	 */
+	function markOrientationUnavailable(accelerometerReason: string, gyroscopeReason: string): void {
+		if (disposed) return
+		deviceRotation.value = DEVICE_ROTATION_UNKNOWN
+		orientationDiagnostic.value = accelerometerReason !== '' ? accelerometerReason : gyroscopeReason
+		console.log('device orientation unavailable', accelerometerReason, gyroscopeReason)
+	}
+
+	/**
+	 * 累积一次陀螺仪采样并更新机身角度：采样间隔由回调时间差得出，静止死区与档位迟滞都在领域函数里处理。
+	 * 只作为加速度计不可用时的兜底来源；角度只用于展示层旋转，拍照回正仍走照片自身的 EXIF 与快门角度快照。
+	 * @param result 陀螺仪回调结果，z 为屏幕法线方向角速度
+	 */
+	function handleGyroscopeChange(result: OnGyroscopeChangeCallbackResult): void {
+		if (disposed || activeRotationSensor !== 'gyroscope') return
+		gyroscopeSampleCount += 1
+		if (gyroscopeSilenceTimerId != null) {
+			clearTimeout(gyroscopeSilenceTimerId)
+			gyroscopeSilenceTimerId = null
+		}
+		if (orientationDiagnostic.value !== '') orientationDiagnostic.value = ''
+		const sampledAt = Date.now()
+		const elapsedSeconds = lastGyroscopeSampleAt > 0 ? (sampledAt - lastGyroscopeSampleAt) / 1000 : 0
+		lastGyroscopeSampleAt = sampledAt
+		deviceRotationState = applyGyroscopeSample(deviceRotationState, result.z, elapsedSeconds)
+		// 只在档位真正变化时写响应式状态，避免每个采样都触发一次原生刷新。
+		if (deviceRotationState.rotation !== deviceRotation.value) deviceRotation.value = deviceRotationState.rotation
+	}
+
+	/**
+	 * 用一次加速度计采样更新机身角度：重力方向是绝对值，进页面第一帧即可判出横竖屏、也不会漂移。
+	 * 平放姿态与非法读数由领域函数保持上一档，原始读数只节流展示在角标上。
+	 * @param result 加速度计回调结果，x/y 为屏幕平面内的重力分量
+	 */
+	function handleAccelerometerChange(result: OnAccelerometerChangeCallbackResult): void {
+		if (disposed || activeRotationSensor !== 'accelerometer') return
+		accelerometerSampleCount += 1
+		if (accelerometerSilenceTimerId != null) {
+			clearTimeout(accelerometerSilenceTimerId)
+			accelerometerSilenceTimerId = null
+		}
+		if (orientationDiagnostic.value !== '') orientationDiagnostic.value = ''
+		updateOrientationSampleLabel(result.x, result.y)
+		const nextRotation = resolveAccelerometerRotation(result.x, result.y, result.z, deviceRotation.value)
+		// 只在档位真正变化时写响应式状态，避免每个采样都触发一次原生刷新。
+		if (nextRotation !== deviceRotation.value) deviceRotation.value = nextRotation
+	}
+
+	/** 停止加速度计监听并清掉兜底定时器，避免让位给陀螺仪后仍有采样写响应式状态。 */
+	function stopAccelerometerTracking(): void {
+		if (accelerometerSilenceTimerId != null) {
+			clearTimeout(accelerometerSilenceTimerId)
+			accelerometerSilenceTimerId = null
+		}
+		if (!accelerometerTracking) return
+		accelerometerTracking = false
+		if (activeRotationSensor === 'accelerometer') activeRotationSensor = ''
+		// 原始读数只属于加速度计：让位给陀螺仪后不能继续显示可能已经过期的 x/y。
+		if (!disposed) orientationSampleLabel.value = ''
+		try {
+			uni.offAccelerometerChange(handleAccelerometerChange)
+			uni.stopAccelerometer()
+		} catch (error) {
+			console.log('stop accelerometer failed', (error as Error)?.message ?? '')
+		}
+	}
+
+	/** 停止陀螺仪监听并清掉兜底定时器；启动失败时同样要清定时器，不能留下无人消费的采样。 */
+	function stopGyroscopeTracking(): void {
+		if (gyroscopeSilenceTimerId != null) {
+			clearTimeout(gyroscopeSilenceTimerId)
+			gyroscopeSilenceTimerId = null
+		}
+		if (!gyroscopeTracking) return
+		gyroscopeTracking = false
+		if (activeRotationSensor === 'gyroscope') activeRotationSensor = ''
+		lastGyroscopeSampleAt = 0
+		try {
+			uni.offGyroscopeChange(handleGyroscopeChange)
+			uni.stopGyroscope()
+		} catch (error) {
+			console.log('stop gyroscope failed', (error as Error)?.message ?? '')
+		}
+	}
+
+	/** 陀螺仪启动后一直收不到采样（模拟器或没有陀螺仪的设备）：补一条明确原因，方便区分硬件问题。 */
+	function handleGyroscopeSilence(): void {
+		gyroscopeSilenceTimerId = null
+		if (disposed || !gyroscopeTracking || gyroscopeSampleCount > 0) return
+		markOrientationUnavailable(accelerometerDiagnosticKey, '陀螺仪无数据')
+	}
+
+	/**
+	 * 加速度计让位给陀螺仪：基座未注册模块、设备无加速度计或一直收不到采样时都走这里。
+	 * 陀螺仪同样不可用时只把方向保持为未知并在角标上写出原因，绝不阻塞拍摄。
+	 * @param reason 加速度计失败文案键
+	 */
+	function fallbackToGyroscope(reason: string): void {
+		if (disposed || gyroscopeTracking) return
+		stopAccelerometerTracking()
+		accelerometerDiagnosticKey = reason
+		console.log('accelerometer unavailable, falling back to the gyroscope', reason)
+		try {
+			uni.startGyroscope({
+				interval: 'ui',
+				fail: (result: StartGyroscopeFail): void => {
+					// 已经收到过采样说明陀螺仪其实可用，迟到的失败回调不能把可用链路停掉。
+					if (gyroscopeSampleCount > 0) return
+					stopGyroscopeTracking()
+					markOrientationUnavailable(accelerometerDiagnosticKey, resolveGyroscopeFailureLabel(result.errMsg))
+				}
+			})
+			gyroscopeTracking = true
+			activeRotationSensor = 'gyroscope'
+			lastGyroscopeSampleAt = Date.now()
+			gyroscopeSampleCount = 0
+			gyroscopeSilenceTimerId = setTimeout(handleGyroscopeSilence, GYROSCOPE_SILENCE_TIMEOUT_MS)
+		} catch (error) {
+			stopGyroscopeTracking()
+			markOrientationUnavailable(accelerometerDiagnosticKey, resolveGyroscopeFailureLabel((error as Error)?.message ?? ''))
+			return
+		}
+		try {
+			uni.onGyroscopeChange(handleGyroscopeChange)
+		} catch (error) {
+			// 传感器已启动但回调注册失败：停掉监听并退回未知方向，不能留下无人消费的采样。
+			console.log('gyroscope listener unavailable, bottom photos keep their own orientation', (error as Error)?.message ?? '')
+			stopGyroscopeTracking()
+			markOrientationUnavailable(accelerometerDiagnosticKey, '陀螺仪启动失败')
+		}
+	}
+
+	/** 加速度计启动后一直收不到采样（模拟器或没有加速度计的设备）：让位给陀螺仪兜底。 */
+	function handleAccelerometerSilence(): void {
+		accelerometerSilenceTimerId = null
+		if (disposed || !accelerometerTracking || accelerometerSampleCount > 0) return
+		fallbackToGyroscope('加速度计无数据')
+	}
+
+	/**
+	 * 开始跟踪机身方向：首选加速度计拿绝对方向（进页面第一帧就正确、不漂移），
+	 * 基座未注册加速度计模块、设备无该传感器或收不到采样时自动退回陀螺仪积分。
+	 * 两条链路都不可用时只把方向保持为未知，页面继续按照片自身方向展示，绝不阻塞拍摄。
+	 */
+	function startDeviceRotationTracking(): void {
+		if (disposed || activeRotationSensor !== '') return
+		try {
+			uni.startAccelerometer({
+				interval: 'ui',
+				fail: (result: StartAccelerometerFail): void => { fallbackToGyroscope(resolveAccelerometerFailureLabel(result.errMsg)) }
+			})
+			accelerometerTracking = true
+			activeRotationSensor = 'accelerometer'
+			accelerometerSampleCount = 0
+			accelerometerSilenceTimerId = setTimeout(handleAccelerometerSilence, ACCELEROMETER_SILENCE_TIMEOUT_MS)
+		} catch (error) {
+			fallbackToGyroscope(resolveAccelerometerFailureLabel((error as Error)?.message ?? ''))
+			return
+		}
+		try {
+			uni.onAccelerometerChange(handleAccelerometerChange)
+		} catch (error) {
+			console.log('accelerometer listener unavailable, falling back to the gyroscope', (error as Error)?.message ?? '')
+			fallbackToGyroscope('加速度计启动失败')
+		}
+	}
+
+	/** 页面退出时停止两条方向链路，避免回调在页面销毁后继续写响应式状态。 */
+	function stopDeviceRotationTracking(): void {
+		stopAccelerometerTracking()
+		stopGyroscopeTracking()
+	}
+
 	onMounted(() => {
 		armCameraReadyFallback()
+		startDeviceRotationTracking()
 	})
 
 	onBeforeUnmount(() => {
 		disposed = true
+		stopDeviceRotationTracking()
 		clearReadyFallbackTimer()
 		stopRecordingTimer()
 		// 硬件返回/侧滑返回不会走取消按钮：这里补一次取消广播，避免调用页一直等结果。
@@ -683,10 +1033,21 @@
 <style>
 	.camera-page { flex: 1; background-color: #000000; }
 	/* 取景画面占据上方主要区域（约 85% 窗口高度），底部面板按控制条内容高度自适应，确保操作不被裁切。 */
-	.preview-wrap { flex: 1; position: relative; background-color: #000000; }
-	.camera-preview { flex: 1; width: 100%; }
+	/* 取景区铺满中间区域，取景框按成片比例放大后被这里裁掉溢出部分；照片条贴屏幕最下方，不再留底部安全区。 */
+	.preview-wrap { flex: 1; position: relative; overflow: hidden; align-items: center; justify-content: center; background-color: #000000; }
+	.preview-frame { position: relative; overflow: hidden; background-color: #000000; }
+	.camera-preview { width: 100%; height: 100%; }
 	.preview-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; align-items: center; justify-content: center; }
 	.preview-state-text { padding: 16rpx 28rpx; color: #f8fafc; font-size: 26rpx; border-radius: 16rpx; background-color: rgba(15, 23, 42, 0.72); }
+	/* 方向角标固定在取景画面左上角：实时显示横屏还是竖屏，便于核对底部照片的跟随转向。 */
+	.orientation-badge { position: absolute; top: 24rpx; left: 24rpx; flex-direction: row; align-items: center; padding: 8rpx 20rpx; border-radius: 24rpx; background-color: rgba(15, 23, 42, 0.76); }
+	.orientation-badge-state { color: #f8fafc; font-size: 24rpx; }
+	.orientation-badge-angle { margin-left: 10rpx; color: #facc15; font-size: 22rpx; }
+	/* 原始轴读数：真机核对加速度计符号标定用（竖持时哪个轴为正），按秒节流刷新。 */
+	.orientation-badge-sample { margin-left: 10rpx; color: #94a3b8; font-size: 20rpx; }
+	/* 方向未知时的原因（模块未注册/启动失败/无数据）用警戒色显示，便于直接在真机上定位。 */
+	.orientation-badge-reason { margin-left: 10rpx; color: #fca5a5; font-size: 22rpx; }
+	/* 真机标定行：单独占一行并限制左右边界，长文本折行而不是顶出屏幕（方向链路确认后移除）。 */
 	/* 系统拍照入口固定在取景画面右上角，避免与应用内相机的快门操作行抢位。 */
 	.system-camera-entry { position: absolute; top: 24rpx; right: 24rpx; }
 	.recording-badge { position: absolute; top: 24rpx; flex-direction: row; align-items: center; padding: 8rpx 20rpx; border-radius: 24rpx; background-color: rgba(15, 23, 42, 0.76); }

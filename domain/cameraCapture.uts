@@ -145,3 +145,47 @@ export function formatVideoDurationLabel(totalSeconds: number): string {
   const seconds = safeSeconds % 60
   return `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds}`
 }
+
+/** 取景框默认成片比例（宽/高）：系统相机默认输出 4:3，首张成片读出真实像素后按设备实际比例校正。 */
+export const DEFAULT_CAPTURE_ASPECT_RATIO: number = 0.75
+
+/** 取景框尺寸：原生像素，供取景画面按成片比例做 contain 适配。 */
+export type CaptureFrameSize = {
+  /** 取景框宽度（px） */
+  width: number,
+  /** 取景框高度（px） */
+  height: number
+}
+
+/**
+ * 由成片像素尺寸算出取景框的成片比例（宽/高，竖屏取景统一取短边/长边）。
+ * 只看长短边：EXIF 是否已应用、横拍还是竖拍都不影响比例，只有一个取景比例也就不会因为握持方向跳变。
+ * @param width 成片像素宽度
+ * @param height 成片像素高度
+ * @returns 短边/长边的比例；尺寸非法时返回默认 4:3
+ */
+export function resolveCaptureAspectRatio(width: number, height: number): number {
+  const parsedWidth = Number(width)
+  const parsedHeight = Number(height)
+  if (Number.isNaN(parsedWidth) || Number.isNaN(parsedHeight) || parsedWidth <= 0 || parsedHeight <= 0) return DEFAULT_CAPTURE_ASPECT_RATIO
+  return Math.min(parsedWidth, parsedHeight) / Math.max(parsedWidth, parsedHeight)
+}
+
+/**
+ * 用成片比例把取景框铺满取景区（cover）：短边贴边，另一边按比例放大到溢出，溢出部分由取景区裁掉。
+ * 取景画面因此既不拉伸变形，也不用黑边浪费屏幕；成片仍是相机原生的完整比例，只是比取景画面多出被裁掉的两侧。
+ * @param containerWidth 取景区可用宽度（px）
+ * @param containerHeight 取景区可用高度（px）
+ * @param aspectRatio 成片宽高比（宽/高）
+ * @returns 取景框宽高（px，至少 1px）
+ */
+export function resolveCaptureFrameSize(containerWidth: number, containerHeight: number, aspectRatio: number): CaptureFrameSize {
+  const safeWidth = containerWidth > 0 ? containerWidth : 0
+  const safeHeight = containerHeight > 0 ? containerHeight : 0
+  const parsedRatio = Number(aspectRatio)
+  const ratio = Number.isNaN(parsedRatio) || parsedRatio <= 0 ? DEFAULT_CAPTURE_ASPECT_RATIO : parsedRatio
+  if (safeWidth / safeHeight < ratio) {
+    return { width: Math.max(1, Math.round(safeHeight * ratio)), height: Math.max(1, Math.round(safeHeight)) }
+  }
+  return { width: Math.max(1, Math.round(safeWidth)), height: Math.max(1, Math.round(safeWidth / ratio)) }
+}

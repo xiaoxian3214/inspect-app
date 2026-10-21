@@ -4,12 +4,15 @@
 			<text class="capture-empty-text">{{ translateText('还没有照片，点击快门开始拍摄') }}</text>
 		</view>
 		<scroll-view v-else class="capture-strip-scroll" direction="horizontal" :show-scrollbar="false">
-			<view class="capture-strip-row">
+			<view class="capture-strip-row" :style="{ width: stripRowWidth }">
 				<view v-for="(item, index) in mediaItems" :key="index" class="capture-thumb-wrap" @click="previewPhoto(index)">
-					<view v-if="item.isVideo" class="capture-thumb capture-thumb-video">
+					<view v-if="item.processing || item.failed" class="capture-thumb capture-thumb-status">
+						<text class="capture-thumb-status-text">{{ translateText(item.failed ? '回正失败' : '回正中…') }}</text>
+					</view>
+					<view v-else-if="item.isVideo" class="capture-thumb capture-thumb-video">
 						<view class="capture-play-triangle"></view>
 					</view>
-					<image v-else class="capture-thumb" :src="item.previewPath" mode="aspectFill" @error="handleThumbError" />
+					<image v-else class="capture-thumb" :src="item.previewPath" :style="thumbnailRotationStyle" mode="aspectFill" @error="handleThumbError" />
 					<text v-if="item.isVideo" class="capture-thumb-duration">{{ item.durationLabel }}</text>
 					<view class="capture-thumb-number"><text class="capture-thumb-number-text">{{ index + 1 }}</text></view>
 					<view class="capture-remove" @click.stop="handleRemove(index)">
@@ -26,17 +29,21 @@
 	import { computed } from 'vue'
 	import { formatVideoDurationLabel } from '../../domain/cameraCapture.uts'
 	import { resolveLocalMediaDisplayPath } from '../../domain/deviceCapture.uts'
+	import { resolveThumbnailRotation } from '../../domain/imageOrientation.uts'
 	import { isVideoMedia } from '../../domain/photoUploadPolicy.uts'
 
 	/** 照片区单元格：只暴露原生模板需要渲染的字段，避免模板直接访问动态对象。 */
 	type StripMedia = {
 		previewPath: string,
 		isVideo: boolean,
+		processing: boolean,
+		failed: boolean,
 		durationLabel: string
 	}
 
 	const props = defineProps({
-		items: { type: Array, default: () => [] as UTSJSONObject[] }
+		items: { type: Array, default: () => [] as UTSJSONObject[] },
+		deviceRotation: { type: Number, default: 0 }
 	})
 	const emit = defineEmits(['remove-photo', 'preview-photo'])
 
@@ -46,13 +53,25 @@
 	/**
 	 * 把拍摄结果收窄成照片区可渲染的单元格列表，视频额外带时长角标。
 	 * 相机回调可能给出原生绝对路径，必须补成 file:// 前缀后 image 才能加载出缩略图；
-	 * 图片方向由拍照页按设备写入的 EXIF 方向回正，这里只负责展示回正后的文件。
+	 * 成片像素已由拍照页在拍摄时按快门姿态回正；缩略图只按当前握持角反向补角，任何握持姿势都能看到正向图片。
 	 */
 	const mediaItems = computed((): StripMedia[] => (props.items as UTSJSONObject[]).map((item: UTSJSONObject): StripMedia => ({
 		previewPath: resolveLocalMediaDisplayPath((item['previewPath'] ?? item['path'] ?? '').toString()),
 		isVideo: isVideoMedia(item),
+		processing: (item['processing'] ?? false).toString() === 'true',
+		failed: (item['failed'] ?? false).toString() === 'true',
 		durationLabel: formatVideoDurationLabel(parseInt((item['durationSeconds'] ?? 0).toString()))
 	})))
+
+	/** 按每张缩略图 152rpx 加 16rpx 间距计算内容宽度，确保原生横向滚动容器能识别溢出。 */
+	const stripRowWidth = computed((): string => `${mediaItems.value.length * 168}rpx`)
+
+	/**
+	 * 计算缩略图的旋转样式：成片已在拍摄时按快门姿态回正，缩略图只需按当前握持角反向补角，
+	 * 只转图片内容，不转动裁剪框、序号与删除按钮；方向未知（-1）时不叠加旋转。
+	 * @returns 直接绑定到 image 的 transform 样式字符串
+	 */
+	const thumbnailRotationStyle = computed((): string => `transform: rotate(${resolveThumbnailRotation(props.deviceRotation)}deg)`)
 
 	/** 通知拍照页打开指定下标的媒体大图预览。 */
 	function previewPhoto(index: number): void { emit('preview-photo', index) }
@@ -75,8 +94,10 @@
 	.capture-strip { height: 168rpx; flex-direction: row; align-items: center; padding-left: 16rpx; background-color: #0f172a; }
 	.capture-strip-scroll { flex: 1; height: 168rpx; }
 	.capture-strip-row { height: 168rpx; flex-direction: row; align-items: center; }
-	.capture-thumb-wrap { position: relative; width: 152rpx; height: 152rpx; margin-right: 16rpx; border-radius: 16rpx; overflow: hidden; background-color: #1e293b; }
+	.capture-thumb-wrap { position: relative; flex-shrink: 0; width: 152rpx; height: 152rpx; margin-right: 16rpx; border-radius: 16rpx; overflow: hidden; background-color: #1e293b; }
 	.capture-thumb { width: 152rpx; height: 152rpx; }
+	.capture-thumb-status { align-items: center; justify-content: center; padding: 8rpx; }
+	.capture-thumb-status-text { color: #ffffff; font-size: 22rpx; text-align: center; }
 	.capture-thumb-number { position: absolute; top: 4rpx; left: 4rpx; min-width: 36rpx; height: 36rpx; padding: 0 6rpx; align-items: center; justify-content: center; border-radius: 18rpx; background-color: rgba(15, 23, 42, 0.82); }
 	.capture-thumb-number-text { color: #ffffff; font-size: 22rpx; }
 	.capture-thumb-video { align-items: center; justify-content: center; background-color: #1e293b; }

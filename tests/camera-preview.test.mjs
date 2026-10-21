@@ -67,11 +67,11 @@ test('camera strip uses per-photo corner numbers and opens a reusable preview', 
 
 test('native capture keeps camera temp paths until finish, then persists through the injected service', async () => {
   const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
-  assert.match(page, /appendCapturedMedia\(shotPaths, 'image', 0\)/)
+  assert.match(page, /appendCapturedMedia\(shotPaths, 'image', 0, shutterRotation\)/)
   assert.match(page, /capturedPaths\.value = appendCapturePaths\(capturedPaths\.value, \[path\]\)/)
   assert.match(page, /import \{ createAppMediaPersistenceService \} from '\.\.\/\.\.\/services\/mediaPersistenceService\.uts'/)
   assert.match(page, /const mediaPersistenceService = createAppMediaPersistenceService\(\)/)
-  const shutter = page.split('function takePhoto()')[1].split('function captureFromAlbum()')[0]
+  const shutter = page.split('function takePhoto()')[1].split('function captureFromSystemCamera()')[0]
   assert.doesNotMatch(shutter, /persistMediaPath|copyFile|saveFile/)
   // 画质要求：应用内快门必须按原图画质拍摄，不能沿用 high 这类有损档位。
   assert.match(shutter, /quality: 'original'/)
@@ -106,6 +106,20 @@ test('camera preview uses the already written editor image and replaces the stri
   assert.doesNotMatch(page, /canvasToTempFilePath\(/)
 })
 
+/** 外部系统相机临时抢占摄像头后，自定义取景必须在返回页面时重建，不能把超时误判为权限拒绝。 */
+test('system camera return remounts the native camera and suspends its ready watchdog while away', async () => {
+  const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
+  assert.match(page, /<camera v-if="cameraMounted" :key="cameraSession"/)
+  assert.match(page, /externalCameraPending = true/)
+  assert.match(page, /externalCameraPending = true\s*cameraMounted\.value = false/)
+  assert.match(page, /if \(!disposed && externalCameraPending && cameraPageVisible\) resumeCameraAfterSystemCapture\(\)/)
+  assert.match(page, /onHide\(\(\) => \{[\s\S]*?clearReadyFallbackTimer\(\)[\s\S]*?cameraMounted\.value = false/)
+  assert.match(page, /onShow\(\(\) => \{[\s\S]*?if \(!externalCameraPending\) return[\s\S]*?resumeCameraAfterSystemCapture\(\)/)
+  assert.match(page, /function resumeCameraAfterSystemCapture\(\): void \{[\s\S]*?cameraSession\.value \+= 1[\s\S]*?cameraMounted\.value = true/)
+  assert.match(page, /if \(disposed \|\| externalCameraPending\) return/)
+  assert.doesNotMatch(page.split('function armCameraReadyFallback()')[1].split('function stopRecordingTimer()')[0], /检查系统相机权限/)
+})
+
 test('standalone camera offers a system camera entry that reuses the same capture pipeline', async () => {
   const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
   const service = await readFile('services/mediaPersistenceService.uts', 'utf8')
@@ -122,12 +136,6 @@ test('standalone camera offers a system camera entry that reuses the same captur
   assert.match(entry, /sizeType: \['original'\]/)
   assert.match(entry, /appendCapturedMedia\(shotPaths, 'image', 0\)/)
   assert.doesNotMatch(entry, /persistMediaPath|copyFile|saveFile|USER_DATA_PATH/)
-
-  // 相册同样按原图进入流程，避免框架在入库前先压一次。
-  const album = page.split('function captureFromAlbum()')[1].split('function captureFromSystemCamera()')[0]
-  assert.match(album, /sizeType: \['original'\]/)
-  assert.match(album, /sourceType: \['album'\]/)
-  assert.doesNotMatch(album, /sizeType: \['compressed'\]/)
 
   // 自定义相机使用 takePhoto 原始临时路径；系统相机路径仍按原有规则保存。
   assert.match(service, /isExternalStorageMediaPath/)

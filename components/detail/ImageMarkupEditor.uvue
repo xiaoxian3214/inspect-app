@@ -431,6 +431,21 @@
 		rc.restore()
 	}
 
+	/** 检查写入的图片与画布像素宽高一致；尺寸不符时不替换原图，避免只保存左上角局部。 */
+	function verifyExportedImage(path: string, width: number, height: number, settle: (error: Error | null, resultPath: string) => void): void {
+		uni.getImageInfo({
+			src: path,
+			success: (info) => {
+				if (Math.round(Number(info.width)) !== width || Math.round(Number(info.height)) !== height) {
+					settle(new Error('编辑图片尺寸异常，请重试'), '')
+					return
+				}
+				settle(null, path)
+			},
+			fail: (error) => settle(new Error(error.errMsg ?? '编辑图片校验失败'), '')
+		})
+	}
+
 	/** 保存图片：无标注时直接返回原路径（无变更）；有标注时用 Canvas 合成导出。 */
 	async function saveImage() {
 		if (saving.value || displaySrc.value === '') return
@@ -471,6 +486,9 @@
 						const rc = ctx.getContext('2d')
 						if (rc == null) { settle(new Error('canvas context is null'), ''); return }
 						const cw = saveCanvasWidth.value; const ch = saveCanvasHeight.value
+						// 画布组件的 :width/:height 不保证更新原生 2D 位图；必须在 context 上设置实际导出像素尺寸。
+						rc.canvas.width = cw
+						rc.canvas.height = ch
 						rc.clearRect(0, 0, cw, ch)
 						rc.fillStyle = '#ffffff'; rc.fillRect(0, 0, cw, ch)
 						rc.save(); rc.translate(cw / 2, ch / 2); rc.rotate(rotation.value * Math.PI / 180)
@@ -487,7 +505,7 @@
 								const dataUrl = ctx.toDataURL()
 								if (!dataUrl.startsWith('data:image/png;base64,')) { settle(new Error('导出失败'), ''); return }
 								const path = `${uni.env.USER_DATA_PATH}/inspection-edit-${Date.now()}.png`
-								uni.getFileSystemManager().writeFile({ filePath: path, data: dataUrl.split(',')[1], encoding: 'base64', success: () => settle(null, path), fail: (err) => settle(new Error(err.errMsg), '') })
+								uni.getFileSystemManager().writeFile({ filePath: path, data: dataUrl.split(',')[1], encoding: 'base64', success: () => verifyExportedImage(path, cw, ch, settle), fail: (err) => settle(new Error(err.errMsg), '') })
 							} catch (err) { settle(new Error((err).toString()), '') }
 						}
 						img.onerror = () => settle(new Error('原图解码失败'), '')

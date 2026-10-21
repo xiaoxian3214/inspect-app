@@ -1,0 +1,22 @@
+{
+  "id": "qcm-open-url",
+  "displayName": "系统浏览器打开链接",
+  "version": "1.0.0",
+  "description": "uni-app x 用系统浏览器打开 http/https 链接的 UTS 插件（Android ACTION_VIEW）。uni-app x 已移除 plus.runtime.openURL，也没有内置 uni.openURL，唤起浏览器必须由 uts 插件提供。",
+  "keywords": [
+    "openURL",
+    "openSchema",
+    "browser",
+    "uts",
+    "uni-app-x"
+  ],
+  "engines": {
+    "HBuilderX": "^3.6.8",
+    "uni-app": "^4.86",
+    "uni-app-x": "^4.86"
+  },
+  "uni_modules": {
+    "dependencies": [],
+    "encrypt": []
+  }
+}
