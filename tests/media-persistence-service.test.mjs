@@ -19,6 +19,29 @@ function createFakeCopyFile(failure = null) {
   return { calls, copyFile }
 }
 
+/** 构造可断言的假读写函数：模拟 uni.getFileSystemManager 的 base64 读文件与写文件。 */
+function createFakeFileBytes(failure = null) {
+  const readCalls = []
+  const writeCalls = []
+  const readFile = (filePath, onSuccess, onFailure) => {
+    readCalls.push(filePath)
+    if (failure != null) {
+      onFailure(failure)
+      return
+    }
+    onSuccess('YmFzZTY0')
+  }
+  const writeFile = (filePath, base64, onSuccess, onFailure) => {
+    writeCalls.push({ filePath, base64 })
+    if (failure != null) {
+      onFailure(failure)
+      return
+    }
+    onSuccess()
+  }
+  return { readCalls, writeCalls, readFile, writeFile }
+}
+
 test('persistent path detection separates temp capture files from already stored media', () => {
   const dir = '/data/user/0/app/apps/__UNI__1FFA0B1/doc/inspection_media'
   assert.equal(mediaModule.isPersistentMediaPath(`${dir}/1750000000000-1.jpg`, dir), true)
@@ -145,13 +168,57 @@ test('batch persistence keeps capture order and maps every entry to its media ty
   assert.equal(fake.calls.length, 2)
 })
 
-/** 自定义相机直接使用 takePhoto.tempImagePath，不经过 copyFile；系统相机仍可复制暂存。 */
-test('custom camera temp image remains unchanged for direct upload', async () => {
+/**
+ * 自定义相机把照片写在应用 cache/uni-media，系统清理应用缓存后图片文件会消失：
+ * 媒体库里这张图会变成空白，尚未上传的照片也永远传不上去（用户反馈"拍照的图片没有掉了"）。
+ * copyFile 对该路径返回 1300002，因此这里改用 readFile/writeFile 把图片复制进持久目录。
+ */
+test('custom camera photos are copied into the persistent dir so a cleared cache cannot delete them', async () => {
   const source = '/storage/emulated/0/Android/data/com.example.app/cache/uni-media/Pic_1.jpg'
-  const fake = createFakeCopyFile({ errCode: 1300002 })
-  const service = mediaModule.createMediaPersistenceService({ copyFile: fake.copyFile, persistentDir: '/doc/inspection_media' })
+  const copyFake = createFakeCopyFile({ errCode: 1300002 })
+  const bytes = createFakeFileBytes()
+  const service = mediaModule.createMediaPersistenceService({
+    copyFile: copyFake.copyFile,
+    readFile: bytes.readFile,
+    writeFile: bytes.writeFile,
+    persistentDir: '/doc/inspection_media'
+  })
+
+  const persisted = await service.persistMediaPath(source, false)
+
+  assert.match(persisted, /^\/doc\/inspection_media\/\d+-1\.jpg$/)
+  assert.notEqual(persisted, source)
+  // 走字节复制，不再调用对该路径必然失败的 copyFile。
+  assert.deepEqual(bytes.readCalls, [source])
+  assert.deepEqual(bytes.writeCalls.map((call) => call.filePath), [persisted])
+  assert.equal(bytes.writeCalls[0].base64, 'YmFzZTY0')
+  assert.equal(copyFake.calls.length, 0)
+})
+
+/** 字节复制同样可能失败（大图 OOM、路径不可读）：此时必须退回原临时路径，绝不打断拍照流程。 */
+test('camera capture falls back to the temp path when the durable copy fails', async () => {
+  const source = '/storage/emulated/0/Android/data/com.example.app/cache/uni-media/Pic_2.jpg'
+  const service = mediaModule.createMediaPersistenceService({
+    copyFile: createFakeCopyFile({ errCode: 1300002 }).copyFile,
+    readFile: createFakeFileBytes({ errCode: 1300001 }).readFile,
+    writeFile: createFakeFileBytes().writeFile,
+    persistentDir: '/doc/inspection_media'
+  })
   assert.equal(await service.persistMediaPath(source, false), source)
-  assert.equal(fake.calls.length, 0)
+})
+
+/** 视频体积大，base64 读进内存有风险，保持既有行为：直接使用 takePhoto 返回的临时路径。 */
+test('custom camera videos keep their temporary path', async () => {
+  const source = '/storage/emulated/0/Android/data/com.example.app/cache/uni-media/Movie_1.mp4'
+  const bytes = createFakeFileBytes()
+  const service = mediaModule.createMediaPersistenceService({
+    copyFile: createFakeCopyFile().copyFile,
+    readFile: bytes.readFile,
+    writeFile: bytes.writeFile,
+    persistentDir: '/doc/inspection_media'
+  })
+  assert.equal(await service.persistMediaPath(source, true), source)
+  assert.equal(bytes.readCalls.length, 0)
 })
 
 /** 应用内相机路径保持原样；其他外置路径不属于 takePhoto，仍走已有复制分支。 */
@@ -193,10 +260,13 @@ test('external app camera videos keep their temporary path', async () => {
 })
 
 /** 批量结果须保持拍照路径与顺序；只有系统相机路径触发文件接口复制。 */
-test('custom camera paths remain unchanged while system temp paths are copied inside one batch', async () => {
+test('camera cache photos are re-saved while system temp paths keep using copyFile in one batch', async () => {
   const fake = createFakeCopyFile()
+  const bytes = createFakeFileBytes()
   const service = mediaModule.createMediaPersistenceService({
     copyFile: fake.copyFile,
+    readFile: bytes.readFile,
+    writeFile: bytes.writeFile,
     persistentDir: '/doc/inspection_media'
   })
 
@@ -209,8 +279,10 @@ test('custom camera paths remain unchanged while system temp paths are copied in
     { path: stored, mediaType: 'image' }
   ])
 
-  assert.equal(paths[0], externalImage)
-  assert.match(paths[1], /^\/doc\/inspection_media\/\d+-1\.jpg$/)
+  // 相机缓存图片另存进持久目录，系统相机/相册临时路径仍走 copyFile，已在持久目录的原样复用。
+  assert.match(paths[0], /^\/doc\/inspection_media\/\d+-1\.jpg$/)
+  assert.equal(bytes.readCalls[0], externalImage)
+  assert.match(paths[1], /^\/doc\/inspection_media\/\d+-2\.jpg$/)
   assert.equal(paths[2], stored)
   assert.equal(fake.calls.length, 1)
   assert.equal(fake.calls[0].srcPath, '/data/user/0/app/cacheuni-media/1792377957939.jpg')

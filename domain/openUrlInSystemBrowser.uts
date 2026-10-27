@@ -1,0 +1,43 @@
+// #ifdef APP-ANDROID
+import Intent from 'android.content.Intent';
+import Uri from 'android.net.Uri';
+// #endif
+// #ifdef APP-IOS
+import { UIApplication } from 'UIKit'
+import { URL } from 'Foundation'
+// #endif
+/**
+ * 用系统默认浏览器打开外部链接（安卓 Intent.ACTION_VIEW，iOS UIApplication.open）。
+ * http/https 以外的 scheme 会被拒绝以防止 scheme 注入打开任意应用。
+ * @param url 需要打开的 http/https 链接
+ * @returns 成功调起浏览器返回 true；地址非法或系统没有可用浏览器返回 false
+ */
+export function openUrlInSystemBrowser(url: string): boolean {
+	const target = url.trim()
+	if (!target.startsWith('http://') && !target.startsWith('https://'))
+		return false
+	// #ifdef APP-ANDROID
+	const activity = UTSAndroid.getUniActivity()
+	if (activity == null) return false
+	try {
+		const intent = new Intent(Intent.ACTION_VIEW, Uri.parse(target))
+		activity.startActivity(intent)
+		return true
+	} catch (error) {
+		console.warn('[openUrlInSystemBrowser] 系统未能打开外部链接', { url: target, error })
+		return false
+	}
+	// #endif
+	// #ifdef APP-IOS
+	try {
+		const uri = new URL(string = target)
+		if (uri == null || !UIApplication.shared.canOpenURL(uri!)) return false
+		UIApplication.shared.open(uri!)
+		return true
+	} catch (error) {
+		console.warn('[openUrlInSystemBrowser] 系统未能打开外部链接', { url: target, error })
+		return false
+	}
+	// #endif
+	return false
+}

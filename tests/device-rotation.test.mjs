@@ -195,7 +195,8 @@ test('capture strip follows the handset while the big preview trusts the upright
   assert.match(strip, /:style="thumbnailRotationStyle"/)
   assert.match(strip, /resolveThumbnailRotation\(props\.deviceRotation\)/)
   assert.doesNotMatch(preview, /deviceRotation|resolveThumbnailRotation|previewRotationStyle|preview-media-rotated/)
-  assert.match(preview, /<image v-else class="preview-media" :src="displaySource" mode="aspectFit" \/>/)
+  // 大图只按自身已回正的方向显示：缩放层只做缩放平移，不参与旋转。
+  assert.match(preview, /<image class="preview-media" :src="displaySource" mode="aspectFit" \/>/)
   // 方向未知（-1）时不叠加旋转；成片已按快门姿态回正，缩略图只按当前握持角反向补角。
   assert.equal(orientationModule.resolveThumbnailRotation(orientationModule.DEVICE_ROTATION_UNKNOWN), 0)
   assert.equal(orientationModule.resolveThumbnailRotation(0), 0)

@@ -1,12 +1,12 @@
 <template>
-	<view v-if="visible" class="option-overlay" @click.stop="closeSheet">
-		<view class="option-panel" @click.stop>
+	<page-container :show="visible" position="bottom" :overlay="true" :z-index="3200" overlay-style="background-color: rgba(15, 23, 42, 0.48)" @clickoverlay="closeSheet">
+		<view class="option-panel" :style="{ maxHeight: sheetMaxHeight }">
 			<text class="option-title">{{ translateText(title) }}</text>
-			<scroll-view class="option-list" direction="vertical">
+			<scroll-view class="option-list" :style="{ maxHeight: listMaxHeight }" direction="vertical">
 				<text v-if="options.length === 0" class="option-empty">{{ translateText(emptyText) }}</text>
-				<view v-for="option in optionRows" :key="option.value" class="option-row" :class="{ selected: option.value === draftValue }" @click="chooseOption(option)">
+				<view v-for="(option, index) in optionRows" :key="index" class="option-row" :class="{ selected: option.value == draftValue }" @click="chooseOption(option.value)">
 					<text class="option-name">{{ option.label }}</text>
-					<text class="option-mark">{{ option.value === draftValue ? '✓' : '' }}</text>
+					<view class="option-mark"><text v-if="option.value == draftValue" class="option-mark-text">✓</text></view>
 				</view>
 			</scroll-view>
 			<view class="option-actions">
@@ -14,12 +14,13 @@
 				<button class="option-button confirm" :disabled="selectedOption == null" @click="confirmSelection">{{ translateText('确定') }}</button>
 			</view>
 		</view>
-	</view>
+	</page-container>
 </template>
 
 <script setup lang="uts">
 	import { computed, ref, watch } from 'vue'
 	import { t } from '../../i18n/index.uts'
+	import { windowHeightPx } from '../../domain/nativeLayout.uts'
 	type OptionRow = { value: string, label: string, raw: UTSJSONObject }
 
 	const props = defineProps({
@@ -33,37 +34,42 @@
 	const draftValue = ref('')
 	/** 为原生选择弹层标题和操作文案提供翻译方法。 */
 	function translateText(key: string): string { return t(key) }
-	/** 将父组件的动态选项转换为原生模板可读取的固定字段。 */
+	/** 将父组件传入的 UTSJSONObject 选项转换为模板可读取的固定字段，索引取值只在真正的 UTSJSONObject 上执行。 */
 	const optionRows = computed((): OptionRow[] => (props.options as UTSJSONObject[]).map((option: UTSJSONObject): OptionRow => ({ value: (option['value'] ?? '').toString(), label: (option['label'] ?? '').toString(), raw: (option['raw'] as UTSJSONObject | null) ?? option })))
+	/** 按窗口高度限制弹层总高度，避免小屏设备溢出屏幕。 */
+	const sheetMaxHeight = computed((): string => windowHeightPx(0.85))
+	/** 抬高选项列表的最大高度（原固定 640rpx），让清单选择弹层展示更多选项。 */
+	const listMaxHeight = computed((): string => windowHeightPx(0.6))
 
 	/** 每次打开选项弹层时同步当前已选值，取消不会改变业务状态。 */
 	watch((): boolean => props.visible, (visible: boolean) => { if (visible) draftValue.value = props.selectedValue })
 
-	/** 返回当前草稿值对应的真实选项，供确认按钮校验。 */
-	const selectedOption = computed((): OptionRow | null => optionRows.value.find((option: OptionRow) => option.value === draftValue.value) ?? null)
+	/** 返回当前草稿值对应的真实选项；比较用内容相等（== 编译为 Kotlin equals），避免跨数据源字符串引用不同导致选中态丢失。 */
+	const selectedOption = computed((): OptionRow | null => optionRows.value.find((option: OptionRow): boolean => option.value == draftValue.value) ?? null)
 
-	/** 暂存用户点选的清单或检查类型。 */
-	function chooseOption(option: OptionRow) { draftValue.value = option.value }
+	/** 暂存用户点选的清单或检查类型；只接收字符串值，避免在原生事件闭包中传递 v-for 对象。 */
+	function chooseOption(value: string): void { draftValue.value = value }
 
 	/** 关闭选择弹层且不修改父组件已选值。 */
-	function closeSheet() { emit('close') }
+	function closeSheet(): void { emit('close') }
 
-	/** 将已确认的完整选项交给复制流程更新 ID 与名称。 */
-	function confirmSelection() {
-		if (selectedOption.value == null) return
-		emit('confirm', selectedOption.value)
+	/** 将已确认选项以 UTSJSONObject 字面量回传，父组件按 option['raw'] 读取原始模板对象，禁止自定义类型实例跨组件传递。 */
+	function confirmSelection(): void {
+		const selected = selectedOption.value
+		if (selected == null) return
+		emit('confirm', { value: selected.value, label: selected.label, raw: selected.raw })
 	}
 </script>
 
 <style>
-	.option-overlay { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 3200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.48); }
 	.option-panel { width: 100%; padding: 32rpx 28rpx 48rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
 	.option-title { color: #111827; font-size: 34rpx; font-weight: 700; text-align: center; }
-	.option-list { max-height: 640rpx; margin-top: 24rpx; }
-	.option-row { min-height: 88rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 18rpx 24rpx; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.option-list { margin-top: 24rpx; }
+	.option-row { min-height: 88rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 18rpx 24rpx; border-bottom-width: 2rpx; border-bottom-style: solid; border-bottom-color: #e5e7eb; }
 	.option-row.selected { background-color: #ecfdf5; }
 	.option-name { flex: 1; color: #334155; font-size: 28rpx; }
-	.option-mark { width: 42rpx; color: #16a34a; font-size: 32rpx; font-weight: 700; text-align: center; }
+	.option-mark { width: 48rpx; height: 44rpx; align-items: center; justify-content: center; }
+	.option-mark-text { color: #16a34a; font-size: 32rpx; font-weight: 700; }
 	.option-empty { padding: 36rpx 0; color: #94a3b8; font-size: 26rpx; text-align: center; }
 	.option-actions { flex-direction: row; margin-top: 24rpx; }
 	.option-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 29rpx; }

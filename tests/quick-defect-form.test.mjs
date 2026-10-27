@@ -30,3 +30,9 @@ test('requires category and positive other quantity before saving', () => {
   assert.match(form.validateDefectDraft({ ...draft, customQuantity: '0' }), /数量/)
   assert.match(form.validateDefectDraft({ ...draft, defectCode: '' }), /类别/)
 })
+
+test('falls back to the tier3 code when a stored defect has no defect code', () => {
+  const draft = form.createDefectDraft({ tier1Code: 'A', tier2Code: 'A1', tier3Code: 'A1-01', defectDesc: '污渍' })
+  assert.equal(draft.defectCode, 'A1-01')
+  assert.equal(draft.tier3Code, 'A1-01')
+})

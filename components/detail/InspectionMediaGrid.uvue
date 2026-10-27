@@ -31,7 +31,6 @@
 	const props = defineProps({
 		photos: { type: Array, default: () => [] },
 		addLabel: { type: String, default: '拍照' },
-		maxCount: { type: Number, default: 30 },
 		disabled: { type: Boolean, default: false },
 		removable: { type: Boolean, default: true }
 	})
@@ -39,12 +38,12 @@
 	/** 为媒体添加按钮提供原生模板可调用的翻译方法。 */
 	function translateText(key: string): string { return t(key) }
 
-	/** 判断媒体数量是否仍允许继续拍摄或选择。 */
-	const canAdd = computed((): boolean => props.photos.length < Math.max(1, props.maxCount))
+	/** 拍照/上传格子不再受张数上限约束：只要业务未禁用就常驻显示，避免用户误以为入口消失。 */
+	const canAdd = computed((): boolean => props.disabled !== true)
 	/** 把媒体数组属性收窄为对象数组，避免原生模板把动态元素传给 media 为 Object 的子组件时报类型不匹配。 */
 	const mediaItems = computed((): UTSJSONObject[] => (props.photos as UTSJSONObject[]).map((photo: UTSJSONObject): UTSJSONObject => photo))
-	/** 通知父组件打开原生连拍相机。 */
-	function captureMedia() { if (!props.disabled && canAdd.value) emit('capture-media') }
+	/** 通知父组件打开原生连拍相机；无张数上限，仅受禁用态控制。 */
+	function captureMedia() { if (!props.disabled) emit('capture-media') }
 	/** 转发媒体删除事件。 */
 	function removeMedia(media: UTSJSONObject) { emit('remove-media', media) }
 	/** 转发媒体预览事件。 */

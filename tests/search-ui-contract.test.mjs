@@ -68,7 +68,7 @@ test('search merge flow uses H5 floating entry and group selection', async () =>
   assert.doesNotMatch(source, /class="toolbar-btn merge"/)
   assert.match(source, /class="fab" @click="showActionMenu"/)
   assert.match(source, /<BottomActionSheet[\s\S]*?@select="handleFabAction"/)
-  assert.match(source, /class="group-select-all"[\s\S]*?@change="toggleGroupSelectAll\(group\)"/)
+  assert.match(source, /class="group-select-all"[\s\S]*?@click\.stop="toggleGroupSelectAll\(group\)"/)
   assert.match(source, /class="merge-action-bar"/)
   assert.match(source, /getMergedPlanId\(response\)/)
   assert.match(source, /markMergedSourcePlans\(results\.value, sourcePlanIds, mergedPlanId\.value\)/)
@@ -136,7 +136,7 @@ test('copy sheet matches H5 details and uses selection sheets', async () => {
   assert.match(card, /:selected-template-name="copyTemplateName"/)
   assert.match(search, /:selected-template-name="copyTemplateName"/)
   assert.doesNotMatch(source, /<picker\b/)
-  assert.match(selector, /scroll-view[\s\S]*?v-for="option in optionRows"/)
+  assert.match(selector, /scroll-view[\s\S]*?v-for="\(option, index\) in optionRows"/)
   assert.match(selector, /defineEmits\(\['close', 'confirm'\]\)/)
   assert.match(card, /:merged-items="copyMergedItems"/)
   assert.match(card, /loadCopyMergedItems\(\)/)
@@ -154,4 +154,37 @@ test('merged download shows H5 Order Item Name table', async () => {
   for (const heading of ['Order', 'Item', 'Name']) assert.match(table, new RegExp(`: '${heading}'`))
   assert.match(table, /getMergePreviewRow\(item\)/)
   assert.doesNotMatch(table, /<table\b|<thead\b|<td\b/)
+})
+
+/** 搜索结果工具栏筛选按钮改用视图按钮，避免原生 button 默认样式导致不对齐。 */
+test('search toolbar filter button uses aligned view pill', async () => {
+  const source = await readFile('pages/report/search.uvue', 'utf8')
+  assert.doesNotMatch(source, /<button class="toolbar-btn"/)
+  assert.match(source, /class="toolbar-btn" @click="openFilterModal"/)
+  assert.match(source, /\.toolbar-btn\s*\{[^}]*align-items:\s*center/s)
+  assert.match(source, /\.toolbar-btn\s*\{[^}]*justify-content:\s*center/s)
+  assert.match(source, /\.toolbar-btn\s*\{[^}]*border-width:\s*2rpx/s)
+})
+
+/** 筛选弹层罗列全部状态与验货类型选项，可换行且每个选项带外边框。 */
+test('filter sheet lists all wrapping bordered options with taller panel', async () => {
+  const source = await readFile('components/search/SearchFilterSheet.uvue', 'utf8')
+  assert.doesNotMatch(source, /direction="horizontal"/)
+  assert.doesNotMatch(source, /flex-wrap:\s*nowrap/)
+  assert.match(source, /\.chip-list\s*\{[^}]*flex-wrap:\s*wrap/s)
+  assert.match(source, /\.chip\s*\{[^}]*border-width:\s*2rpx/s)
+  assert.match(source, /\.chip\s*\{[^}]*border-style:\s*solid/s)
+  assert.match(source, /\.chip\.active\s*\{[^}]*border-color:\s*#34d399/s)
+  assert.match(source, /\.date-value\s*\{[^}]*border-width:\s*2rpx/s)
+  assert.match(source, /\.date-value\s*\{[^}]*border-style:\s*solid/s)
+})
+
+/** 筛选弹层设置更高的最小高度，并让选项区域可纵向滚动、操作按钮固定底部。 */
+test('filter sheet is taller with scrollable option body', async () => {
+  const source = await readFile('components/search/SearchFilterSheet.uvue', 'utf8')
+  assert.match(source, /sheetMinHeight/)
+  assert.match(source, /minHeight:\s*sheetMinHeight/)
+  assert.match(source, /maxHeight:\s*sheetMaxHeight/)
+  assert.match(source, /<scroll-view class="sheet-body" direction="vertical">/)
+  assert.match(source, /\.sheet-body\s*\{[^}]*flex:\s*1/s)
 })

@@ -41,7 +41,7 @@
 		{ key: 'checklist', label: '清单', icon: '☷' },
 		{ key: 'defects', label: '疵点', icon: '⚠' },
 		{ key: 'info', label: '订单信息', icon: '▤' },
-		{ key: 'local', label: '本地数据', icon: '▦' }
+		// { key: 'local', label: '本地数据', icon: '▦' }
 	]
 
 	/** 返回与 H5 一致的详情头部货号或计划编号。 */

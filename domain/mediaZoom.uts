@@ -1,0 +1,198 @@
+/** 图片预览的缩放结果：缩放倍数，以及相对预览画面中心的位移（px）。 */
+export type MediaZoomTransform = { scale: number, offsetX: number, offsetY: number }
+
+/** 图片预览的平移结果：相对预览画面中心的位移（px）。 */
+export type MediaZoomOffset = { offsetX: number, offsetY: number }
+
+/** 预览标题栏高度（rpx）：必须与 CapturePreview 的 .preview-header 一致，缩放手势的锚定基准依赖它。 */
+export const MEDIA_PREVIEW_HEADER_HEIGHT_RPX: number = 100
+
+/** 预览画面左右留白（rpx）：必须与 CapturePreview 的 .preview-content 内边距一致，图片不贴屏幕边缘。 */
+export const MEDIA_PREVIEW_SIDE_PADDING_RPX: number = 32
+
+/** 完整适配倍数：图片完整显示在预览区内，也是切图与重新打开预览时的复位倍数。 */
+export const MEDIA_ZOOM_FIT_SCALE: number = 1
+
+/** 预览缩放范围：最小缩到一半便于看清构图，最大 4 倍用于查看细节。 */
+export const MEDIA_ZOOM_MIN_SCALE: number = 0.5
+export const MEDIA_ZOOM_MAX_SCALE: number = 4
+
+/** 双击放大到的倍数：再次双击回到 1 倍完整适配。 */
+export const MEDIA_ZOOM_DOUBLE_TAP_SCALE: number = 2.5
+
+/** 双击判定窗口（毫秒）与两次点击之间允许的最大位移（px）。 */
+export const MEDIA_ZOOM_DOUBLE_TAP_INTERVAL_MS: number = 300
+export const MEDIA_ZOOM_DOUBLE_TAP_DISTANCE_PX: number = 40
+
+/** 点击判定阈值（px）：位移超过该值视为拖动，不参与双击缩放。 */
+export const MEDIA_ZOOM_TAP_MOVE_PX: number = 10
+
+/**
+ * 归一化零值：把 -0 收敛成 0，避免样式字符串出现 -0px，也便于界面状态比对。
+ * @param value 待归一化的数值
+ * @returns 归一化后的数值
+ */
+function normalizeZero(value: number): number {
+  return value === 0 ? 0 : value
+}
+
+/**
+ * 把位移收敛到 ±limit 之间；非法读数（NaN）按边界处理，避免整幅图飞出预览区。
+ * @param value 待收敛的位移
+ * @param limit 允许的最大位移（非负）
+ * @returns 收敛后的位移
+ */
+function clampOffset(value: number, limit: number): number {
+  if (!(value > -limit)) return limit > 0 ? -limit : 0
+  if (value > limit) return limit
+  return normalizeZero(value)
+}
+
+/**
+ * 把缩放倍数收敛到允许范围内；非法读数（NaN、0 或负数）回到完整适配，避免画面意外缩小或消失。
+ * @param scale 待收敛的倍数
+ * @param minScale 允许的最小倍数
+ * @param maxScale 允许的最大倍数
+ * @returns 收敛后的倍数
+ */
+export function clampMediaZoomScale(scale: number, minScale: number = MEDIA_ZOOM_MIN_SCALE, maxScale: number = MEDIA_ZOOM_MAX_SCALE): number {
+  const safeMin = Math.max(0.1, minScale ?? MEDIA_ZOOM_MIN_SCALE)
+  const safeMax = Math.max(safeMin, maxScale ?? MEDIA_ZOOM_MAX_SCALE)
+  const fit = Math.min(safeMax, Math.max(safeMin, MEDIA_ZOOM_FIT_SCALE))
+  const value = scale ?? MEDIA_ZOOM_FIT_SCALE
+  if (!(value > 0)) return fit
+  if (!(value > safeMin)) return safeMin
+  if (value > safeMax) return safeMax
+  return value
+}
+
+/**
+ * 计算双指之间的距离，用于把捏合位移换算成缩放倍数。
+ * @param firstX 第一根手指横坐标
+ * @param firstY 第一根手指纵坐标
+ * @param secondX 第二根手指横坐标
+ * @param secondY 第二根手指纵坐标
+ * @returns 两指间距（px）；读数异常时返回 0
+ */
+export function resolvePinchDistance(firstX: number, firstY: number, secondX: number, secondY: number): number {
+  const deltaX = (secondX ?? 0) - (firstX ?? 0)
+  const deltaY = (secondY ?? 0) - (firstY ?? 0)
+  const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+  if (!(distance > 0)) return 0
+  return distance
+}
+
+/**
+ * 按双指间距的变化换算缩放倍数：间距变大放大、变小缩小，并收敛到允许范围。
+ * 起始间距无效时保持原倍数，避免出现除零导致的倍数跳变。
+ * @param startScale 捏合开始时的倍数
+ * @param startDistance 捏合开始时的两指间距
+ * @param currentDistance 当前两指间距
+ * @param minScale 允许的最小倍数
+ * @param maxScale 允许的最大倍数
+ * @returns 当前应呈现的缩放倍数
+ */
+export function resolvePinchZoomScale(startScale: number, startDistance: number, currentDistance: number, minScale: number = MEDIA_ZOOM_MIN_SCALE, maxScale: number = MEDIA_ZOOM_MAX_SCALE): number {
+  const safeStartScale = clampMediaZoomScale(startScale, minScale, maxScale)
+  const safeStartDistance = startDistance ?? 0
+  const safeCurrentDistance = currentDistance ?? 0
+  if (!(safeStartDistance > 1) || !(safeCurrentDistance > 0)) return safeStartScale
+  return clampMediaZoomScale(safeStartScale * (safeCurrentDistance / safeStartDistance), minScale, maxScale)
+}
+
+/**
+ * 判定本次点击是否与前一次点击构成双击：两次点击必须在时间窗口内且位置足够接近。
+ * @param lastTapAt 上一次点击的时间戳（毫秒）；0 表示没有可配对的上一次点击
+ * @param lastTapX 上一次点击的横坐标
+ * @param lastTapY 上一次点击的纵坐标
+ * @param tapAt 本次点击的时间戳（毫秒）
+ * @param tapX 本次点击的横坐标
+ * @param tapY 本次点击的纵坐标
+ * @param intervalMs 双击时间窗口（毫秒）
+ * @param distancePx 两次点击允许的最大位移（px）
+ * @returns 构成双击时返回 true
+ */
+export function isDoubleTapGesture(lastTapAt: number, lastTapX: number, lastTapY: number, tapAt: number, tapX: number, tapY: number, intervalMs: number = MEDIA_ZOOM_DOUBLE_TAP_INTERVAL_MS, distancePx: number = MEDIA_ZOOM_DOUBLE_TAP_DISTANCE_PX): boolean {
+  const safeLastTapAt = lastTapAt ?? 0
+  const safeTapAt = tapAt ?? 0
+  if (!(safeLastTapAt > 0) || !(safeTapAt > safeLastTapAt)) return false
+  const elapsed = safeTapAt - safeLastTapAt
+  if (elapsed > Math.max(1, intervalMs ?? MEDIA_ZOOM_DOUBLE_TAP_INTERVAL_MS)) return false
+  const distance = resolvePinchDistance(lastTapX, lastTapY, tapX, tapY)
+  return distance <= Math.max(1, distancePx ?? MEDIA_ZOOM_DOUBLE_TAP_DISTANCE_PX)
+}
+
+/**
+ * 计算预览画面顶部的像素偏移：状态栏高度加预览标题栏高度，与页面 flex 布局一一对应。
+ * @param safeAreaTop 顶部安全区（状态栏）高度（px）
+ * @param headerHeight 预览标题栏高度（px）
+ * @returns 预览画面顶部的像素偏移
+ */
+export function resolveMediaZoomTopPx(safeAreaTop: number, headerHeight: number): number {
+  return Math.max(0, safeAreaTop ?? 0) + Math.max(0, headerHeight ?? 0)
+}
+
+/**
+ * 计算预览画面的可用像素高度：窗口高度减去顶部偏移，至少保留 1px 供缩放计算使用。
+ * @param windowHeight 窗口高度（px）
+ * @param areaTop 预览画面顶部的像素偏移（px）
+ * @returns 预览画面高度（px）
+ */
+export function resolveMediaZoomHeightPx(windowHeight: number, areaTop: number): number {
+  return Math.max(1, (windowHeight ?? 0) - Math.max(0, areaTop ?? 0))
+}
+
+/**
+ * 计算预览画面的可用像素宽度：窗口宽度减去左右两侧留白，至少保留 1px 供缩放计算使用。
+ * @param windowWidth 窗口宽度（px）
+ * @param sidePadding 单侧留白宽度（px）
+ * @returns 预览画面宽度（px）
+ */
+export function resolveMediaZoomWidthPx(windowWidth: number, sidePadding: number): number {
+  return Math.max(1, (windowWidth ?? 0) - 2 * Math.max(0, sidePadding ?? 0))
+}
+
+/**
+ * 把图片位移收敛到当前倍数允许的范围内，保证图片始终盖满预览画面。
+ * 允许的最大位移为画面尺寸的一半乘以放大出来的比例。
+ * @param offsetX 待收敛的横向位移（px）
+ * @param offsetY 待收敛的纵向位移（px）
+ * @param scale 当前缩放倍数
+ * @param areaWidth 预览画面宽度（px）
+ * @param areaHeight 预览画面高度（px）
+ * @returns 收敛后的位移
+ */
+export function clampMediaZoomOffset(offsetX: number, offsetY: number, scale: number, areaWidth: number, areaHeight: number): MediaZoomOffset {
+  const safeScale = clampMediaZoomScale(scale)
+  // 位移上限以完整适配为基准：只有放大到 1 倍以上才允许平移，缩小状态始终居中。
+  const limitX = Math.max(0, (areaWidth ?? 0) * (safeScale - MEDIA_ZOOM_FIT_SCALE) / 2)
+  const limitY = Math.max(0, (areaHeight ?? 0) * (safeScale - MEDIA_ZOOM_FIT_SCALE) / 2)
+  return { offsetX: clampOffset(offsetX ?? 0, limitX), offsetY: clampOffset(offsetY ?? 0, limitY) }
+}
+
+/**
+ * 计算双击缩放后的倍数与位移：完整适配时放大到指定倍数，放大或缩小时都先恢复完整适配。
+ * 放大以点击位置为锚点（点击处尽量留在原地），因此位移由锚点到画面中心的距离换算而来。
+ * @param currentScale 当前缩放倍数
+ * @param focusClientX 双击位置相对屏幕的横坐标（px）
+ * @param focusClientY 双击位置相对屏幕的纵坐标（px）
+ * @param areaLeft 预览画面左侧留白的像素偏移（px）
+ * @param areaTop 预览画面顶部的像素偏移（px）
+ * @param areaWidth 预览画面宽度（px）
+ * @param areaHeight 预览画面高度（px）
+ * @param doubleTapScale 双击放大到的倍数
+ * @param fitScale 完整适配倍数
+ * @returns 双击后的缩放倍数与位移
+ */
+export function resolveDoubleTapZoomTransform(currentScale: number, focusClientX: number, focusClientY: number, areaLeft: number, areaTop: number, areaWidth: number, areaHeight: number, doubleTapScale: number = MEDIA_ZOOM_DOUBLE_TAP_SCALE, fitScale: number = MEDIA_ZOOM_FIT_SCALE): MediaZoomTransform {
+  const safeFitScale = Math.max(0.1, fitScale ?? MEDIA_ZOOM_FIT_SCALE)
+  const safeScale = clampMediaZoomScale(currentScale, MEDIA_ZOOM_MIN_SCALE, MEDIA_ZOOM_MAX_SCALE)
+  // 放大或缩小状态双击都回到完整适配：这是唯一让用户一眼看到整张照片的状态。
+  if (safeScale !== safeFitScale) return { scale: safeFitScale, offsetX: 0, offsetY: 0 }
+  const targetScale = clampMediaZoomScale(doubleTapScale ?? MEDIA_ZOOM_DOUBLE_TAP_SCALE, safeFitScale, MEDIA_ZOOM_MAX_SCALE)
+  const focusX = (focusClientX ?? 0) - Math.max(0, areaLeft ?? 0) - (areaWidth ?? 0) / 2
+  const focusY = (focusClientY ?? 0) - Math.max(0, areaTop ?? 0) - (areaHeight ?? 0) / 2
+  const ratio = targetScale / safeScale
+  const offset = clampMediaZoomOffset(focusX * (1 - ratio), focusY * (1 - ratio), targetScale, areaWidth, areaHeight)
+  return { scale: targetScale, offsetX: offset.offsetX, offsetY: offset.offsetY }
+}

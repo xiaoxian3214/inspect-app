@@ -61,6 +61,25 @@ test('omits empty filters and maps report status', () => {
   })
 })
 
+/** 计划日期筛选必须换算为所选日期的当天边界，而不是构造瞬间的当前时间。 */
+test('date filters resolve to the picked day boundaries', () => {
+  assert.equal(viewModel.toDateBoundaryIso('2026-10-22', false), new Date(2026, 9, 22, 0, 0, 0, 0).toISOString())
+  assert.equal(viewModel.toDateBoundaryIso('2026-10-22', true), new Date(2026, 9, 22, 23, 59, 59, 999).toISOString())
+  assert.equal(viewModel.toDateBoundaryIso('', true), '')
+  assert.equal(viewModel.toDateBoundaryIso('not-a-date', true), '')
+})
+
+/** Android 的 new Date(string) 解析无时区串会退化为当前时间，必须用数字构造器换算边界。 */
+test('toDateBoundaryIso never parses date text through the string Date constructor', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const source = await readFile('domain/searchViewModel.uts', 'utf8')
+  const body = source.split('export function toDateBoundaryIso')[1]?.split('\n}')[0] ?? ''
+  assert.ok(body.length > 0, 'toDateBoundaryIso should exist')
+  assert.doesNotMatch(body, /new Date\(`/)
+  assert.doesNotMatch(body, /new Date\((?!year)[a-zA-Z]/)
+  assert.match(body, /new Date\(year, monthIndex, day/)
+})
+
 test('local downloaded record fully overrides the same remote plan', () => {
   const remote = [{ id: 'p-1', status: 0, goodsName: 'remote' }, { id: 'p-2' }]
   const local = [{ planId: 'p-1', status: 1, goodsName: 'local', photos: [{ id: 'photo-1' }] }]

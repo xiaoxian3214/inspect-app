@@ -1,10 +1,8 @@
 <template>
 	<view class="sync-cloud-wrap">
 		<view class="sync-cloud-icon" :class="{ disabled: disabled }" @click="handleClick">
-			<SyncCloudShape :color="iconColor" />
-			<view v-if="isUploading" class="sync-upload-arrow" :style="{ opacity: arrowLit ? 1 : 0.15 }">
-				<view class="sync-arrow-shaft"></view>
-				<view class="sync-arrow-head"></view>
+			<view class="sync-cloud-glyph" :style="{ opacity: isArrowActive ? (arrowLit ? 1 : 0.35) : 1 }">
+				<AppIcon :type="isArrowActive ? 'cloudUploadFilled' : 'cloudUpload'" :size="24" :color="iconColor" />
 			</view>
 			<view v-if="pendingCount > 0" class="sync-badge">
 				<text class="sync-badge-text">{{ badgeText }}</text>
@@ -15,7 +13,7 @@
 			<view class="sync-card-inner">
 				<view class="sync-card-header">
 					<view class="sync-card-icon-wrap">
-						<SyncCloudShape color="#60a5fa" background="#223657" />
+						<AppIcon :type="isArrowActive ? 'cloudUploadFilled' : 'cloudUpload'" :size="22" color="#60a5fa" />
 					</view>
 					<view class="sync-card-title-area">
 						<text class="sync-card-title">{{ translateText(cardTitle) }}</text>
@@ -53,7 +51,6 @@
 	import { t } from '../../i18n/index.uts'
 	import { computed, onBeforeUnmount, ref, watch } from 'vue'
 	import AppIcon from '../icons/AppIcon.uvue'
-	import SyncCloudShape from './SyncCloudShape.uvue'
 
 	const props = defineProps({
 		isOnline: { type: Boolean, default: true },
@@ -71,9 +68,13 @@
 	let uploadAnimationTimer: number | null = null
 
 	/**
-	 * 上传接口运行期间定时交替箭头亮度，停止时只释放计时器。
-	 * 停止方向不再改写 arrowLit：箭头所在子树会随 isUploading 变为 false 被销毁，
-	 * 此时写入会驱动已销毁的渲染子树在 vapor 原生渲染线程重新渲染并闪退。
+	 * 判断云图标是否处于同步中：队列同步或图片上传任一进行时切换为实心云图标并呼吸闪烁。
+	 */
+	const isArrowActive = computed(() => props.isSyncing || props.isUploading)
+
+	/**
+	 * 同步运行期间定时交替图标透明度形成呼吸效果，停止时只释放计时器。
+	 * 停止方向不再改写 arrowLit：避免无意义的透明度写入，闲置时样式本身会回到不透明。
 	 */
 	function handleUploadingChange(uploading: boolean) {
 		const timer = uploadAnimationTimer
@@ -209,7 +210,7 @@
 	}
 
 	watch((): number => props.pendingCount, (value: number) => handlePendingCountChange(value))
-	watch((): boolean => props.isUploading, (uploading: boolean) => handleUploadingChange(uploading), { immediate: true })
+	watch((): boolean => props.isUploading || props.isSyncing, (uploading: boolean) => handleUploadingChange(uploading), { immediate: true })
 	onBeforeUnmount(handleBeforeUnmount)
 </script>
 
@@ -217,9 +218,7 @@
 	.sync-cloud-wrap { position: relative; }
 	.sync-cloud-icon { width: 40px; height: 40px; position: relative; align-items: center; justify-content: center; }
 	.sync-cloud-icon.disabled { opacity: 0.7; }
-	.sync-upload-arrow { position: absolute; top: 18px; left: 16px; width: 8px; height: 8px; transition-property: opacity; transition-duration: 220ms; }
-	.sync-arrow-shaft { position: absolute; left: 3px; top: 1px; width: 2px; height: 6px; border-radius: 1px; background-color: #ffffff; }
-	.sync-arrow-head { position: absolute; left: 2px; top: 0; width: 5px; height: 5px; border-top-width: 2px; border-left-width: 2px; border-right-width: 0; border-bottom-width: 0; border-color: #ffffff; border-style: solid; transform: rotate(45deg); }
+	.sync-cloud-glyph { width: 24px; height: 24px; align-items: center; justify-content: center; transition-property: opacity; transition-duration: 220ms; }
 	.sync-badge { position: absolute; top: 3px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background-color: #ef4444; align-items: center; justify-content: center; }
 	.sync-badge-text { color: #ffffff; font-size: 10px; font-weight: 700; line-height: 16px; }
 	.sync-card { position: fixed; left: 0; right: 0; top: 48px; z-index: 2200; padding: 0 12px; }

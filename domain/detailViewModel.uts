@@ -187,6 +187,77 @@ export function makeItemResultId(itemId: string, sonPlanId: string = ''): string
 }
 
 /**
+ * 在报告的检查结果行里定位主行与合并子行：
+ * 按模板 ID 或行主键/父主键匹配检查项，返回子行与主行的原始记录。
+ */
+function findDefectLinkRows(itemResults: UTSJSONObject[] | null, baseId: string, standardItemId: string, sonPlanId: string): UTSJSONObject {
+  const normalizedBaseId = String(baseId ?? '').trim()
+  const normalizedTemplateId = String(standardItemId ?? '').trim()
+  const normalizedSonPlanId = String(sonPlanId ?? '').trim()
+  const rows = Array.isArray(itemResults) ? itemResults : ([] as UTSJSONObject[])
+  /** 判断结果行是否指向请求的检查项：模板 ID 相同，或行主键/父主键与 baseId 一致。 */
+  const matchesItem = (row: UTSJSONObject): boolean => {
+    if (normalizedTemplateId !== '' && String(row?.standardItemId ?? '').trim() === normalizedTemplateId) return true
+    const candidates = [row?.id, row?.itemResultId, row?.baseItemResultId]
+      .map((value) => String(value ?? '').trim())
+      .filter((value) => value !== '')
+    return candidates.includes(normalizedBaseId)
+  }
+  const baseRow = rows.find((row) => String(row?.sonPlanId ?? '').trim() === '' && matchesItem(row)) ?? null
+  const childRow = normalizedSonPlanId === ''
+    ? null
+    : (rows.find((row) => String(row?.sonPlanId ?? '').trim() === normalizedSonPlanId && matchesItem(row)) ?? null)
+  return { baseRow, childRow }
+}
+
+/**
+ * 按 H5 getItemResultIdForItem 的规则解析疵点关联的检查结果行主键：
+ * 子行已落库时返回真实主键，否则用主行真实主键合成 `主键_子计划` 供服务端首次落库；
+ * 主行场景直接返回主行主键。
+ * @param detail 报告详情，须含 itemResults
+ * @param baseId 检查项主键（清单行或主行结果主键）
+ * @param standardItemId 检查项模板 ID，允许为空
+ * @param sonPlanId 合并子计划 ID，为空表示主行
+ * @returns 疵点 checkItemResultId 应写入的检查结果行主键
+ */
+export function resolveDefectItemResultId(detail: UTSJSONObject, baseId: string, standardItemId: string, sonPlanId: string): string {
+  const normalizedBaseId = String(baseId ?? '').trim()
+  const normalizedSonPlanId = String(sonPlanId ?? '').trim()
+  const located = findDefectLinkRows(detail?.itemResults, baseId, standardItemId, normalizedSonPlanId)
+  const baseRowId = String(located?.baseRow?.id ?? located?.baseRow?.itemResultId ?? '').trim() || normalizedBaseId
+  if (normalizedSonPlanId === '') return baseRowId
+  const childRowId = String(located?.childRow?.id ?? located?.childRow?.itemResultId ?? '').trim()
+  return childRowId !== '' ? childRowId : makeItemResultId(baseRowId, normalizedSonPlanId)
+}
+
+/**
+ * 判断疵点是否挂在指定主行或合并子行上（H5 currentItemDefects 语义的扩展）：
+ * 主行接受 checkItemResultId 为空或等于主键；子行接受真实子行主键与两种合成串
+ * （检查项主键或主行真实主键拼接），H5 保存的疵点与服务端回传记录因此都能落回原行。
+ * @param defect 疵点记录
+ * @param baseId 检查项主键
+ * @param standardItemId 检查项模板 ID，允许为空
+ * @param sonPlanId 合并子计划 ID，为空表示主行
+ * @param itemResults 报告的检查结果行，用于解析真实子行主键
+ * @returns 疵点是否属于该检查项行
+ */
+export function isDefectLinkedToItem(defect: UTSJSONObject | null, baseId: string, standardItemId: string, sonPlanId: string, itemResults: UTSJSONObject[] | null): boolean {
+  if (defect == null) return false
+  const normalizedBaseId = String(baseId ?? '').trim()
+  if (String(defect?.checkItemId ?? '').trim() !== normalizedBaseId) return false
+  const linkedResultId = String(defect?.checkItemResultId ?? defect?.itemResultId ?? '').trim()
+  const normalizedSonPlanId = String(sonPlanId ?? '').trim()
+  if (linkedResultId === '') return normalizedSonPlanId === ''
+  if (normalizedSonPlanId === '') return linkedResultId === normalizedBaseId
+  const located = findDefectLinkRows(itemResults, normalizedBaseId, standardItemId, normalizedSonPlanId)
+  const childRowId = String(located?.childRow?.id ?? located?.childRow?.itemResultId ?? '').trim()
+  if (childRowId !== '' && linkedResultId === childRowId) return true
+  const baseRowId = String(located?.baseRow?.id ?? located?.baseRow?.itemResultId ?? '').trim() || normalizedBaseId
+  return linkedResultId === makeItemResultId(baseRowId, normalizedSonPlanId)
+    || linkedResultId === makeItemResultId(normalizedBaseId, normalizedSonPlanId)
+}
+
+/**
  * 将服务端或中文严重等级统一为 H5 使用的 CRITICAL、MAJOR、MINOR。
  * rawValue 为等级编码，rawLabel 为等级中文或英文名；返回归一化等级，无法识别时回退 MINOR。
  */
@@ -690,6 +761,21 @@ function isSameDetailPhoto(left: UTSJSONObject, right: UTSJSONObject): boolean {
 }
 
 /**
+ * 判断两段媒体记录是否为同一张图且本地文件未变化。
+ * 编辑后的记录沿用原 photoId，只比较身份会把"换成编辑后的本地新图"误判为未变化，
+ * 媒体库就会继续显示编辑前的旧图；而只改备注时携带的旧副本没有本地路径，
+ * 也不能当成替换，否则会把详情里较新的已上传状态降级。
+ * left 为详情中的现有媒体，right 为本次传入的媒体；身份不同、或本次带来了新的本地路径即为变化。
+ */
+function isSameDetailPhotoContent(left: UTSJSONObject, right: UTSJSONObject): boolean {
+  if (!isSameDetailPhoto(left, right)) return false
+  const leftLocalPath = String(left?.localPath ?? '').trim()
+  const rightLocalPath = String(right?.localPath ?? '').trim()
+  return leftLocalPath === rightLocalPath || rightLocalPath === ''
+}
+
+
+/**
  * 为同一照片的本地 ID、服务端 ID 与路径建立可复用的合并键。
  * photo 为媒体记录；返回形如 photo:xx、file:xx、local:xx、remote:xx 的非空键数组。
  */
@@ -769,8 +855,9 @@ export function updateChecklistItem(detail: UTSJSONObject, itemId: string, patch
   const nextData = { ...current, ...(patch ?? {}) }
   const currentPhotos = Array.isArray(current?.photos) ? current.photos : ([] as UTSJSONObject[])
   const patchedPhotos = Array.isArray(patch?.photos) ? patch.photos : currentPhotos
+  // 编辑后的记录与原图共用 photoId，必须连内容一起比较，否则媒体库拿不到编辑后的新图。
   const photosChanged = currentPhotos.length !== patchedPhotos.length
-    || patchedPhotos.some((photo, index) => !isSameDetailPhoto(currentPhotos[index], photo))
+    || patchedPhotos.some((photo, index) => !isSameDetailPhotoContent(currentPhotos[index], photo))
   if (!photosChanged) nextData.photos = currentPhotos
   const hasExplicitCompleted = patch != null && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'completed')
   nextData.completed = hasExplicitCompleted

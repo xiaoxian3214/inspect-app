@@ -67,6 +67,20 @@ export function canvasImageSource(info: UTSJSONObject | null, source: string | n
 }
 
 /**
+ * 归一化画布图片源路径：canvas 的 Image 只接受本地路径或代码包路径，带 file:// 前缀会解码失败。
+ * @param path 展示用图片路径（可能带 file:// 前缀）
+ * @returns 可供 canvas Image 解码的路径
+ */
+export function normalizeCanvasImagePath(path: string): string {
+  const normalized = String(path ?? '').trim()
+  if (normalized.startsWith('file://')) {
+    const localPath = normalized.slice('file://'.length)
+    return localPath !== '' ? localPath : normalized
+  }
+  return normalized
+}
+
+/**
  * 在加载超时提示中保留失败阶段及原生错误，供设备端定位画布初始化问题。
  * @param stage 失败的加载阶段
  * @param cause 原生错误描述
@@ -74,4 +88,83 @@ export function canvasImageSource(info: UTSJSONObject | null, source: string | n
  */
 export function editorTimeoutMessage(stage: string, cause: string): string {
   return `${stage}超时，请重试${cause !== '' ? `：${cause}` : ''}`
+}
+/**
+ * 取记录里的文本值，缺失时回退到上下文值：服务端下载回来的已上传照片只有文件字段。
+ * @param recordValue 原记录上的值
+ * @param contextValue 当前检查项/疵点上下文算出的值
+ * @returns 优先原记录、其次上下文的去空文本
+ */
+function resolveEditedUploadText(recordValue: any, contextValue: any): string {
+  const recordText = String(recordValue ?? '').trim()
+  return recordText !== '' ? recordText : String(contextValue ?? '').trim()
+}
+
+/**
+ * 合并编辑后照片的上传业务参数：已上传照片的服务端记录缺少 subGoodsNo（计划子货号）与
+ * sortNo（检查项内序号），而上传接口对这两项没有兜底，直接用原记录上传会被服务端拒绝，
+ * 因此缺失字段一律用当前检查项/疵点上下文补齐；原记录已有的值保持不变，
+ * 避免把检查点(checkPoint)等业务类型改成 checkResult。
+ * @param photo 编辑前的照片记录
+ * @param uploadMetadata 由检查项/疵点上下文算出的四个上传参数
+ * @returns 补齐后的 bizId、bizType、subGoodsNo、sortNo
+ */
+export function mergePhotoUploadMetadata(photo: UTSJSONObject | null, uploadMetadata: UTSJSONObject | null): UTSJSONObject {
+  const context = uploadMetadata != null && typeof uploadMetadata === 'object' ? uploadMetadata : {}
+  const recordSortNo = Math.max(0, parseInt(String(photo?.sortNo ?? 0)))
+  const contextSortNo = Math.max(0, parseInt(String(context?.sortNo ?? 0)))
+  return {
+    bizId: resolveEditedUploadText(photo?.bizId, context?.bizId),
+    bizType: resolveEditedUploadText(photo?.bizType, context?.bizType),
+    subGoodsNo: resolveEditedUploadText(photo?.subGoodsNo, context?.subGoodsNo),
+    sortNo: recordSortNo > 0 ? recordSortNo : contextSortNo
+  }
+}
+
+/**
+ * 生成"编辑后的本地图片"媒体记录：保留照片标识与业务归属，清空旧的服务端文件字段，
+ * 并把上传状态重置为待上传，编辑后的新图才会重新进入上传队列。
+ * 必须清空 fileId：照片仓库按 fileId 判定"已上传"，保留旧 fileId 会让编辑结果永远传不到服务端。
+ * @param photo 原始媒体记录
+ * @param localPath 编辑后写入沙箱的新图路径
+ * @param reportId 当前报告 ID，原记录缺少 reportId 时作为兜底
+ * @param uploadMetadata 当前检查项/疵点上下文算出的上传参数，用于补齐服务端记录缺失的 bizId/bizType/subGoodsNo/sortNo
+ * @returns 可直接交给照片仓库保存的媒体记录
+ */
+export function createEditedMediaRecord(photo: UTSJSONObject | null, localPath: string, reportId: string, uploadMetadata: UTSJSONObject | null = null): UTSJSONObject {
+  const metadata = editedMediaMetadata(photo)
+  const upload = mergePhotoUploadMetadata(photo, uploadMetadata)
+  return {
+    ...metadata,
+    // 已上传照片的服务端记录缺 subGoodsNo/sortNo，必须用当前检查项上下文补齐上传参数。
+    bizId: upload.bizId,
+    bizType: upload.bizType,
+    subGoodsNo: upload.subGoodsNo,
+    sortNo: upload.sortNo,
+    photoId: String(photo?.photoId ?? photo?.id ?? '').trim(),
+    id: String(photo?.id ?? photo?.photoId ?? '').trim(),
+    reportId: String(photo?.reportId ?? reportId ?? '').trim(),
+    localPath: String(localPath ?? '').trim(),
+    // 照片仓库保存时会把新记录合并到旧行上，字段缺失不会清掉旧值，必须逐个显式写空。
+    fileId: '',
+    filePath: '',
+    thumbnailPath: '',
+    previewUrl: '',
+    coverUrl: '',
+    url: '',
+    dataUrl: '',
+    fileName: '',
+    fileExt: '',
+    mimeType: '',
+    md5: '',
+    uploadedAt: '',
+    fileSize: 0,
+    duration: 0,
+    durationSeconds: 0,
+    mediaType: 'image',
+    uploadStatus: 'pending',
+    uploadError: '',
+    retryCount: 0,
+    nextRetryAt: ''
+  }
 }

@@ -2,7 +2,8 @@
 	<view v-if="visible" class="category-overlay" @click="closeSheet">
 		<view class="category-sheet" @click.stop="stopEvent">
 			<view class="category-head">
-				<view class="category-back" @click="goBack"><text>{{ step > 1 ? '‹' : '×' }}</text></view>
+				<AppButton v-if="step > 1" class="category-back" variant="icon" icon-type="back" :icon-size="24" icon-color="#334155" @press="goBack" />
+				<AppButton v-else class="category-back" variant="icon" icon-type="close" :icon-size="24" icon-color="#334155" @press="closeSheet" />
 				<view class="category-title-wrap">
 					<text class="category-title">{{ translateText(stepTitle) }}</text>
 					<text class="category-path">{{ selectedPath }}</text>
@@ -28,7 +29,7 @@
 						<text class="category-name">{{ item.name || item.code }}</text>
 						<text v-if="item.code" class="category-code">{{ item.code }}</text>
 					</view>
-					<text class="category-arrow">{{ step < 3 ? '›' : '✓' }}</text>
+					<text v-if="step < 3" class="category-arrow">›</text>
 				</view>
 			</scroll-view>
 		</view>
@@ -40,6 +41,8 @@
 	import { computed, ref, watch } from 'vue'
 	import { getAppSetting, setAppSetting } from '../../runtime/appRuntime.uts'
 	import { normalizeRecentCategories, pushRecentCategory } from '../../domain/defectCategoryHistory.uts'
+	import { buildCategoryBreadcrumb, resolveDefectCategoryPath } from '../../domain/defectCategoryPath.uts'
+	import AppButton from '../common/AppButton.uvue'
 	type CategoryNode = { code: string, name: string, status: string, isLeaf: boolean, children: CategoryNode[], raw: UTSJSONObject }
 	type RecentCategory = { tier1Code: string, tier2Code: string, tier3Code: string, defectCode: string, defectDesc: string }
 
@@ -85,8 +88,9 @@
 	})
 	/** 返回当前分类选择步骤标题。 */
 	const stepTitle = computed(() => step.value === 1 ? '选择一级分类' : (step.value === 2 ? '选择二级分类' : '选择三级分类'))
-	/** 返回已选一级和二级分类组成的路径。 */
+	/** 返回当前选择路径文案：重开编辑时先回显已选类别的完整路径，用户重新挑选后切换为实时层级名称。 */
 	const selectedPath = computed(() => {
+		if (restoredBreadcrumb.value !== '' && tier1Code.value === restoredTier1Code.value && tier2Code.value === restoredTier2Code.value) return restoredBreadcrumb.value
 		const names: string[] = []
 		if (selectedLevel1.value?.name) names.push(selectedLevel1.value.name)
 		if (selectedLevel2.value?.name) names.push(selectedLevel2.value.name)
@@ -106,12 +110,22 @@
 		recentCategories.value = (pushRecentCategory(recentCategories.value, category) as UTSJSONObject[]).map((row: UTSJSONObject): RecentCategory => toRecentCategory(row))
 		await setAppSetting(RECENT_CATEGORY_KEY, recentCategories.value)
 	}
-	/** 根据当前疵点表单重置分类选择层级和搜索状态。 */
+	/** 编辑已有疵点时按存储编码反查出的完整路径文案，用于重开弹层时回显类别名称。 */
+	const restoredBreadcrumb = ref('')
+	/** 反查结果中的一级编码，作为"用户尚未重新挑选"的锚点。 */
+	const restoredTier1Code = ref('')
+	/** 反查结果中的二级编码，作为"用户尚未重新挑选"的锚点。 */
+	const restoredTier2Code = ref('')
+	/** 根据当前疵点表单重置分类选择层级和搜索状态，并按三级编码反查补齐层级名称。 */
 	function resetSelection(selected: UTSJSONObject) {
 		step.value = 1
 		keyword.value = ''
-		tier1Code.value = (selected['tier1Code'] ?? '').toString()
-		tier2Code.value = (selected['tier2Code'] ?? '').toString()
+		const path = resolveDefectCategoryPath(props.categoryTree as UTSJSONObject[], selected)
+		restoredTier1Code.value = path.tier1Code
+		restoredTier2Code.value = path.tier2Code
+		restoredBreadcrumb.value = buildCategoryBreadcrumb(path)
+		tier1Code.value = path.tier1Code
+		tier2Code.value = path.tier2Code
 		loadRecentCategories()
 	}
 	/** 更新当前层级分类搜索关键词。 */
@@ -166,14 +180,16 @@
 	watch((): boolean => props.visible, (visible: boolean) => { if (visible) resetSelection(props.selected as UTSJSONObject) })
 	/** 当前疵点变化时同步分类层级。 */
 	watch((): UTSJSONObject => props.selected as UTSJSONObject, (selected: UTSJSONObject) => { if (props.visible) resetSelection(selected) }, { deep: true })
+	/** 分类树异步加载完成后重算路径，避免弹层已打开时反查不到层级名称。 */
+	watch((): UTSJSONObject[] => props.categoryTree as UTSJSONObject[], () => { if (props.visible) resetSelection(props.selected as UTSJSONObject) })
 </script>
 
 <style>
 	.category-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2350; justify-content: flex-end; background-color: rgba(15,23,42,0.55); }
 	.category-sheet { position: absolute; left: 0; top: 10%; right: 0; bottom: 0; flex-direction: column; padding: 24rpx 24rpx 40rpx; border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
 	.category-head { flex-direction: row; align-items: center; }
-	.category-back, .category-placeholder { width: 72rpx; height: 72rpx; align-items: center; justify-content: center; }
-	.category-back { color: #334155; font-size: 48rpx; }
+	.category-back { border-width: 0; background-color: transparent; }
+	.category-placeholder { width: 84rpx; height: 84rpx; }
 	.category-title-wrap { flex: 1; align-items: center; }
 	.category-title { color: #172033; font-size: 30rpx; font-weight: 700; }
 	.category-path { margin-top: 4rpx; color: #94a3b8; font-size: 21rpx; }
@@ -184,7 +200,7 @@
 	.recent-chip { margin: 0 12rpx 12rpx 0; padding: 12rpx 18rpx; border-radius: 18rpx; background-color: #ecfdf3; }
 	.recent-chip { color: #038b42; font-size: 22rpx; }
 	.category-list { flex: 1; min-height: 0; margin-top: 16rpx; }
-	.category-row { min-height: 92rpx; padding: 16rpx 12rpx; flex-direction: row; align-items: center; border-bottom-width: 2rpx; border-bottom-color: #f1f5f9; }
+	.category-row { min-height: 92rpx; padding: 16rpx 12rpx; flex-direction: row; align-items: center; border-bottom-width: 2rpx; border-bottom-style: solid; border-bottom-color: #e5e7eb; }
 	.category-copy { flex: 1; }
 	.category-name { color: #1e293b; font-size: 27rpx; }
 	.category-code { margin-top: 5rpx; color: #94a3b8; font-size: 21rpx; }

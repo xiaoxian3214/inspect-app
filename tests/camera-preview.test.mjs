@@ -65,6 +65,70 @@ test('camera strip uses per-photo corner numbers and opens a reusable preview', 
   assert.doesNotMatch(preview, /document\.|window\.|<svg\b/)
 })
 
+/** 大图预览的相邻下标换算：首尾不循环，越界返回 -1 表示没有可切换的媒体。 */
+test('adjacent capture index stays inside the captured list', () => {
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(0, 3, 1), 1)
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(2, 3, -1), 1)
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(1, 3, -1), 0)
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(1, 3, 1), 2)
+  // 边界不循环：第一张没有上一张，最后一张没有下一张。
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(0, 3, -1), -1)
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(2, 3, 1), -1)
+  // 非法入参：没有媒体、下标未知或没有偏移量时都不切换。
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(0, 0, 1), -1)
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(-1, 3, 1), -1)
+  assert.equal(captureDomain.resolveAdjacentCaptureIndex(1, 3, 0), -1)
+})
+
+/** 横向滑动换算成翻页方向：向左滑看下一张、向右滑看上一张，未过阈值时不翻页。 */
+test('horizontal swipe resolves to the next or previous capture', () => {
+  assert.equal(captureDomain.CAPTURE_PREVIEW_SWIPE_THRESHOLD_PX, 60)
+  assert.equal(captureDomain.resolveCapturePreviewSwipe(-80), 1)
+  assert.equal(captureDomain.resolveCapturePreviewSwipe(80), -1)
+  assert.equal(captureDomain.resolveCapturePreviewSwipe(-10), 0)
+  assert.equal(captureDomain.resolveCapturePreviewSwipe(0), 0)
+  assert.equal(captureDomain.resolveCapturePreviewSwipe(Number.NaN), 0)
+  // 阈值可覆盖：小位移手势在更低的阈值下也要能翻页。
+  assert.equal(captureDomain.resolveCapturePreviewSwipe(-30, 20), 1)
+  assert.equal(captureDomain.resolveCapturePreviewSwipe(30, 20), -1)
+})
+
+/**
+ * 大图预览只用左右滑动切换媒体，不在左右两侧放上一页/下一页热区；
+ * 切换只提交下标，媒体地址仍由拍照页统一下发。
+ */
+test('capture preview navigates with horizontal swipe only', async () => {
+  const preview = await readFile('components/camera/CapturePreview.uvue', 'utf8')
+  const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
+
+  // 组件接收已拍总数并把切换结果交回页面，自身不持有媒体列表。
+  assert.match(preview, /total: \{ type: Number, default: 0 \}/)
+  assert.match(preview, /defineEmits\(\['close-preview', 'edited', 'change-index'\]\)/)
+  assert.match(preview, /emit\('change-index', target\)/)
+  assert.match(preview, /requestIndex\(resolveAdjacentCaptureIndex\(props\.index, props\.total, offset\)\)/)
+
+  // 画面上不出现任何左右侧翻页热区。
+  assert.doesNotMatch(preview, /preview-nav|goPrevious|goNext|canGoPrevious|canGoNext/)
+  assert.doesNotMatch(preview, /<AppIcon/)
+
+  // 位置角标仍然显示"第几张 / 共几张"。
+  assert.match(preview, /\{\{ index \+ 1 \}\} \/ \{\{ total \}\}/)
+
+  // 左右滑动：先锁定手势方向，横向才翻页；纵向手势不参与切换。
+  assert.match(preview, /@touchstart="handleTouchStart"/)
+  assert.match(preview, /@touchend="handleTouchEnd"/)
+  assert.match(preview, /resolveGestureAxis\(/)
+  assert.match(preview, /resolveCapturePreviewSwipe\(/)
+
+  // 页面把总数交给预览，并在切换时沿用 openCapturePreview 的方向检查，不能靠滑动看到未回正原图。
+  assert.match(page, /const captureTotal = computed\(\(\): number => capturedPaths\.value\.length\)/)
+  assert.match(page, /:total="captureTotal"/)
+  assert.match(page, /@change-index="handlePreviewIndexChange"/)
+  const navigate = page.split('function handlePreviewIndexChange(index: number): void')[1]?.split('/** 关闭预览时只切换可见性')[0] ?? ''
+  assert.match(navigate, /pendingUprightPaths\.value\.includes\(path\) \|\| failedUprightPaths\.value\.includes\(path\)\) return/)
+  assert.match(navigate, /selectedCaptureIndex\.value = index/)
+})
+
 test('native capture keeps camera temp paths until finish, then persists through the injected service', async () => {
   const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
   assert.match(page, /appendCapturedMedia\(shotPaths, 'image', 0, shutterRotation\)/)
@@ -97,9 +161,11 @@ test('camera preview uses the already written editor image and replaces the stri
   const editor = await readFile('components/detail/ImageMarkupEditor.uvue', 'utf8')
   assert.match(editor, /<canvas/)
   assert.match(editor, /createCanvasContextAsync/)
-  assert.match(editor, /drawAnnotationToCanvas/)
+  assert.match(editor, /function renderEditor\(rc: CanvasRenderingContext2D/)
   assert.match(editor, /toDataURL\(/)
-  assert.match(editor, /USER_DATA_PATH/)
+  // 编辑结果必须是已落盘的可上传 jpg：PNG 只作转码输入放缓存目录，最终经持久化链路写入 inspection_media。
+  assert.match(editor, /CACHE_PATH/)
+  assert.match(editor, /persistMediaPath\(jpegPath, false\)/)
   assert.match(page, /replaceCapturePath\(capturedPaths\.value, index, localPath\)/)
   assert.doesNotMatch(page, /await persistCapturePath\(|cameraCaptureRepository\.saveAll\(/)
   assert.match(page, /goBackWithResult\(savedPaths\)/)

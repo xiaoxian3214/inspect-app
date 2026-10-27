@@ -63,8 +63,8 @@
 		durationLabel: formatVideoDurationLabel(parseInt((item['durationSeconds'] ?? 0).toString()))
 	})))
 
-	/** 按每张缩略图 152rpx 加 16rpx 间距计算内容宽度，确保原生横向滚动容器能识别溢出。 */
-	const stripRowWidth = computed((): string => `${mediaItems.value.length * 168}rpx`)
+	/** 按每张缩略图 200rpx 加 8rpx 间距计算内容宽度，确保原生横向滚动容器能识别溢出。 */
+	const stripRowWidth = computed((): string => `${mediaItems.value.length * 208}rpx`)
 
 	/**
 	 * 计算缩略图的旋转样式：成片已在拍摄时按快门姿态回正，缩略图只需按当前握持角反向补角，
@@ -91,20 +91,20 @@
 </script>
 
 <style>
-	.capture-strip { height: 168rpx; flex-direction: row; align-items: center; padding-left: 16rpx; background-color: #0f172a; }
-	.capture-strip-scroll { flex: 1; height: 168rpx; }
-	.capture-strip-row { height: 168rpx; flex-direction: row; align-items: center; }
-	.capture-thumb-wrap { position: relative; flex-shrink: 0; width: 152rpx; height: 152rpx; margin-right: 16rpx; border-radius: 16rpx; overflow: hidden; background-color: #1e293b; }
-	.capture-thumb { width: 152rpx; height: 152rpx; }
+	.capture-strip { height: 216rpx; flex-direction: row; align-items: center; padding-left: 16rpx; background-color: #0f172a; }
+	.capture-strip-scroll { flex: 1; height: 216rpx; }
+	.capture-strip-row { height: 216rpx; flex-direction: row; align-items: center; }
+	.capture-thumb-wrap { position: relative; flex-shrink: 0; width: 200rpx; height: 200rpx; margin-right: 8rpx; border-radius: 16rpx; overflow: hidden; background-color: #1e293b; }
+	.capture-thumb { width: 200rpx; height: 200rpx; }
 	.capture-thumb-status { align-items: center; justify-content: center; padding: 8rpx; }
 	.capture-thumb-status-text { color: #ffffff; font-size: 22rpx; text-align: center; }
-	.capture-thumb-number { position: absolute; top: 4rpx; left: 4rpx; min-width: 36rpx; height: 36rpx; padding: 0 6rpx; align-items: center; justify-content: center; border-radius: 18rpx; background-color: rgba(15, 23, 42, 0.82); }
-	.capture-thumb-number-text { color: #ffffff; font-size: 22rpx; }
+	.capture-thumb-number { position: absolute; top: 6rpx; left: 6rpx; min-width: 40rpx; height: 40rpx; padding: 0 6rpx; align-items: center; justify-content: center; border-radius: 20rpx; background-color: rgba(15, 23, 42, 0.82); }
+	.capture-thumb-number-text { color: #ffffff; font-size: 24rpx; }
 	.capture-thumb-video { align-items: center; justify-content: center; background-color: #1e293b; }
 	.capture-play-triangle { width: 0; height: 0; border-top-width: 16rpx; border-top-color: transparent; border-bottom-width: 16rpx; border-bottom-color: transparent; border-left-width: 26rpx; border-left-color: #ffffff; }
 	.capture-thumb-duration { position: absolute; left: 0; right: 0; bottom: 0; padding: 4rpx 8rpx; color: #ffffff; font-size: 22rpx; text-align: center; background-color: rgba(15, 23, 42, 0.65); }
-	.capture-remove { position: absolute; top: 0; right: 0; width: 44rpx; height: 44rpx; align-items: center; justify-content: center; border-bottom-left-radius: 16rpx; background-color: rgba(15, 23, 42, 0.78); }
+	.capture-remove { position: absolute; top: 0; right: 0; width: 48rpx; height: 48rpx; align-items: center; justify-content: center; border-bottom-left-radius: 16rpx; background-color: rgba(15, 23, 42, 0.78); }
 	.capture-remove-text { color: #ffffff; font-size: 30rpx; line-height: 30rpx; }
-	.capture-empty { flex: 1; height: 168rpx; justify-content: center; }
+	.capture-empty { flex: 1; height: 216rpx; justify-content: center; }
 	.capture-empty-text { color: #94a3b8; font-size: 24rpx; }
 </style>

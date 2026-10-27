@@ -69,13 +69,58 @@ test('required photo badge accepts numeric flags and stays above the camera', as
   assert.ok(source.includes('.required-star { position: absolute;'))
 })
 
-/** 订单信息不提供操作栏，疵点新增入口固定在页面右下角。 */
+/** 原生端静态兄弟节点不参与 z-index 分层：相机图标/缩略图必须定位并置于徽章之下。 */
+test('checklist camera icon and thumbnail are positioned below the badges', async () => {
+  const source = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  // 相机图标需要 class 以便定位分层（普通行与合并行各一处）
+  assert.ok((source.match(/class="photo-camera"/g) ?? []).length >= 2, 'both camera icons should carry photo-camera class')
+  for (const selector of ['photo-camera', 'photo-thumbnail']) {
+    const style = source.match(new RegExp(`\\.${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? ''
+    assert.ok(style.length > 0, `.${selector} style block should exist`)
+    assert.match(style, /position:\s*absolute/, `.${selector} must be positioned to join z-index ordering`)
+    assert.match(style, /z-index:\s*1/, `.${selector} must sit below badges`)
+  }
+  // 徽章层级必须高于图标
+  for (const selector of ['photo-count', 'required-star']) {
+    const style = source.match(new RegExp(`\\.${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? ''
+    assert.match(style, /z-index:\s*[2-9]/, `.${selector} must sit above the icon`)
+  }
+  // 必填星标不得再使用负偏移（会被原生父容器裁剪）
+  const starStyle = source.match(new RegExp(`\\.required-star\\s*\\{([^}]*)\\}`))?.[1] ?? ''
+  assert.doesNotMatch(starStyle, /(?:top|right|left|bottom):\s*-/)
+})
+
+/** 必填星标只显示星形图标本身，不带底色圆盘。 */
+test('required star renders without background disc', async () => {
+  const source = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  const starStyle = source.match(new RegExp(`\\.required-star\\s*\\{([^}]*)\\}`))?.[1] ?? ''
+  assert.ok(starStyle.length > 0, '.required-star style should exist')
+  assert.doesNotMatch(starStyle, /background-color/)
+  assert.doesNotMatch(starStyle, /border/)
+})
+
+/** 校验缺失的检查项文字与 H5 一致变红（#dc2626），普通行与合并子行同样生效。 */
+test('validation-failed item names turn red in both row types', async () => {
+  const source = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  const normalRow = source.split('class="checklist-item"')[1]?.split('class="item-right"')[0] ?? ''
+  // 普通行检查项名称绑定校验失败状态（缺结果或缺必传照片都算缺失）
+  assert.match(normalRow, /<text class="item-name" :class="\{ itemErrorText: isItemFailed\(child\.id\) \|\| isPhotoFailed\(child\.id\) \}">/)
+  // 合并行货物名称同样变红
+  assert.match(source, /<text class="inspection-plan-goods" :class="\{ itemErrorText: isItemFailed\(child\.id\) \|\| isPhotoFailed\(child\.id\) \}">/)
+  const style = source.match(/\.item-error-text\s*\{([^}]*)\}/)?.[1] ?? ''
+  assert.ok(style.length > 0, '.item-error-text style should exist')
+  assert.match(style, /color:\s*#dc2626/)
+})
+
+/** 订单信息不提供操作栏，疵点新增入口固定在页面右下角，并在疵点列表底部提供整行新增按钮。 */
 test('detail actions follow the H5 tab layout', async () => {
   const page = await readFile('pages/report/detail.uvue', 'utf8')
   const defects = await readFile('components/detail/DefectListTab.uvue', 'utf8')
   assert.ok(!page.includes("activeTab === 'info'\" class=\"footer-actions"))
   assert.ok(page.includes('class="floating-defect-button"'))
   assert.ok(!defects.includes('class="add-button"'))
+  assert.ok(defects.includes('class="add-defect-button" @click="addDefect"'))
+  assert.ok(page.includes('@add-defect="openNewDefect()"'))
 })
 
 /** 上传完成事件可来自合并报告的共享组 ID，页面仍刷新照片状态。 */
@@ -87,7 +132,7 @@ test('upload completion refreshes the visible report across merged members', asy
 /** 合并报告最终提交只调用父计划一次，成功确认后以单个事务更新组级状态。 */
 test('merged final submission targets the parent and does not save members one by one', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
-  assert.match(source, /submitFinalReport\(\{ planId: payload\.planId, payload, photoPlanId: planId\.value \}\)/)
+  assert.match(source, /submitFinalReport\(\{ planId: payload\.planId, payload, photoPlanId: planId\.value, defects: detail\.value\?\.defects \?\? \[\] \}\)/)
   assert.match(source, /waitForCurrentPlanReported\(\(currentPlanId\) => planApi\.getPlanDetail\(currentPlanId\), payload\.planId\)/)
   assert.doesNotMatch(source, /markMergedPlansReported/)
   assert.match(source, /photoPlanId: planId\.value/)
@@ -127,6 +172,46 @@ test('attribute inputs have group-specific keys like the H5 editor', async () =>
   const textGroups = source.split('v-else-if="itemType === \'Text\'"')[1].split('v-else-if="itemType === \'Barcodes\'"')[0]
   assert.match(measurements, /:key="`\$\{measurementIndex\}_\$\{attr\.attrId\}`"/)
   assert.match(textGroups, /:key="`\$\{textGroupIndex\}_\$\{attr\.attrId\}`"/)
+})
+
+/** 自动保存回传同一检查项时不得重置正在编辑的规格/文本组下标。 */
+test('auto-save round-trip keeps the editing group index', async () => {
+  const source = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  // 数据监听按检查项身份区分：同一项只同步数据（保留组下标），切换检查项才完整重置
+  assert.match(source, /function isSameEditingItem\(item: UTSJSONObject\): boolean/)
+  assert.match(source, /watch\(\(\): UTSJSONObject => itemData\.value, \(item: UTSJSONObject\) => \{ if \(isSheetVisible\(\)\) resetDraft\(item, !isSameEditingItem\(item\)\) \}\)/)
+  // 打开弹层时完整重置分组游标
+  assert.match(source, /watch\(\(\): boolean => props\.visible, \(visible: boolean\) => \{ if \(visible\) resetDraft\(itemData\.value, true\) \}/)
+  // resetDraft 仅在 resetGroups 为真时清零组下标，否则按组数量收敛
+  const resetBody = source.split('function resetDraft(')[1]?.split('\n\t}')?.[0] ?? ''
+  assert.ok(resetBody.length > 0, 'resetDraft body should exist')
+  assert.match(resetBody, /if \(resetGroups\)/)
+  assert.match(resetBody, /measurementIndex\.value = 0/)
+  assert.match(resetBody, /Math\.min\(measurementIndex\.value, measurements\.length - 1\)/)
+})
+
+/** 备注输入框键盘确认键直接收起键盘，不插入换行。 */
+test('remarks textarea confirm button collapses the keyboard', async () => {
+  const source = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const textarea = source.match(/<textarea[^>]*class="remarks"[^>]*>/)?.[0] ?? ''
+  assert.ok(textarea.length > 0, 'remarks textarea should exist')
+  assert.match(textarea, /confirm-type="done"/)
+  assert.match(textarea, /:confirm-hold="false"/)
+  assert.match(textarea, /@confirm="confirmRemarks"/)
+  const body = source.split('function confirmRemarks(')[1]?.split('\n\t}')?.[0] ?? ''
+  assert.ok(body.length > 0, 'confirmRemarks handler should exist')
+  assert.match(body, /saveNotesOnBlur\(\)/)
+})
+
+/** 规格汇总区域带 H5 同款外边框。 */
+test('measurement summary table has bordered wrapper', async () => {
+  const source = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
+  const style = source.match(/\.group-summary\s*\{([^}]*)\}/)?.[1] ?? ''
+  assert.ok(style.length > 0, '.group-summary style should exist')
+  assert.match(style, /border-width:\s*2rpx/)
+  assert.match(style, /border-style:\s*solid/)
+  assert.match(style, /border-color:\s*#dbe3ef/)
+  assert.match(style, /border-radius:\s*20rpx/)
 })
 
 /** H5 复制流程按字段、目标计划、匹配检查项三步多选，媒体操作按媒体和目标两步多选。 */
@@ -481,6 +566,21 @@ test('detail media views use the shared H5-compatible display resolver', async (
   }
 })
 
+/**
+ * 拍照/上传图标必须在任何图片数量下都保留：历史上媒体库按 maxCount=30 隐藏添加格子，
+ * 用户拍到 30 张以上就会以为"拍照上传功能消失了"，因此这里去掉张数上限、只保留禁用态控制。
+ */
+test('media library keeps the capture tile visible no matter how many photos exist', async () => {
+  const grid = await readFile('components/detail/InspectionMediaGrid.uvue', 'utf8')
+
+  // 不再按张数隐藏添加格子。
+  assert.doesNotMatch(grid, /maxCount|max-count/)
+  assert.match(grid, /const canAdd = computed\(\(\): boolean => props\.disabled !== true\)/)
+  assert.match(grid, /function captureMedia\(\) \{ if \(!props\.disabled\) emit\('capture-media'\) \}/)
+  // 添加格子仍然渲染在媒体列表之后，未删除任何入口。
+  assert.match(grid, /v-if="canAdd" class="media-cell"/)
+})
+
 test('quantity operations stay offline while copy and media actions require online APIs', async () => {
   const source = await readFile('pages/report/detail.uvue', 'utf8')
 
@@ -693,6 +793,16 @@ test('defect editor consumes the cached defect category tree', async () => {
   assert.match(sheet, /tier3Code/)
   assert.match(sheet, /commonFlag/)
   assert.match(sheet, /普遍性疵点/)
+})
+
+/** 编辑疵点重开分类弹层时，按存储的三级编码反查并回显完整类别路径（服务端记录无层级编码）。 */
+test('defect category picker restores the stored category path when reopened', async () => {
+  const category = await readFile('components/detail/DefectCategorySheet.uvue', 'utf8')
+  const sheet = await readFile('components/detail/QuickDefectSheet.uvue', 'utf8')
+  assert.match(category, /resolveDefectCategoryPath\(props\.categoryTree as UTSJSONObject\[\], selected\)/)
+  assert.match(category, /restoredBreadcrumb\.value = buildCategoryBreadcrumb\(path\)/)
+  assert.match(category, /tier1Code\.value = path\.tier1Code/)
+  assert.match(sheet, /resolveDefectCategoryPath\(props\.categoryTree as UTSJSONObject\[\]/)
 })
 
 /** 新增及编辑疵点均固定从底部展开，占屏幕九成并保留独立滚动内容与底部操作栏。 */

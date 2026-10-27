@@ -74,9 +74,9 @@ test('user drawer starts the browser based update flow', async () => {
 /** 确认更新后不得在应用内下载：直接把 downloadUrl 交给系统浏览器，调起失败才提示。 */
 test('list page opens the APK link in the system browser', async () => {
   const page = await readFile('pages/report/list.uvue', 'utf8')
-  assert.match(page, /import \{ openSystemBrowser \} from '@\/uni_modules\/qcm-open-url'/)
+  assert.match(page, /import \{ openUrlInSystemBrowser \} from '@\/domain\/openUrlInSystemBrowser\.uts'/)
   assert.match(page, /function openUpdateDownloadPage\(downloadUrl: string\): void/)
-  assert.match(page, /if \(openSystemBrowser\(downloadUrl\)\) return/)
+  assert.match(page, /if \(openUrlInSystemBrowser\(downloadUrl\)\) return/)
   assert.match(page, /uni\.showToast\(\{ title: t\('唤起浏览器失败'\), icon: 'none' \}\)/)
   assert.doesNotMatch(page, /uni\.downloadFile\(/)
   assert.doesNotMatch(page, /uni\.openURL\s*\(/)
@@ -86,18 +86,39 @@ test('list page opens the APK link in the system browser', async () => {
   assert.doesNotMatch(service, /uni\.downloadFile|uni\.openDocument|uni\.installApk|downloadAndOpen|cancelDownload/)
 })
 
-/** uts 插件用 Android ACTION_VIEW 调起系统浏览器，失败返回 false 供页面提示；uni-app x 没有内置 uni.openURL。 */
-test('browser plugin uses the Android ACTION_VIEW intent', async () => {
-  const plugin = await readFile('uni_modules/qcm-open-url/utssdk/app-android/index.uts', 'utf8')
-  assert.match(plugin, /export function openSystemBrowser\(url: string\): boolean/)
-  assert.match(plugin, /const target = url\.trim\(\)/)
-  assert.doesNotMatch(plugin, /String\(url/)
-  assert.match(plugin, /new Intent\(Intent\.ACTION_VIEW, Uri\.parse\(target\)\)/)
-  assert.match(plugin, /UTSAndroid\.getUniActivity\(\)/)
-  assert.match(plugin, /activity\.startActivity\(intent\)/)
-  assert.doesNotMatch(plugin, /plus\./)
-  const manifest = JSON.parse(await readFile('uni_modules/qcm-open-url/package.json', 'utf8'))
-  assert.equal(manifest.id, 'qcm-open-url')
-  const iface = await readFile('uni_modules/qcm-open-url/utssdk/interface.uts', 'utf8')
-  assert.match(iface, /export type OpenSystemBrowser = \(url: string\) => boolean;/)
+/** 跨平台打开浏览器函数（domain/openUrlInSystemBrowser.uts）用 Android ACTION_VIEW 调起系统浏览器。 */
+test('shared domain function uses Android ACTION_VIEW and iOS UIApplication', async () => {
+  const shared = await readFile('domain/openUrlInSystemBrowser.uts', 'utf8')
+  assert.match(shared, /export function openUrlInSystemBrowser\(url: string\): boolean/)
+  assert.match(shared, /const target = url\.trim\(\)/)
+  assert.doesNotMatch(shared, /String\(url/)
+  assert.match(shared, /new Intent\(Intent\.ACTION_VIEW, Uri\.parse\(target\)\)/)
+  assert.match(shared, /UTSAndroid\.getUniActivity\(\)/)
+  assert.match(shared, /activity\.startActivity\(intent\)/)
+  assert.doesNotMatch(shared, /plus\./)
+})
+
+/** iOS 端同样用 uts 插件调起系统浏览器（UIApplication.open），卡片的平台守卫必须覆盖 APP-IOS，否则会固定提示“唤起浏览器失败”。 */
+test('openUrlInSystemBrowser shared domain function ships both Android and iOS implementations', async () => {
+  const shared = await readFile('domain/openUrlInSystemBrowser.uts', 'utf8')
+  // 安全边界：只放行 http/https
+  assert.match(shared, /!target\.startsWith\('http/)
+  assert.doesNotMatch(shared, /String\(url/)
+  // Android 分支：Intent.ACTION_VIEW + Uri.parse + startActivity
+  assert.match(shared, /Intent\.ACTION_VIEW/)
+  assert.match(shared, /Uri\.parse/)
+  assert.match(shared, /activity\.startActivity\(intent\)/)
+  // iOS 分支：URL 解析 + UIApplication 调起
+  assert.match(shared, /UIApplication\.shared\.canOpenURL/)
+  assert.match(shared, /UIApplication\.shared\.open/)
+  assert.doesNotMatch(shared, /plus\./)
+  // 卡片通过 domain 导入并使用同一函数
+  const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
+  assert.match(card, /openUrlInSystemBrowser/)
+  assert.match(card, /from '\.\.\/\.\.\/domain\/openUrlInSystemBrowser\.uts'/)
+  const reportBranch = card.split("if (actionKey === 'report')")[1]?.split('return')[0] ?? ''
+  assert.match(reportBranch, /openReportInBrowser/)
+  // list 页面也使用同一函数打开下载链接
+  const list = await readFile('pages/report/list.uvue', 'utf8')
+  assert.match(list, /openUrlInSystemBrowser/)
 })

@@ -37,6 +37,38 @@ test('ignores empty photo slots left by deleted media', () => {
   assert.equal(result.totalCount, 0)
 })
 
+/**
+ * 疵点编辑中暂存的 draft 照片不属于当前报告：上传器跳过它们（isPendingPhoto 排除 draft），
+ * 保存疵点时会激活、取消时会删除。但中途杀进程等场景会留下孤儿 draft 记录——
+ * 它们既不会被上传，也不该永远阻断最终提交。此处锁定“孤儿 draft 视为可丢弃残留”的判定。
+ */
+test('treats orphan draft photos without a live defect owner as droppable residue', () => {
+  const photos = [
+    { photoId: 'p1', uploadStatus: 'draft', ownerType: 'defect', ownerId: 'defect-gone' },
+    { photoId: 'p2', uploadStatus: 'draft', ownerType: 'checklist', ownerId: 'item-1' },
+    { photoId: 'p3', uploadStatus: 'draft' },
+    { photoId: 'p4', uploadStatus: 'pending' }
+  ]
+  const defects = [{ defectId: 'defect-keep', id: 'defect-keep' }]
+  const result = policyModule.evaluateFinalSubmissionPhotos(photos, defects)
+
+  assert.equal(result.ready, false, 'p4 is still pending and must block')
+  assert.equal(result.pendingCount, 1)
+  assert.equal(result.draftCount, 3, 'orphan drafts are flagged as droppable residue, not pending')
+})
+
+/** draft 照片仍被某个已保存疵点持有时照常阻断，等待用户保存或取消疵点编辑。 */
+test('keeps blocking while a draft photo is still held by a saved defect', () => {
+  const photos = [
+    { photoId: 'p1', uploadStatus: 'draft', ownerType: 'defect', ownerId: 'defect-live' }
+  ]
+  const defects = [{ defectId: 'defect-live' }]
+  const result = policyModule.evaluateFinalSubmissionPhotos(photos, defects)
+
+  assert.equal(result.ready, false)
+  assert.equal(result.pendingCount, 1)
+})
+
 /** H5 以本次提交的计划状态确认成功，不等待合并组其他成员逐一变更状态。 */
 test('confirms a merged final submission by its current plan rather than every sibling', () => {
   const serverDetail = { plan: { id: 'parent-1', status: 3 }, inspectionPlans: [

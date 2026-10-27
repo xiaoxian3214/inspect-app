@@ -19,21 +19,24 @@ export function createInspectionSubmissionService(options) {
 
   /**
    * 读取指定计划的全部照片并计算最终提交前的上传完成状态。
+   * 同时传入报告草稿中的疵点列表，让孤儿 draft 照片（疵点编辑中途杀进程的残留）
+   * 不再被计入“未上传完成”，避免永远阻断最终提交。
    */
-  async function getPhotoState(planId) {
+  async function getPhotoState(planId, defects = null) {
     const photos = await listPhotos(planId)
-    return evaluatePhotos(Array.isArray(photos) ? photos : [])
+    const defectList = Array.isArray(defects) ? defects : null
+    return evaluatePhotos(Array.isArray(photos) ? photos : [], defectList)
   }
 
   /**
    * 在线上传当前计划的待处理图片，并在上传结束后重新确认没有遗留图片。
    */
-  async function ensurePhotosUploaded(planId) {
-    let state = await getPhotoState(planId)
+  async function ensurePhotosUploaded(planId, defects = null) {
+    let state = await getPhotoState(planId, defects)
     if (state.ready) return state
 
     await uploadPendingPhotos(planId)
-    state = await getPhotoState(planId)
+    state = await getPhotoState(planId, defects)
     if (!state.ready) {
       throw new Error(state.message || `仍有 ${state.pendingCount ?? 0} 张图片未上传完成，请联网后重试`)
     }
@@ -46,11 +49,12 @@ export function createInspectionSubmissionService(options) {
   async function submitFinalReport(input) {
     const planId = String(input?.planId ?? input?.payload?.planId ?? '').trim()
     const photoPlanId = String(input?.photoPlanId ?? planId).trim()
+    const defects = Array.isArray(input?.defects) ? input.defects : null
     if (planId === '') throw new Error('计划ID缺失，无法提交验货报告')
 
     await assertOnline('最终提交需要联网，请连接网络后重试')
     if (typeof waitForPendingSync === 'function') await waitForPendingSync()
-    await ensurePhotosUploaded(photoPlanId)
+    await ensurePhotosUploaded(photoPlanId, defects)
     await assertOnline('网络已断开，请重新联网后提交')
 
     return planApi.generateReport(

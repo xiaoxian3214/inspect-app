@@ -15,7 +15,7 @@
 					<text class="member-cell cell-divider">{{ row.itemBatch }}</text>
 					<text class="member-cell" :class="{ 'cell-divider': downloadable }">{{ row.productName }}</text>
 					<view v-if="downloadable" class="member-action">
-						<button class="member-download" :disabled="submitting || isDownloaded(row.item)" @click="downloadItem(row.item)">{{ translateText(isDownloaded(row.item) ? '已下载' : '下载') }}</button>
+						<button class="member-download" :class="{ 'member-download-disabled': submitting || isDownloaded(row.item) }" :disabled="submitting || isDownloaded(row.item)" @click="downloadItem(row.item)">{{ translateText(isDownloaded(row.item) ? '已下载' : '下载') }}</button>
 					</view>
 				</view>
 			</view>
@@ -56,11 +56,12 @@
 	.member-header, .member-row { flex-direction: row; align-items: stretch; }
 	.member-header { background-color: #f8fafc; }
 	.member-body { border:2rpx solid #e5e7eb;}
-	.member-row { min-height: 72rpx; border-top-width: 2rpx; border-top-color: #cbd5e1; border-bottom:1rpx solid #cbd5e1;}
-	.member-cell { flex: 1; min-width: 0; padding: 16rpx 10rpx; color: #334155; font-size: 28rpx; line-height: 34rpx;  }
+	.member-row { border-top-width: 2rpx; border-top-color: #cbd5e1; border-bottom:1rpx solid #cbd5e1;}
+	.member-cell { flex: 1; min-width: 0; padding: 16rpx 10rpx; color: #334155; font-size: 28rpx; line-height: 42rpx;  }
 	.cell-divider { border-right-width: 2rpx; border-right-color: #cbd5e1; }
 	.member-heading { color: #0f172a; font-weight: 700; }
 	.member-action { width: 112rpx; padding: 8rpx 4rpx; align-items: center; justify-content: center; color: #334155; font-size: 24rpx; }
-	.member-download { width: 104rpx; height: 62rpx; margin: 0; padding: 0; border-radius: 12rpx; color: #ffffff; background-color: #16a34a; font-size: 22rpx; }
+	.member-download { width: 104rpx; height: 62rpx; margin: 0; padding: 0; border-radius: 12rpx; color: #ffffff; background-color: #16a34a; font-size: 22rpx; text-align: center; line-height: 62rpx; }
+	.member-download-disabled { background-color: #cbd5e1; color: #94a3b8; }
 	.member-message { padding: 24rpx; color: #64748b; font-size: 25rpx; text-align: center; }
 </style>

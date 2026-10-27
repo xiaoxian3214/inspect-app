@@ -146,46 +146,37 @@ export function formatVideoDurationLabel(totalSeconds: number): string {
   return `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds}`
 }
 
-/** 取景框默认成片比例（宽/高）：系统相机默认输出 4:3，首张成片读出真实像素后按设备实际比例校正。 */
-export const DEFAULT_CAPTURE_ASPECT_RATIO: number = 0.75
+/** 大图预览的横向翻页阈值（px）：手指横向位移超过该距离才切换到相邻媒体。 */
+export const CAPTURE_PREVIEW_SWIPE_THRESHOLD_PX: number = 60
 
-/** 取景框尺寸：原生像素，供取景画面按成片比例做 contain 适配。 */
-export type CaptureFrameSize = {
-  /** 取景框宽度（px） */
-  width: number,
-  /** 取景框高度（px） */
-  height: number
+/**
+ * 把大图预览的横向滑动位移换算成翻页方向。
+ * 向左滑（位移为负）看下一张、向右滑看上一张；未超过阈值时返回 0，表示停在当前媒体。
+ * @param deltaX 本次横向触摸位移（px）
+ * @param threshold 判定翻页所需的最小横向位移（px）
+ * @returns 相邻下标偏移：1 表示下一张，-1 表示上一张，0 表示不翻页
+ */
+export function resolveCapturePreviewSwipe(deltaX: number, threshold: number = CAPTURE_PREVIEW_SWIPE_THRESHOLD_PX): number {
+  const safeDeltaX = parseInt(String(deltaX ?? 0))
+  const safeThreshold = Math.max(1, parseInt(String(threshold ?? CAPTURE_PREVIEW_SWIPE_THRESHOLD_PX)))
+  if (safeDeltaX <= -safeThreshold) return 1
+  if (safeDeltaX >= safeThreshold) return -1
+  return 0
 }
 
 /**
- * 由成片像素尺寸算出取景框的成片比例（宽/高，竖屏取景统一取短边/长边）。
- * 只看长短边：EXIF 是否已应用、横拍还是竖拍都不影响比例，只有一个取景比例也就不会因为握持方向跳变。
- * @param width 成片像素宽度
- * @param height 成片像素高度
- * @returns 短边/长边的比例；尺寸非法时返回默认 4:3
+ * 计算点击上一张/下一张后要切换到的下标；首尾不循环，越界返回 -1。
+ * 不循环是有意为之：拍照页的媒体列表会继续追加，回绕到另一端容易让用户误以为照片被替换。
+ * @param currentIndex 当前预览下标
+ * @param captureCount 已拍媒体总数
+ * @param offset 相邻下标偏移（-1 上一张、1 下一张）
+ * @returns 目标下标；没有可切换的媒体时返回 -1
  */
-export function resolveCaptureAspectRatio(width: number, height: number): number {
-  const parsedWidth = Number(width)
-  const parsedHeight = Number(height)
-  if (Number.isNaN(parsedWidth) || Number.isNaN(parsedHeight) || parsedWidth <= 0 || parsedHeight <= 0) return DEFAULT_CAPTURE_ASPECT_RATIO
-  return Math.min(parsedWidth, parsedHeight) / Math.max(parsedWidth, parsedHeight)
-}
-
-/**
- * 用成片比例把取景框铺满取景区（cover）：短边贴边，另一边按比例放大到溢出，溢出部分由取景区裁掉。
- * 取景画面因此既不拉伸变形，也不用黑边浪费屏幕；成片仍是相机原生的完整比例，只是比取景画面多出被裁掉的两侧。
- * @param containerWidth 取景区可用宽度（px）
- * @param containerHeight 取景区可用高度（px）
- * @param aspectRatio 成片宽高比（宽/高）
- * @returns 取景框宽高（px，至少 1px）
- */
-export function resolveCaptureFrameSize(containerWidth: number, containerHeight: number, aspectRatio: number): CaptureFrameSize {
-  const safeWidth = containerWidth > 0 ? containerWidth : 0
-  const safeHeight = containerHeight > 0 ? containerHeight : 0
-  const parsedRatio = Number(aspectRatio)
-  const ratio = Number.isNaN(parsedRatio) || parsedRatio <= 0 ? DEFAULT_CAPTURE_ASPECT_RATIO : parsedRatio
-  if (safeWidth / safeHeight < ratio) {
-    return { width: Math.max(1, Math.round(safeHeight * ratio)), height: Math.max(1, Math.round(safeHeight)) }
-  }
-  return { width: Math.max(1, Math.round(safeWidth)), height: Math.max(1, Math.round(safeWidth / ratio)) }
+export function resolveAdjacentCaptureIndex(currentIndex: number, captureCount: number, offset: number): number {
+  const safeIndex = parseInt(String(currentIndex ?? -1))
+  const safeCount = parseInt(String(captureCount ?? 0))
+  const safeOffset = parseInt(String(offset ?? 0))
+  const target = safeIndex + safeOffset
+  if (safeIndex < 0 || safeCount <= 0 || safeOffset === 0 || target < 0 || target >= safeCount) return -1
+  return target
 }

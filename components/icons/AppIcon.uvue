@@ -18,6 +18,8 @@
 		if (props.type === 'bars') return '\ue627'
 		if (props.type === 'close') return '\ue66c'
 		if (props.type === 'cloudUpload') return '\ue645'
+		if (props.type === 'cloudUploadFilled') return '\ue648'
+		if (props.type === 'cloudDownload') return '\ue647'
 		if (props.type === 'download') return '\ue68d'
 		if (props.type === 'downloadFilled') return '\ue681'
 		if (props.type === 'locked') return '\ue66b'

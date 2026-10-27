@@ -32,12 +32,18 @@ export function normalizeSearchStatus(status: any): number {
 /**
  * 把 yyyy-MM-dd 日期转换为本地当天边界对应的 ISO 字符串。
  * value 为筛选日期文本，endOfDay 决定取当天 23:59:59.999 还是 00:00:00.000；非法日期返回空串。
+ * 注意：Android 的 new Date(string) 解析无时区串会退化为当前时间，必须用数字构造器换算。
  */
 export function toDateBoundaryIso(value: string, endOfDay: boolean = false): string {
   const dateText = String(value ?? '').trim()
-  if (dateText === '') return ''
-  const timeText = endOfDay ? '23:59:59.999' : '00:00:00.000'
-  const date = new Date(`${dateText}T${timeText}`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return ''
+  const year = parseInt(dateText.substring(0, 4))
+  const monthIndex = parseInt(dateText.substring(5, 7)) - 1
+  const day = parseInt(dateText.substring(8, 10))
+  if (monthIndex < 0 || monthIndex > 11 || day < 1 || day > 31) return ''
+  const date = endOfDay
+    ? new Date(year, monthIndex, day, 23, 59, 59, 999)
+    : new Date(year, monthIndex, day, 0, 0, 0, 0)
   if (Number.isNaN(date.getTime())) return ''
   return date.toISOString()
 }

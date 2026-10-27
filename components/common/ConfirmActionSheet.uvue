@@ -33,7 +33,7 @@
 	.overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2450; justify-content: flex-end; background-color: rgba(15,23,42,.58); }
 	.overlay.dialogOverlay { justify-content: center; align-items: center; }
 	.sheet { width: 100%; padding: 14rpx 30rpx 30rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
-	.sheet.dialogSheet { width: 86%; padding: 36rpx 30rpx 0; border-radius: 26rpx; align-items: center; }
+	.sheet.dialogSheet { width: 86%; padding: 36rpx 30rpx 30rpx; border-radius: 26rpx; align-items: center; }
 	.message.dialogMessage { padding-bottom: 38rpx; text-align: center; }
 	.actions.dialogActions { width: 100%; margin-top: 0; border-top-width: 2rpx; border-top-color: #f1f5f9; }
 	.sheet-handle { width: 74rpx; height: 8rpx; margin: 0 auto 22rpx; border-radius: 4rpx; background-color: #d7dde7; }

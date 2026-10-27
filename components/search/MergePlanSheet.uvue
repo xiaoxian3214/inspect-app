@@ -1,13 +1,18 @@
 <template>
-	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
-		<view class="sheet-panel" :style="{ maxHeight: sheetMaxHeight }" @click.stop>
+	<page-container :show="visible" position="bottom" :overlay="true" :z-index="2200" overlay-style="background-color: rgba(15, 23, 42, 0.42)" @clickoverlay="closeSheet">
+		<view class="sheet-panel" :style="{ maxHeight: sheetMaxHeight, minHeight: sheetMinHeight }">
 			<text class="sheet-title">{{ translateText(stage === 'type' ? '选择合并验货类型' : '确认合并以下验货数据') }}</text>
 
 			<view v-if="stage === 'type'" class="section">
 				<text class="section-label">{{ translateText('验货类型') }}</text>
-				<view class="chip-list">
-					<view v-for="option in displayTypes" :key="option.value" class="chip" :class="{ active: selectedInspectType === option.value }" @click="selectInspectType(option.value)">
-						<text class="chip-text">{{ option.label }}</text>
+				<view class="type-grid">
+					<view v-for="(row, rowIndex) in typeRows" :key="rowIndex" class="type-row">
+						<view v-for="cell in row" :key="cell.value" class="type-cell">
+							<view v-if="cell.placeholder" class="type-chip placeholder"></view>
+							<view v-else class="type-chip" :class="{ active: selectedInspectType == cell.value }" @click="selectInspectType(cell.value)">
+								<text class="type-chip-text" :class="{ active: selectedInspectType == cell.value }">{{ cell.label }}</text>
+							</view>
+						</view>
 					</view>
 				</view>
 				<text v-if="inspectTypeOptions.length === 0" class="empty-text">{{ translateText('暂无可选验货类型') }}</text>
@@ -21,13 +26,13 @@
 						<text class="merge-table-cell merge-table-header-cell">{{ translateText('款号#批次') }}</text>
 						<text class="merge-table-cell merge-table-header-cell">{{ translateText('产品名称') }}</text>
 					</view>
-					<scroll-view class="merge-table-body" direction="vertical">
+					<view class="merge-table-body">
 						<view v-for="row in previewRows" :key="row.key" class="merge-table-row">
 							<text class="merge-table-cell">{{ row.orderNo }}</text>
 							<text class="merge-table-cell">{{ row.itemBatch }}</text>
 							<text class="merge-table-cell">{{ row.productName }}</text>
 						</view>
-					</scroll-view>
+					</view>
 				</view>
 				<view class="section">
 					<text class="section-label">{{ translateText('清单模板') }}</text>
@@ -52,7 +57,7 @@
 				</button>
 			</view>
 		</view>
-	</view>
+	</page-container>
 </template>
 
 <script setup lang="uts">
@@ -62,6 +67,11 @@
 	import { computed } from 'vue'
 	type MergeOption = { value: string, label: string }
 	type MergePreview = { key: string, orderNo: string, itemBatch: string, productName: string }
+	/** 合并类型格子：placeholder 为 true 时仅占位，保持最后一行同样三等分铺满整行。 */
+	type MergeTypeCell = { value: string, label: string, placeholder: boolean }
+
+	/** 合并类型弹层每行固定展示的列数，对齐 H5 三列等宽网格。 */
+	const MERGE_TYPE_COLUMNS = 3
 
 	const props = defineProps({
 		visible: { type: Boolean, default: false },
@@ -79,8 +89,31 @@
 	function translateText(key: string, params: UTSJSONObject = {}): string { return t(key, params) }
 	/** 限制合并弹层最大高度。 */
 	const sheetMaxHeight = computed((): string => windowHeightPx(0.88))
+	/** 当前是否处于“确认合并以下验货数据”阶段。 */
+	const confirmStage = computed((): boolean => props.stage !== 'type')
+	/** 确认阶段明细全部展开、不内滚，弹层整体加高到至少 70% 窗口高；类型阶段保持自然高度。 */
+	const sheetMinHeight = computed((): string => confirmStage.value ? windowHeightPx(0.7) : '0px')
 	/** 将检查类型字典转换为模板可读取的选项。 */
 	const displayTypes = computed((): MergeOption[] => (props.inspectTypeOptions as UTSJSONObject[]).map((raw: UTSJSONObject): MergeOption => ({ value: (raw['value'] ?? '').toString(), label: (raw['label'] ?? '').toString() })))
+	/**
+	 * 将验货类型切成每行 3 个的格子；末行不足时补透明占位格，保证任意行都三等分铺满整行，
+	 * 不会再在右侧留下大片空白。
+	 */
+	const typeRows = computed((): MergeTypeCell[][] => {
+		const options = displayTypes.value
+		const rows: MergeTypeCell[][] = []
+		const rowCount = Math.ceil(options.length / MERGE_TYPE_COLUMNS)
+		for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+			const cells: MergeTypeCell[] = []
+			for (let columnIndex = 0; columnIndex < MERGE_TYPE_COLUMNS; columnIndex++) {
+				const optionIndex = rowIndex * MERGE_TYPE_COLUMNS + columnIndex
+				if (optionIndex < options.length) cells.push({ value: options[optionIndex].value, label: options[optionIndex].label, placeholder: false })
+				else cells.push({ value: `placeholder-${rowIndex}-${columnIndex}`, label: '', placeholder: true })
+			}
+			rows.push(cells)
+		}
+		return rows
+	})
 	/** 从嵌套或平铺的计划对象中读取稳定 ID。 */
 	function getItemId(item: UTSJSONObject): string { const plan = (item['plan'] as UTSJSONObject | null) ?? {}; return firstNonEmptyText([plan['id'], plan['planId'], item['planId'], item['id']], '') }
 
@@ -146,20 +179,22 @@
 </script>
 
 <style>
-	.sheet-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.42); }
-	.sheet-panel { padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
+	.sheet-panel { width: 100%; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
 	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }
 	.section { margin-top: 30rpx; }
 	.section-label { color: #334155; font-size: 28rpx; font-weight: 600; }
-	.chip-list { flex-direction: row; flex-wrap: wrap; margin-top: 20rpx; }
-	.chip { background-color: #f5f5f5; border:2rpx solid #ccc;  margin-right: 16rpx; margin-bottom: 16rpx; padding: 24rpx 36rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; }
-	.chip.active { border-color: #16a34a; background-color: #f0fdf4; }
-	.chip-text { color: #475569; font-size: 26rpx; }
+	.type-grid { margin-top: 20rpx; }
+	.type-row { flex-direction: row; }
+	.type-cell { flex: 1; margin-left: 10rpx; margin-right: 10rpx; margin-bottom: 16rpx; }
+	.type-chip { width: 100%; height: 112rpx; border-width: 2rpx; border-style: solid; border-color: #e2e8f0; border-radius: 20rpx; background-color: #f8fafc; align-items: center; justify-content: center; padding: 0 8rpx; }
+	.type-chip.placeholder { border-width: 0; background-color: transparent; }
+	.type-chip.active { border-color: #34d399; background-color: #e8f7ef; }
+	.type-chip-text { color: #9ca3af; font-size: 26rpx; line-height: 36rpx; text-align: center; }
+	.type-chip-text.active { color: #047857; font-weight: 600; }
 	.summary-text { margin-top: 24rpx; color: #166534; font-size: 28rpx; font-weight: 600; }
 	.merge-table { margin-top: 18rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; overflow: hidden; }
 	.merge-table-header, .merge-table-row { flex-direction: row; align-items: center; }
 	.merge-table-header { background-color: #f8fafc; }
-	.merge-table-body { max-height: 360rpx; }
 	.merge-table-row { min-height: 74rpx; border-top-width: 2rpx; border-top-color: #f1f5f9; }
 	.merge-table-cell { flex: 1; min-width: 0; padding: 18rpx 10rpx; color: #334155; font-size: 24rpx; line-height: 34rpx; }
 	.merge-table-header-cell { color: #0f172a; font-weight: 700; }

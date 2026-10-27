@@ -40,9 +40,12 @@ test('detail components declare referenced functions before calling them', async
   assert.ok(sheet.indexOf('function saveNotesOnBlur()') < sheet.indexOf('function confirmResult(result: string)'))
   const editor = await readFile('components/detail/ImageMarkupEditor.uvue', 'utf8')
   for (const [dependency, caller] of [
-    ['function layoutStage(', 'function loadImage('],
-    ['function queryStageRect(', 'function loadImage('],
-    ['function clampPoint(', 'function getEventPoint('],
+    ['function layoutEditor(', 'function loadEditorImage('],
+    ['function refreshEditorWhenReady(', 'function initCanvas('],
+    ['function initCanvas(', 'function loadEditorImage('],
+    ['function measureElementRect(', 'function layoutEditor('],
+    ['function commitEditorState(', 'function eraseStrokeAt('],
+    ['function clearCanvasGesture(', 'function selectTool('],
   ]) assert.ok(editor.indexOf(dependency) < editor.indexOf(caller), `${dependency} must precede ${caller}`)
 })
 

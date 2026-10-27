@@ -66,6 +66,8 @@ export function createInspectionMediaService(options) {
       return true
     } catch (error) {
       const failure = photoUploadPolicy.classifyUploadFailure(error, previousRetryCount, Date.now())
+      // 失败原因只写库不显示，真机排查需要控制台可见：固定前缀便于检索，并带上实际发出的上传参数。
+      console.warn('[QCM_PHOTO_UPLOAD_FAILED]', JSON.stringify({ path: photo?.localPath ?? '', params: uploadParams, status: failure.status, message: failure.message }))
       await photoRepository.save(normalizedPlanId, {
         ...photo,
         uploadStatus: failure.status,

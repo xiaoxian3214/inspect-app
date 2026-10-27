@@ -59,6 +59,19 @@ export function needsPersistentMediaCopy(path: string, persistentDir: string = '
 }
 
 /**
+ * 判断路径是否落在自定义相机写出的应用缓存目录（/Android/data/<包名>/cache/uni-media/）。
+ * 这类路径只是临时文件：系统或用户清理应用缓存后文件会消失，媒体库会显示空白，
+ * 尚未上传的照片也无法再上传，因此需要在"完成"时另存到应用持久目录。
+ * @param path 相机返回的本地路径
+ * @returns 属于自定义相机缓存目录时返回 true
+ */
+export function isVolatileCameraCapturePath(path: string): boolean {
+  const normalizedPath = normalizeLocalFilePath(path)
+  if (normalizedPath === '') return false
+  return /\/Android\/data\/[^/]+\/cache\/uni-media\//.test(normalizedPath)
+}
+
+/**
  * 提取临时媒体的文件扩展名：优先沿用原扩展名，缺失或异常时按媒体类型给默认值。
  * @param tempPath 相机或相册返回的临时路径
  * @param isVideo 是否为视频
@@ -113,7 +126,11 @@ export type MediaPersistenceServiceOptions = {
   /** 持久媒体目录（固定值）；与 resolvePersistentDir 二选一 */
   persistentDir?: string | null,
   /** 惰性读取持久媒体目录；优先于 persistentDir */
-  resolvePersistentDir?: (() => string) | null
+  resolvePersistentDir?: (() => string) | null,
+  /** 以 base64 读取文件的能力；自定义相机缓存路径无法 copyFile 时用它兜底落盘 */
+  readFile?: ((filePath: string, onSuccess: (base64: string) => void, onFailure: (error: FileSystemManagerFail) => void) => void) | null,
+  /** 以 base64 写入文件的能力；与 readFile 配对使用 */
+  writeFile?: ((filePath: string, base64: string, onSuccess: () => void, onFailure: (error: FileSystemManagerFail) => void) => void) | null
 }
 
 /**
@@ -123,6 +140,8 @@ export type MediaPersistenceServiceOptions = {
  */
 export function createMediaPersistenceService(options: MediaPersistenceServiceOptions) {
   const copyFile = options.copyFile
+  const readFile = options.readFile
+  const writeFile = options.writeFile
   const customResolvePersistentDir = options.resolvePersistentDir
   const resolvePersistentDir = customResolvePersistentDir != null
     ? customResolvePersistentDir
@@ -151,9 +170,34 @@ export function createMediaPersistenceService(options: MediaPersistenceServiceOp
   }
 
   /**
+   * 用 base64 读写的文件 API 把文件另存到持久目录。
+   * 自定义相机的 cache/uni-media 路径对 copyFile 返回 1300002，只能走这条通道；
+   * 读或写失败时抛出错误，由调用方决定是否退回原临时路径。
+   * @param srcPath 相机返回的临时文件路径
+   * @param destPath 持久目录下的目标路径
+   * @returns 复制成功的持久路径
+   */
+  function copyIntoPersistentDirByBytes(srcPath: string, destPath: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      if (readFile == null || writeFile == null) {
+        reject(new Error('媒体持久化缺少读写能力'))
+        return
+      }
+      readFile(srcPath, (base64: string): void => {
+        writeFile(destPath, base64, (): void => resolve(destPath), (error: FileSystemManagerFail): void => {
+          reject(new Error(`${buildMediaPersistErrorMessage(error, false)}；目标文件: ${destPath}`))
+        })
+      }, (error: FileSystemManagerFail): void => {
+        reject(new Error(`${buildMediaPersistErrorMessage(error, false)}；源文件: ${srcPath}`))
+      })
+    })
+  }
+
+  /**
    * 把单条临时媒体保存为可入库、可上传的本地路径。
-   * 自定义相机的 takePhoto 临时路径直接复用，避免文件 API 对该路径返回 1300002；
-   * 系统相机及相册等其他临时路径仍复制到应用用户目录。
+   * 相册与系统相机的临时文件用 copyFile 复制到应用用户目录；自定义相机写在 cache/uni-media
+   * 的图片无法 copyFile（1300002），改用 base64 读写另存，避免清缓存后图片与待上传记录一起丢失
+   * （失败时退回原临时路径，不打断拍摄流程）；视频体积大，仍直接使用 takePhoto 返回的临时路径。
    * @param tempPath 相机、相册或录像返回的临时文件路径
    * @param isVideo 是否为视频，决定默认扩展名与错误文案
    * @returns 持久目录下的本地文件路径（输入本就处于该目录时原样返回）
@@ -162,7 +206,18 @@ export function createMediaPersistenceService(options: MediaPersistenceServiceOp
     const normalizedPath = normalizeLocalFilePath(tempPath)
     if (normalizedPath === '') throw new Error('媒体本地路径不能为空')
     const dir = persistentDir()
-    if (!needsPersistentMediaCopy(normalizedPath, dir)) return normalizedPath
+    if (!needsPersistentMediaCopy(normalizedPath, dir)) {
+      // 自定义相机的 cache/uni-media 路径必须另存：只留临时路径的话，系统清理应用缓存后
+      // 媒体库这张图会变空白、尚未上传的照片也无法再上传；视频体积大，仍保持直接使用临时路径。
+      if (!isVolatileCameraCapturePath(normalizedPath) || isVideo || dir === '') return normalizedPath
+      sequence = sequence + 1
+      const cameraDestPath = `${dir}/${buildPersistedMediaFileName(normalizedPath, isVideo, Date.now(), sequence)}`
+      try {
+        return await copyIntoPersistentDirByBytes(normalizedPath, cameraDestPath)
+      } catch (_) {
+        return normalizedPath
+      }
+    }
     if (dir === '') throw new Error('媒体持久目录不可用，请重试')
     sequence = sequence + 1
     const destPath = `${dir}/${buildPersistedMediaFileName(normalizedPath, isVideo, Date.now(), sequence)}`
@@ -189,8 +244,8 @@ export function createMediaPersistenceService(options: MediaPersistenceServiceOp
 }
 
 /**
- * 创建 App 媒体路径服务：自定义相机返回的临时路径原样用于图片上传；系统相机与相册的
- * 其他临时文件通过文件 API 复制到 inspection_media，保留既有的离线保存路径。
+ * 创建 App 媒体路径服务：系统相机与相册的临时文件通过 copyFile 复制到 inspection_media；
+ * 自定义相机写在应用缓存目录的图片改用 base64 读写另存，避免清缓存后图片与待上传记录一起丢失。
  */
 export function createAppMediaPersistenceService() {
   return createMediaPersistenceService({
@@ -203,6 +258,24 @@ export function createAppMediaPersistenceService() {
         success: onSuccess,
         fail: onFailure
       } as CopyFileOptions)
+    },
+    // 自定义相机缓存路径 copyFile 会返回 1300002，用 base64 读写把图片另存到持久目录。
+    readFile: (filePath: string, onSuccess: (base64: string) => void, onFailure: (error: FileSystemManagerFail) => void): void => {
+      uni.getFileSystemManager().readFile({
+        filePath: filePath,
+        encoding: 'base64',
+        success: (result) => onSuccess(String(result.data ?? '')),
+        fail: (error) => onFailure(error)
+      })
+    },
+    writeFile: (filePath: string, base64: string, onSuccess: () => void, onFailure: (error: FileSystemManagerFail) => void): void => {
+      uni.getFileSystemManager().writeFile({
+        filePath: filePath,
+        data: base64,
+        encoding: 'base64',
+        success: () => onSuccess(),
+        fail: (error) => onFailure(error)
+      })
     }
   })
 }

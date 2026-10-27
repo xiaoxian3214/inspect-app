@@ -19,7 +19,7 @@
 						<view v-for="code in localeCodes" :key="code" class="user-lang-option" :class="{ active: code === locale }" @click="changeLanguage(code)"><text class="user-lang-code" :class="{ active: code === locale }">{{ code }}</text></view>
 					</view>
 				</view>
-				<view class="user-action camera-entry" @click="openCustomCamera"><text class="user-action-label camera-entry">{{ translateText('自定义拍照') }}</text></view>
+				<!-- <view class="user-action camera-entry" @click="openCustomCamera"><text class="user-action-label camera-entry">{{ translateText('自定义拍照') }}</text></view> -->
 				<view class="user-action invite" :class="{ disabled: inviteGenerating }" @click="inviteVendor"><text class="user-action-label invite">{{ inviteGenerating ? translateText('生成中...') : translateText('邀请供应商') }}</text></view>
 				<view class="user-action debug" @click="viewLocalData"><text class="user-action-label debug">{{ translateText('查看本地数据') }}</text></view>
 				<view class="user-action warning" :class="{ disabled: clearingLocalCache }" @click="clearCache"><text class="user-action-label warning">{{ clearingLocalCache ? translateText('清理中...') : translateText('清除本地缓存') }}</text></view>

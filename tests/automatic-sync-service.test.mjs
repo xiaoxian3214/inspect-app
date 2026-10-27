@@ -167,7 +167,7 @@ test('app lifecycle list resume and network recovery own automatic synchronizati
   assert.match(list, /refreshListWithAutomaticSync/)
 })
 
-/** 详情页订阅全局上传队列，并由 App 原生兼容的定时状态驱动上传箭头闪动。 */
+/** 详情页订阅全局上传队列，并由 App 原生兼容的定时状态驱动同步图标呼吸闪烁。 */
 test('detail cloud reflects background uploads without browser-only animation', async () => {
   const detail = await readFile('pages/report/detail.uvue', 'utf8')
   const header = await readFile('components/detail/InspectionDetailHeader.uvue', 'utf8')
@@ -178,7 +178,7 @@ test('detail cloud reflects background uploads without browser-only animation', 
   assert.match(detail, /:uploading="automaticUploading \|\| manualUploading"/)
   assert.match(detail, /manualUploading\.value = true[\s\S]*?await inspectionMediaService\.uploadPendingPhotos\(planId\.value\)[\s\S]*?manualUploading\.value = false/)
   assert.match(header, /:is-uploading="uploading"/)
-  assert.match(cloud, /sync-upload-arrow/)
+  assert.match(cloud, /isArrowActive \? 'cloudUploadFilled' : 'cloudUpload'/)
   assert.match(cloud, /watch\(\(\): boolean => props\.isUploading/)
   assert.match(cloud, /clearInterval\(timer\)/)
   assert.doesNotMatch(cloud, /@keyframes|<svg|document\.|window\./)

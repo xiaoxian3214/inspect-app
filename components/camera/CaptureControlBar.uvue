@@ -8,26 +8,31 @@
 			</view>
 			<view class="control-cell" @click="toggleFlash">
 				<image class="control-icon" :src="flashIcon" mode="aspectFit" />
-				<text class="control-label">{{ translateText('闪光灯') }}</text>
+				<!-- <text class="control-label">{{ translateText('闪光灯') }}</text> -->
 			</view>
 			<view class="control-cell" @click="cycleZoom">
 				<view v-if="zoomLevels.length > 1" class="zoom-circle">
 					<text class="zoom-circle-text">{{ zoomLabel(activeZoom) }}</text>
 				</view>
-				<text v-if="zoomLevels.length > 1" class="control-label">{{ translateText('倍率') }}</text>
+				<!-- <text v-if="zoomLevels.length > 1" class="control-label">{{ translateText('倍率') }}</text> -->
 			</view>
 		</view>
 		<view class="shutter-wrap" :class="{ disabled: shutterDisabled }" @click="pressShutter">
-			<image class="shutter-icon" :src="shutterIcon" mode="aspectFit" />
+			<view class="shutter-rotate" :style="shutterRotationStyle">
+				<image class="shutter-icon" :src="shutterIcon" mode="aspectFit" />
+				<view v-if="captureMode === 'photo'" class="shutter-glyph">
+					<AppIcon type="camera" :size="40" color="#0f172a" />
+				</view>
+			</view>
 		</view>
 		<view class="control-side control-side-right">
 			<view class="control-cell" @click="switchMode">
 				<image class="control-icon" :src="modeIcon" mode="aspectFit" />
-				<text class="control-label">{{ modeLabel }}</text>
+				<!-- <text class="control-label">{{ modeLabel }}</text> -->
 			</view>
 			<view class="control-cell" :class="{ disabled: recording }" @click="switchCamera">
 				<image class="control-icon" src="/static/camera/flip.png" mode="aspectFit" />
-				<text class="control-label">{{ translateText('翻转') }}</text>
+				<!-- <text class="control-label">{{ translateText('翻转') }}</text> -->
 			</view>
 			<view class="control-cell" :class="{ disabled: !finishEnabled }" @click="finishCapture">
 				<view class="finish-pill">
@@ -41,7 +46,9 @@
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
 	import { computed } from 'vue'
+	import AppIcon from '../icons/AppIcon.uvue'
 	import { resolveNextCameraZoom } from '../../domain/cameraCapture.uts'
+	import { resolveThumbnailRotation } from '../../domain/imageOrientation.uts'
 
 	const props = defineProps({
 		flashOn: { type: Boolean, default: false },
@@ -50,7 +57,8 @@
 		captureMode: { type: String, default: 'photo' },
 		recording: { type: Boolean, default: false },
 		shutterDisabled: { type: Boolean, default: false },
-		finishEnabled: { type: Boolean, default: false }
+		finishEnabled: { type: Boolean, default: false },
+		deviceRotation: { type: Number, default: 0 }
 	})
 	const emit = defineEmits(['cancel-capture', 'toggle-flash', 'change-zoom', 'switch-capture-mode', 'switch-camera', 'press-shutter', 'finish-capture'])
 
@@ -73,6 +81,11 @@
 		if (props.captureMode === 'video') return props.recording ? '/static/camera/stop.png' : '/static/camera/doing.png'
 		return '/static/camera/shutter.png'
 	})
+	/**
+	 * 快门内容的补偿旋转：手机横过来时按握持角反向旋转，按钮里的相机图标始终朝上。
+	 * 方向未知（-1）时不叠加旋转，与底部缩略图的处理保持一致。
+	 */
+	const shutterRotationStyle = computed((): string => `transform: rotate(${resolveThumbnailRotation(props.deviceRotation)}deg)`)
 
 	/** 倍率档位文案，如 2x。 */
 	function zoomLabel(zoom: number): string {
@@ -117,12 +130,12 @@
 
 <style>
 	/* 取消、闪光灯、倍率、快门、模式、翻转、完成排成一行：左右两组各三个等宽控件，与居中的快门共用一条中心线。 */
-	.capture-control-row { height: 140rpx; flex-direction: row; align-items: center; padding: 0 16rpx; background-color: #0f172a; }
-	.control-side { flex: 1; height: 140rpx; flex-direction: row; align-items: center; }
+	.capture-control-row { height: 148rpx; flex-direction: row; align-items: center; padding: 0 16rpx; background-color: #0f172a; }
+	.control-side { flex: 1; height: 148rpx; flex-direction: row; align-items: center; }
 	.control-side-left { justify-content: space-between; padding-right: 8rpx; }
 	.control-side-right { justify-content: space-between; padding-left: 8rpx; }
 	/* 控件按固定宽高居中：图标、圆形倍率与胶囊按钮都落在同一条水平中线上，文案统一贴在格子底部。 */
-	.control-cell { position: relative; width: 88rpx; height: 140rpx; align-items: center; justify-content: center; }
+	.control-cell { position: relative; width: 88rpx; height: 148rpx; align-items: center; justify-content: center; }
 	.control-cell.disabled { opacity: 0.4; }
 	.control-icon { width: 44rpx; height: 44rpx; }
 	.control-label { position: absolute; left: 0; right: 0; bottom: 10rpx; color: #cbd5e1; font-size: 20rpx; line-height: 24rpx; text-align: center; }
@@ -133,7 +146,12 @@
 	.cancel-pill-text { color: #e2e8f0; font-size: 22rpx; line-height: 26rpx; }
 	.finish-pill { height: 44rpx; padding: 0 16rpx; align-items: center; justify-content: center; border-radius: 22rpx; background-color: #facc15; }
 	.finish-pill-text { color: #0f172a; font-size: 22rpx; line-height: 26rpx; }
-	.shutter-wrap { width: 112rpx; height: 112rpx; align-items: center; justify-content: center; }
+	/* 紧凑的快门按钮：圆形底板保持小尺寸，内容整体按握持角补角，中间的相机图标因此始终朝上。 */
+	.shutter-wrap { width: 124rpx; height: 124rpx; align-items: center; justify-content: center; }
 	.shutter-wrap.disabled { opacity: 0.4; }
-	.shutter-icon { width: 104rpx; height: 104rpx; }
+	/* 相机图标绝对居中压在底板上：AppIcon 的 size 是 px，40px 约占 116rpx 圆形直径的三分之二，比按钮本体更显眼。 */
+	.shutter-rotate { position: relative; width: 124rpx; height: 124rpx; align-items: center; justify-content: center; }
+	.shutter-icon { width: 116rpx; height: 116rpx; }
+	/* 深色相机图标落在浅色圆形上，按下快门时能明确看出这是拍照按钮。 */
+	.shutter-glyph { position: absolute; top: 0; left: 0; right: 0; bottom: 0; align-items: center; justify-content: center; }
 </style>

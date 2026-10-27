@@ -1,0 +1,93 @@
+/**
+ * 疵点分类三级路径解析纯函数。
+ * 服务端疵点记录（QcmDefectRecord）只落库三级编码 defectCode 与描述 defectDesc，
+ * 不带一级/二级层级编码；编辑这类疵点重开分类弹层时，仅凭 tier1Code/tier2Code
+ * 无法还原"外观 / 表面 / 污渍"这类完整路径。本模块按三级编码在分类树中反查
+ * 祖先节点，补齐各级编码与名称。
+ */
+
+/** 分类树节点归一化结构（与服务端 defectCatalogService 缓存的树一致）。 */
+export type DefectCategoryNode = { code: string, name: string, status: string, isLeaf: boolean, children: DefectCategoryNode[] }
+
+/** 按三级编码反查得到的完整分类路径。 */
+export type DefectCategoryPath = { tier1Code: string, tier1Name: string, tier2Code: string, tier2Name: string, tier3Code: string, tier3Name: string }
+
+/**
+ * 读取节点固定字段，缺省值兼容服务端缺字段的情况。
+ * @param raw 服务端或缓存中的分类树节点
+ * @returns 归一化后的节点，children 递归归一化
+ */
+export function toCategoryNode(raw: UTSJSONObject): DefectCategoryNode {
+  const storedChildren = raw['children']
+  const children = Array.isArray(storedChildren) ? (storedChildren as UTSJSONObject[]).map((child: UTSJSONObject): DefectCategoryNode => toCategoryNode(child)) : ([] as DefectCategoryNode[])
+  return {
+    code: String(raw['code'] ?? '').trim(),
+    name: String(raw['name'] ?? '').trim(),
+    status: String(raw['status'] ?? '0'),
+    isLeaf: raw['isLeaf'] === true,
+    children
+  }
+}
+
+/**
+ * 按存储的三级编码在分类树中反查完整路径；祖先节点包含禁用态也照常反查，
+ * 保证编辑历史疵点仍能还原完整层级名称。
+ * @param tree 分类树原始节点数组（服务端或本地缓存结构）
+ * @param stored 疵点记录，优先用 defectCode，其次 tier3Code，再次以 defectDesc 兜底名称
+ * @returns 三级路径；编码在树中找不到时仅回填编码与存储描述，祖先为空
+ */
+export function resolveDefectCategoryPath(tree: UTSJSONObject[], stored: UTSJSONObject): DefectCategoryPath {
+  const leafCode = String(stored['defectCode'] || stored['tier3Code'] || '').trim()
+  if (leafCode === '') return { tier1Code: '', tier1Name: '', tier2Code: '', tier2Name: '', tier3Code: '', tier3Name: '' }
+  const nodes: DefectCategoryNode[] = (Array.isArray(tree) ? tree : ([] as UTSJSONObject[])).map((raw: UTSJSONObject): DefectCategoryNode => toCategoryNode(raw))
+  const match = findLeafPath(nodes, leafCode, [] as DefectCategoryNode[])
+  if (match == null) {
+    const fallbackName = String(stored['defectDesc'] ?? '').trim()
+    return { tier1Code: '', tier1Name: '', tier2Code: '', tier2Name: '', tier3Code: leafCode, tier3Name: fallbackName }
+  }
+  return match
+}
+
+/**
+ * 深度优先查找叶子编码并拼装路径。
+ * @param nodes 当前层节点
+ * @param leafCode 目标三级编码
+ * @param ancestors 已累计的祖先节点
+ * @returns 命中的完整路径；未命中返回 null
+ */
+function findLeafPath(nodes: DefectCategoryNode[], leafCode: string, ancestors: DefectCategoryNode[]): DefectCategoryPath | null {
+  for (const node of nodes) {
+    const trail: DefectCategoryNode[] = [...ancestors, node]
+    if (node.code === leafCode) {
+      const tier1 = trail.length > 2 ? trail[trail.length - 3] : null
+      const tier2 = trail.length > 1 ? trail[trail.length - 2] : null
+      const tier3 = trail[trail.length - 1]
+      return {
+        tier1Code: tier1?.code ?? '',
+        tier1Name: tier1?.name ?? '',
+        tier2Code: tier2?.code ?? '',
+        tier2Name: tier2?.name ?? '',
+        tier3Code: tier3.code,
+        tier3Name: tier3.name
+      }
+    }
+    if (node.children.length > 0) {
+      const found = findLeafPath(node.children, leafCode, trail)
+      if (found != null) return found
+    }
+  }
+  return null
+}
+
+/**
+ * 由三级路径拼装"一级 / 二级 / 三级"面包屑文案。
+ * @param path 反查得到的分类路径
+ * @returns 仅包含非空层级的面包屑；全空时返回空串
+ */
+export function buildCategoryBreadcrumb(path: DefectCategoryPath): string {
+  const parts: string[] = []
+  if (path.tier1Name !== '') parts.push(path.tier1Name)
+  if (path.tier2Name !== '') parts.push(path.tier2Name)
+  if (path.tier3Name !== '') parts.push(path.tier3Name)
+  return parts.join(' / ')
+}

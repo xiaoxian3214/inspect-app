@@ -3,13 +3,15 @@
 		<TopSafeArea background-color="#000000" />
 		<view class="preview-header">
 			<text class="preview-action" @click="closePreview">{{ translateText('关闭') }}</text>
-			<text class="preview-position">{{ index + 1 }}</text>
+			<text class="preview-position">{{ index + 1 }} / {{ total }}</text>
 			<text v-if="!isVideo" class="preview-action edit-action" @click="openImageEditor">{{ translateText('编辑图片') }}</text>
 			<text v-else class="preview-action"></text>
 		</view>
-		<view class="preview-content">
+		<view class="preview-content" @touchstart="handleTouchStart" @touchmove="handleTouchMove" @touchend="handleTouchEnd">
 			<video v-if="isVideo" class="preview-media" :src="displaySource" />
-			<image v-else class="preview-media" :src="displaySource" mode="aspectFit" />
+			<view v-else class="preview-zoom" :style="imageZoomStyle">
+				<image class="preview-media" :src="displaySource" mode="aspectFit" />
+			</view>
 		</view>
 	</view>
 	<ImageMarkupEditor :visible="editing" :source="displaySource" @cancel="closeImageEditor" @edited="finishImageEdit" />
@@ -19,24 +21,170 @@
 	import { computed, ref, watch } from 'vue'
 	import TopSafeArea from '../common/TopSafeArea.uvue'
 	import ImageMarkupEditor from '../detail/ImageMarkupEditor.uvue'
+	import { resolveAdjacentCaptureIndex, resolveCapturePreviewSwipe } from '../../domain/cameraCapture.uts'
 	import { resolveLocalMediaDisplayPath } from '../../domain/deviceCapture.uts'
+	import { MEDIA_PREVIEW_HEADER_HEIGHT_RPX, MEDIA_PREVIEW_SIDE_PADDING_RPX, MEDIA_ZOOM_FIT_SCALE, MEDIA_ZOOM_TAP_MOVE_PX, clampMediaZoomOffset, isDoubleTapGesture, resolveDoubleTapZoomTransform, resolveMediaZoomHeightPx, resolveMediaZoomTopPx, resolveMediaZoomWidthPx, resolvePinchDistance, resolvePinchZoomScale } from '../../domain/mediaZoom.uts'
+	import { resolveGestureAxis } from '../../domain/swipeCellGesture.uts'
 	import { t } from '../../i18n/index.uts'
 
 	const props = defineProps({
 		visible: { type: Boolean, default: false },
 		source: { type: String, default: '' },
 		index: { type: Number, default: 0 },
+		total: { type: Number, default: 0 },
 		isVideo: { type: Boolean, default: false },
 		saving: { type: Boolean, default: false }
 	})
-	const emit = defineEmits(['close-preview', 'edited'])
+	const emit = defineEmits(['close-preview', 'edited', 'change-index'])
 	const editing = ref(false)
 
 	/** 将相机返回的原生绝对路径转换为原生图片和画布可加载的地址。 */
 	const displaySource = computed((): string => resolveLocalMediaDisplayPath(props.source))
 
+	/** 图片当前缩放倍数与相对预览画面中心的位移（px）：视频不参与缩放，只驱动图片层。 */
+	const zoomScale = ref(MEDIA_ZOOM_FIT_SCALE)
+	const zoomOffsetX = ref(0)
+	const zoomOffsetY = ref(0)
+
+	/** 图片的缩放平移样式：先平移再缩放，位移按屏幕像素直接作用在图片层。 */
+	const imageZoomStyle = computed((): string => `transform: translate(${zoomOffsetX.value}px, ${zoomOffsetY.value}px) scale(${zoomScale.value})`)
+
+	/** 手势起点：单指拖动图片或判定双击缩放都以按下位置为准。 */
+	let gestureStartClientX = 0
+	let gestureStartClientY = 0
+	/** 手势模式：'' 未开始、'swipe' 左右滑动翻页、'pan' 放大后拖动图片、'pinch' 双指捏合。 */
+	let gestureMode = ''
+	let gestureStartOffsetX = 0
+	let gestureStartOffsetY = 0
+	let pinchStartDistance = 0
+	let pinchStartScale = MEDIA_ZOOM_FIT_SCALE
+	/** 上一次单击的时间戳与位置，用于配对双击。 */
+	let lastTapAt = 0
+	let lastTapX = 0
+	let lastTapY = 0
+
+	/** 预览画面的像素几何：首次缩放手势时按窗口信息算一次，预览期间窗口尺寸不变。 */
+	let zoomAreaLeft = 0
+	let zoomAreaTop = 0
+	let zoomAreaWidth = 0
+	let zoomAreaHeight = 0
+
 	/** 返回预览操作的当前语言文案。 */
 	function translateText(key: string): string { return t(key) }
+
+	/**
+	 * 把相邻下标交给拍照页切换预览目标：组件只提交下标，媒体地址仍由页面统一下发，
+	 * 这样页面才能沿用 openCapturePreview 的方向检查，避免滑动绕过检查看到未回正原图。
+	 * @param target 目标下标；越界或与当前相同则不切换
+	 */
+	function requestIndex(target: number): void {
+		if (props.saving || editing.value) return
+		if (target < 0 || target >= props.total || target === props.index) return
+		emit('change-index', target)
+	}
+
+	/** 读取触摸事件中第一根手指的横坐标。 */
+	function touchX(event: TouchEvent): number { return event.touches[0]?.clientX ?? event.changedTouches[0]?.clientX ?? 0 }
+
+	/** 读取触摸事件中第一根手指的纵坐标。 */
+	function touchY(event: TouchEvent): number { return event.touches[0]?.clientY ?? event.changedTouches[0]?.clientY ?? 0 }
+
+	/**
+	 * 惰性计算预览画面的像素几何：视口宽度减去左右留白、高度减去状态栏与标题栏即为预览区，
+	 * 与页面 flex 布局一一对应；双击锚定与拖动边界都依赖它。
+	 */
+	function ensureZoomArea(): void {
+		if (zoomAreaWidth > 0) return
+		const info = uni.getWindowInfo()
+		zoomAreaLeft = Math.max(0, uni.rpx2px(MEDIA_PREVIEW_SIDE_PADDING_RPX))
+		zoomAreaTop = resolveMediaZoomTopPx(info.safeAreaInsets.top, uni.rpx2px(MEDIA_PREVIEW_HEADER_HEIGHT_RPX))
+		zoomAreaWidth = resolveMediaZoomWidthPx(info.windowWidth, zoomAreaLeft)
+		zoomAreaHeight = resolveMediaZoomHeightPx(info.windowHeight, zoomAreaTop)
+	}
+
+	/** 读取当前双指间距；不足两指时返回 0，调用方据此跳过本轮缩放。 */
+	function pinchDistance(event: TouchEvent): number {
+		if (event.touches.length < 2) return 0
+		return resolvePinchDistance(touchX(event), touchY(event), event.touches[1].clientX, event.touches[1].clientY)
+	}
+
+	/** 回到完整适配：切图、重新打开预览或双击恢复时都复位倍数与位移。 */
+	function resetZoom(): void { zoomScale.value = MEDIA_ZOOM_FIT_SCALE; zoomOffsetX.value = 0; zoomOffsetY.value = 0 }
+
+	/**
+	 * 记录手势起点并锁定本轮手势模式：双指进入捏合（放大或缩小），已放大的单指拖动用于平移图片，
+	 * 完整适配或缩小状态的单指手势交给左右滑动翻页（缩小后画面居中，没有可平移的余量）。
+	 */
+	function handleTouchStart(event: TouchEvent): void {
+		ensureZoomArea()
+		gestureStartClientX = touchX(event)
+		gestureStartClientY = touchY(event)
+		gestureStartOffsetX = zoomOffsetX.value
+		gestureStartOffsetY = zoomOffsetY.value
+		if (!props.isVideo && event.touches.length >= 2) {
+			gestureMode = 'pinch'
+			pinchStartDistance = pinchDistance(event)
+			pinchStartScale = zoomScale.value
+			return
+		}
+		gestureMode = !props.isVideo && zoomScale.value > MEDIA_ZOOM_FIT_SCALE ? 'pan' : 'swipe'
+	}
+
+	/** 双指捏合实时放大或缩小并把图片收敛在预览区内；放大后的单指拖动只平移图片，不再翻页。 */
+	function handleTouchMove(event: TouchEvent): void {
+		if (gestureMode === 'pinch') {
+			const distance = pinchDistance(event)
+			if (distance <= 0) return
+			const scale = resolvePinchZoomScale(pinchStartScale, pinchStartDistance, distance)
+			zoomScale.value = scale
+			const offset = clampMediaZoomOffset(zoomOffsetX.value, zoomOffsetY.value, scale, zoomAreaWidth, zoomAreaHeight)
+			zoomOffsetX.value = offset.offsetX
+			zoomOffsetY.value = offset.offsetY
+			return
+		}
+		if (gestureMode !== 'pan') return
+		const offset = clampMediaZoomOffset(gestureStartOffsetX + touchX(event) - gestureStartClientX, gestureStartOffsetY + touchY(event) - gestureStartClientY, zoomScale.value, zoomAreaWidth, zoomAreaHeight)
+		zoomOffsetX.value = offset.offsetX
+		zoomOffsetY.value = offset.offsetY
+	}
+
+	/**
+	 * 结束手势：双指松手后停在用户选择的大小（缩放范围已在换算时收敛）；
+	 * 单指手势先判定双击（放大或恢复完整适配），只有完整适配/缩小状态的左右滑动才切换上一张/下一张。
+	 */
+	function handleTouchEnd(event: TouchEvent): void {
+		if (gestureMode === 'pinch') {
+			if (event.touches.length >= 1) return
+			gestureMode = ''
+			return
+		}
+		const mode = gestureMode
+		gestureMode = ''
+		if (mode !== 'pan' && mode !== 'swipe') return
+		const deltaX = touchX(event) - gestureStartClientX
+		const deltaY = touchY(event) - gestureStartClientY
+		if (Math.abs(deltaX) < MEDIA_ZOOM_TAP_MOVE_PX && Math.abs(deltaY) < MEDIA_ZOOM_TAP_MOVE_PX) {
+			const tapAt = Date.now()
+			if (!props.isVideo && isDoubleTapGesture(lastTapAt, lastTapX, lastTapY, tapAt, touchX(event), touchY(event))) {
+				lastTapAt = 0
+				const zoom = resolveDoubleTapZoomTransform(zoomScale.value, touchX(event), touchY(event), zoomAreaLeft, zoomAreaTop, zoomAreaWidth, zoomAreaHeight)
+				zoomScale.value = zoom.scale
+				zoomOffsetX.value = zoom.offsetX
+				zoomOffsetY.value = zoom.offsetY
+				return
+			}
+			lastTapAt = tapAt
+			lastTapX = touchX(event)
+			lastTapY = touchY(event)
+			return
+		}
+		lastTapAt = 0
+		if (mode !== 'swipe') return
+		if (resolveGestureAxis(deltaX, deltaY) !== 'horizontal') return
+		const offset = resolveCapturePreviewSwipe(deltaX)
+		if (offset === 0) return
+		requestIndex(resolveAdjacentCaptureIndex(props.index, props.total, offset))
+	}
 
 	/** 关闭大图预览；正在保存标注时不允许退出。 */
 	function closePreview(): void { if (!props.saving && !editing.value) emit('close-preview') }
@@ -50,8 +198,11 @@
 	/** 将编辑器导出的本地路径交给拍照页落库，完成前保持预览开启。 */
 	function finishImageEdit(path: string): void { if (!props.saving && path.trim() !== '') { editing.value = false; emit('edited', path) } }
 
-	/** 首次打开预览时重置编辑状态；关闭期间不写已销毁的原生弹层。 */
-	watch((): boolean => props.visible, (visible: boolean): void => { if (visible) editing.value = false })
+	/** 首次打开预览时重置编辑状态与缩放；关闭期间不写已销毁的原生弹层。 */
+	watch((): boolean => props.visible, (visible: boolean): void => { if (visible) { editing.value = false; resetZoom() } })
+
+	/** 切换上一张/下一张后回到完整适配，避免沿用上一张的放大位置。 */
+	watch((): number => props.index, (): void => { if (props.visible) resetZoom() })
 </script>
 
 <style>
@@ -60,6 +211,9 @@
 	.preview-action { min-width: 140rpx; color: #ffffff; font-size: 28rpx; }
 	.edit-action { text-align: right; color: #22c55e; }
 	.preview-position { color: #ffffff; font-size: 26rpx; }
-	.preview-content { flex: 1; align-items: center; justify-content: center; }
+	/* 左右内边距让图片与视频不贴屏幕边缘；border-box 保证留白向内挤压而不是把画面撑出屏幕。 */
+	.preview-content { flex: 1; overflow: hidden; box-sizing: border-box; padding-left: 32rpx; padding-right: 32rpx; align-items: center; justify-content: center; }
 	.preview-media { width: 100%; height: 100%; }
+	/* 缩放层铺满预览区（已扣掉左右留白）：放大后由父级裁切，图片不会盖住标题栏。 */
+	.preview-zoom { width: 100%; height: 100%; align-items: center; justify-content: center; }
 </style>

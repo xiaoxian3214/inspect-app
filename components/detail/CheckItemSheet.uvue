@@ -50,7 +50,7 @@
 
 				<view class="notes-section">
 					<text class="section-title">{{ translateText('备注') }}</text>
-					<textarea class="remarks" :value="noteDraft" maxlength="500" :placeholder="translateText('写评论')" @input="updateComment" @blur="saveNotesOnBlur" />
+					<textarea class="remarks" :value="noteDraft" maxlength="500" :placeholder="translateText('写评论')" confirm-type="done" :confirm-hold="false" @input="updateComment" @confirm="confirmRemarks" @blur="saveNotesOnBlur" />
 				</view>
 
 				<view class="media-section">
@@ -167,8 +167,25 @@
 	/** 返回当前检查结果的中文标签。 */
 	const currentResultLabel = computed((): string => { const option = resultOptions.find((item) => item.value === draft.value.result); return option != null ? option.label.replace('检查 - ', '') : '' })
 
-	/** 将当前检查项数据复制到弹层草稿，并重置尚未确认的备注输入。 */
-	function resetDraft(item: UTSJSONObject) {
+	/** 记录当前草稿构建时对应的检查项 ID，用于区分自动保存回传与切换到其他检查项。 */
+	const draftSourceItemId = ref('')
+
+	/**
+	 * 判断传入的检查项是否仍是弹层当前正在编辑的同一检查项。
+	 * 自动保存回传会生成新的检查项对象，此时只同步数据并保留正在编辑的分组下标。
+	 */
+	function isSameEditingItem(item: UTSJSONObject): boolean {
+		const sourceId = draftSourceItemId.value
+		const incomingId = (item['itemId'] ?? item['id'] ?? '').toString()
+		return sourceId !== '' && incomingId !== '' && sourceId === incomingId
+	}
+
+	/**
+	 * 将检查项数据复制到弹层草稿。
+	 * resetGroups 为 true 时（打开弹层或切换检查项）清零规格/文本分组游标并重建备注输入；
+	 * 为 false 时（同一检查项自动保存回传）保留游标与未落盘的备注，仅按组数量收敛下标，避免填写时跳回第一组。
+	 */
+	function resetDraft(item: UTSJSONObject, resetGroups: boolean) {
 		const data = (item['data'] as UTSJSONObject | null) ?? {}
 		const emptyRow: UTSJSONObject = {}
 		specAttributes.value.forEach((attribute: SpecAttribute) => { emptyRow[attribute.attrId] = '' })
@@ -182,9 +199,15 @@
 		if (item['itemType'] === 'Barcodes' && barcodeItems.length === 0) barcodeItems.push({ name: '', code: '', format: '' })
 		const storedPhotos = data['photos']
 		draft.value = { ...data, result: (data['result'] ?? '').toString(), comment: (data['comment'] ?? '').toString(), photos: Array.isArray(storedPhotos) ? storedPhotos as UTSJSONObject[] : [], measurements, textGroups, barcodeItems }
-		noteDraft.value = draft.value.comment
-		measurementIndex.value = 0
-		textGroupIndex.value = 0
+		draftSourceItemId.value = (item['itemId'] ?? item['id'] ?? '').toString()
+		if (resetGroups) {
+			measurementIndex.value = 0
+			textGroupIndex.value = 0
+			noteDraft.value = draft.value.comment
+		} else {
+			measurementIndex.value = Math.min(measurementIndex.value, measurements.length - 1)
+			textGroupIndex.value = Math.min(textGroupIndex.value, textGroups.length - 1)
+		}
 		showBarcodeEditor.value = false
 	}
 	/** 创建一行与 H5 specAttributes 对齐的空字段对象。 */
@@ -228,6 +251,9 @@
 	}
 	/** 更新临时备注，输入过程中不触发本地保存。 */
 	function updateComment(event: UniInputEvent) { noteDraft.value = event.detail.value }
+
+	/** 点击键盘“完成”按钮时立即保存备注并收起键盘，避免确认键被当成换行插入。 */
+	function confirmRemarks(event: UniInputConfirmEvent) { noteDraft.value = (event.detail.value ?? noteDraft.value).toString(); saveNotesOnBlur() }
 	/** 更新指定规格组中的属性值并触发自动保存；模板已把 $event 断言为输入事件。 */
 	function updateMeasurement(rowIndex: number, attrId: string, event: UniInputEvent) { const rows = [...draft.value.measurements]; rows[rowIndex] = { ...rows[rowIndex], [attrId]: event.detail.value }; draft.value = { ...draft.value, measurements: rows }; autoSaveDraft() }
 	/** 新增一组 H5 规格属性并触发自动保存。 */
@@ -292,7 +318,7 @@
 	/** 将临时顺序交给详情页在线保存；服务端成功前不改动本地检查项草稿。 */
 	function confirmPhotoSort(photos: UTSJSONObject[]) { if (!props.sorting) emit('photos-sorted', { item: props.item, photos }) }
 	/** 服务端排序及报告保存均成功后关闭弹层并恢复已持久化的检查项数据。 */
-	function completePhotoSort() { showPhotoSort.value = false; resetDraft(props.item as UTSJSONObject) }
+	function completePhotoSort() { showPhotoSort.value = false; resetDraft(props.item as UTSJSONObject, false) }
 	/** 打开当前检查项已关联的疵点记录。 */
 	function openDefect(defect: UTSJSONObject) { emit('open-defect', defect) }
 	/** 将服务端疵点等级标准化为 H5 使用的三级枚举。 */
@@ -311,15 +337,15 @@
 	function isSheetVisible(): boolean { return props.visible === true }
 
 	/**
-	 * 检查项数据变化时重建可编辑草稿。
+	 * 检查项数据变化时同步可编辑草稿。
 	 * 弹层关闭期间禁止写入草稿：本组件实例仍然挂载，此时写入会驱动已经销毁的弹层渲染子树
 	 * 在 vapor 原生渲染线程重新渲染，触发共享数据字段追踪的野指针崩溃（关闭检查项必闪退）。
-	 * 检查项每次更新都会生成新对象，因此按身份变化监听即可，无需深度监听。
+	 * 同一检查项的自动保存回传只同步数据并保留分组游标；切换到其他检查项才完整重置。
 	 */
-	watch((): UTSJSONObject => itemData.value, (item: UTSJSONObject) => { if (isSheetVisible()) resetDraft(item) })
+	watch((): UTSJSONObject => itemData.value, (item: UTSJSONObject) => { if (isSheetVisible()) resetDraft(item, !isSameEditingItem(item)) })
 
-	/** 每次打开弹层时按最新检查项重建草稿，补齐关闭期间被跳过的数据同步。 */
-	watch((): boolean => props.visible, (visible: boolean) => { if (visible) resetDraft(itemData.value) }, { immediate: true })
+	/** 每次打开弹层时按最新检查项完整重建草稿，补齐关闭期间被跳过的数据同步。 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (visible) resetDraft(itemData.value, true) }, { immediate: true })
 
 	/** 排序结果回传只在弹层打开时同步草稿，关闭后不再写入内部状态。 */
 	watch((): number => props.sortSavedRevision, () => { if (isSheetVisible()) completePhotoSort() })
@@ -339,7 +365,7 @@
 	.result-status-label { color: #334155; font-size: 24rpx; font-weight: 600; }.banner-right { color: #64748b; font-size: 22rpx; }
 	.item-description { margin-top: 22rpx; padding: 20rpx; border-radius: 16rpx; color: #64748b; font-size: 24rpx; line-height: 36rpx; background-color: #f8fafc; }
 	.type-section, .media-section, .defects-section, .notes-section { margin-top: 28rpx; }.section-title-row { margin-bottom: 16rpx; flex-direction: row; align-items: center; justify-content: space-between; }.section-title { margin-bottom: 16rpx; color: #334155; font-size: 26rpx; font-weight: 700; }
-	.group-navigation { min-height: 72rpx; flex-direction: row; align-items: center; justify-content: space-between; }.group-index { color: #334155; font-size: 26rpx; font-weight: 600; }.group-delete { align-items: flex-end; margin: 8rpx 0; }.group-summary { margin-top: 20rpx; color: #64748b; font-size: 22rpx; }.summary-scroll { width: 100%; margin-top: 12rpx; }.summary-row { flex-direction: row; min-height: 58rpx; align-items: center; border-bottom-width: 1rpx; border-bottom-color: #e2e8f0; }.summary-label, .summary-cell { width: 170rpx; padding: 8rpx; color: #475569; font-size: 21rpx; }.summary-current { color: #039447; background-color: #ecfdf3; }
+	.group-navigation { min-height: 72rpx; flex-direction: row; align-items: center; justify-content: space-between; }.group-index { color: #334155; font-size: 26rpx; font-weight: 600; }.group-delete { align-items: flex-end; margin: 8rpx 0; }.group-summary { margin-top: 20rpx; padding: 16rpx; border-width: 2rpx; border-style: solid; border-color: #dbe3ef; border-radius: 20rpx; background-color: #ffffff; color: #64748b; font-size: 22rpx; }.summary-scroll { width: 100%; margin-top: 12rpx; }.summary-row { flex-direction: row; min-height: 58rpx; align-items: center; border-bottom-width: 1rpx; border-bottom-color: #e2e8f0; }.summary-label, .summary-cell { width: 170rpx; padding: 8rpx; color: #475569; font-size: 21rpx; }.summary-current { color: #039447; background-color: #ecfdf3; }
 	.barcode-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 30; justify-content: flex-end; background-color: rgba(15,23,42,.55); }.barcode-dialog { padding: 30rpx; padding-bottom: 30rpx; border-top-left-radius: 30rpx; border-top-right-radius: 30rpx; background-color: #ffffff; }
 	.barcode-section { width: 100%; min-width: 0; box-sizing: border-box; }
 	.barcode-card { width: 100%; box-sizing: border-box; margin-bottom: 20rpx; padding: 20rpx; border-width: 2rpx; border-style: solid; border-color: #cbd5e1; border-radius: 20rpx; background-color: #ffffff; }

@@ -99,6 +99,43 @@ test('merged final submission checks group photos through a member while submitt
   assert.equal(generated.length, 0)
 })
 
+/**
+ * 疵点编辑中断遗留的孤儿 draft 照片不会被上传（上传器跳过 draft），
+ * 提交服务必须把报告疵点列表透传给图片状态判定，让孤儿 draft 不再永远阻断最终提交。
+ */
+test('passes the report defects into photo evaluation so orphan drafts do not block submission', async () => {
+  const received = []
+  const service = serviceModule.createInspectionSubmissionService({
+    isOnline: async () => true,
+    listPhotos: async () => [
+      { photoId: 'orphan-gone', uploadStatus: 'draft', ownerType: 'defect', ownerId: 'defect-gone' },
+      { photoId: 'orphan-none', uploadStatus: 'draft', ownerType: 'checklist', ownerId: 'item-1' }
+    ],
+    uploadPendingPhotos: async () => {},
+    evaluatePhotos: (photos, defects) => {
+      received.push({ photos, defects })
+      const liveDefects = new Set((defects ?? []).map((defect) => String(defect?.defectId ?? defect?.id ?? '')))
+      const pending = photos.filter((photo) => {
+        if (photo.fileId || photo.uploadStatus === 'done') return false
+        if (photo.uploadStatus !== 'draft') return true
+        return liveDefects.has(String(photo.ownerId ?? ''))
+      })
+      return { ready: pending.length === 0, pendingCount: pending.length, message: pending.length > 0 ? `仍有 ${pending.length} 张图片未上传完成，请联网后重试` : '' }
+    },
+    planApi: { generateReport: async () => ({ reportId: 'report-1' }) }
+  })
+
+  const result = await service.submitFinalReport({
+    planId: 'plan-1',
+    payload: { planId: 'plan-1' },
+    defects: [{ defectId: 'defect-live' }]
+  })
+
+  assert.equal(result.reportId, 'report-1')
+  assert.equal(received.length, 1)
+  assert.deepEqual(received[0].defects, [{ defectId: 'defect-live' }])
+})
+
 test('blocks final submission when photos remain unfinished after upload retry', async () => {
   let generateCount = 0
   const service = serviceModule.createInspectionSubmissionService({

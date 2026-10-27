@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '../config/appConfig.uts'
+
 const FAB_ACTIONS = {
   merge: { key: 'merge', label: '合并验货', icon: 'merge' },
   scan: { key: 'scan', label: '通过扫描条码来搜索验货', icon: 'scan' },
@@ -15,6 +17,27 @@ const CARD_ACTIONS = {
   'ready-quantity': { key: 'ready-quantity', label: '设置备货数量' },
   report: { key: 'report', label: '显示报告' },
   split: { key: 'split', label: '拆分验货' }
+}
+
+/**
+ * 生成计划在 PC 报告页的浏览地址，供【显示报告】调起系统浏览器。
+ * planId 为空时返回空串，调用方应提示计划 ID 缺失而不是打开无效链接。
+ * H5 站基地址从 API_BASE_URL 自动推导：
+ *   测试环境 (含 'test') → https://inspecttest.letright.com.cn/qcm/#/pages/report/detail-pc?planId=xxx
+ *   正式环境             → https://inspect.letright.com.cn/#/pages/report/detail-pc?planId=xxx
+ */
+export function buildReportPcUrl(planId: string): string {
+  const normalized = planId.trim()
+  if (normalized === '') return ''
+  const apiBase = String(API_BASE_URL ?? '').trim()
+  // API_BASE_URL 含 'test' 判为测试环境
+  let base: string
+  if (apiBase !== '' && apiBase.includes('test')) {
+    base = 'https://inspecttest.letright.com.cn/qcm'
+  } else {
+    base = 'https://inspect.letright.com.cn'
+  }
+  return `${base}/#/pages/report/detail-pc?planId=${encodeURIComponent(normalized)}`
 }
 
 /**

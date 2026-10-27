@@ -1,53 +1,53 @@
 <template>
-	<view v-if="visible" class="sheet-overlay" @click="closeSheet">
-		<view class="sheet-panel" :style="{ maxHeight: sheetMaxHeight }" @click.stop>
+	<page-container :show="visible" position="bottom" :overlay="true" :z-index="2200" overlay-style="background-color: rgba(15, 23, 42, 0.42)" @clickoverlay="closeSheet">
+		<view class="sheet-panel" :style="{ minHeight: sheetMinHeight, maxHeight: sheetMaxHeight }">
 			<view class="sheet-header">
 				<text class="sheet-title">{{ translateText('筛选') }}</text>
 				<text class="clear-action" @click="clearFilters">{{ translateText('清空') }}</text>
 			</view>
 
-			<view class="section">
-				<text class="section-title">{{ translateText('状态') }}</text>
-				<view class="chip-list">
-					<view v-for="option in displayStatusOptions" :key="option.value" class="chip" :class="{ active: filterDraft.status === option.value }" @click="selectStatus(option.value)">
-						<text class="chip-text">{{ option.label }}</text>
-					</view>
-				</view>
-			</view>
-
-			<view class="section">
-				<view class="section-heading">
-					<text class="section-title">{{ translateText('验货类型') }}</text>
-					<text v-if="loadingTypes" class="loading-text">{{ translateText('加载中...') }}</text>
-				</view>
-				<scroll-view class="type-scroll" direction="horizontal">
-					<view class="chip-list nowrap">
-						<view v-for="option in displayInspectTypes" :key="option.value" class="chip" :class="{ active: filterDraft.inspectType === option.value }" @click="selectInspectType(option.value)">
-							<text class="chip-text">{{ option.label }}</text>
+			<scroll-view class="sheet-body" direction="vertical">
+				<view class="section">
+					<text class="section-title">{{ translateText('状态') }}</text>
+					<view class="chip-list">
+						<view v-for="option in displayStatusOptions" :key="option.value" class="chip" :class="{ active: filterDraft.status === option.value }" @click="selectStatus(option.value)">
+							<text class="chip-text" :class="{ active: filterDraft.status === option.value }">{{ option.label }}</text>
 						</view>
 					</view>
-				</scroll-view>
-			</view>
-
-			<view class="section">
-				<text class="section-title">{{ translateText('计划日期') }}</text>
-				<view class="date-row">
-					<picker class="date-picker" mode="date" :value="filterDraft.startDate" @change="changeStartDate">
-						<view class="date-value">{{ translateText(filterDraft.startDate ?? '开始日期') }}</view>
-					</picker>
-					<text class="date-separator">{{ translateText('至') }}</text>
-					<picker class="date-picker" mode="date" :value="filterDraft.endDate" @change="changeEndDate">
-						<view class="date-value">{{ translateText(filterDraft.endDate ?? '结束日期') }}</view>
-					</picker>
 				</view>
-			</view>
+
+				<view class="section">
+					<view class="section-heading">
+						<text class="section-title">{{ translateText('验货类型') }}</text>
+						<text v-if="loadingTypes" class="loading-text">{{ translateText('加载中...') }}</text>
+					</view>
+					<view class="chip-list">
+						<view v-for="option in displayInspectTypes" :key="option.value" class="chip" :class="{ active: filterDraft.inspectType === option.value }" @click="selectInspectType(option.value)">
+							<text class="chip-text" :class="{ active: filterDraft.inspectType === option.value }">{{ option.label }}</text>
+						</view>
+					</view>
+				</view>
+
+				<view class="section">
+					<text class="section-title">{{ translateText('计划日期') }}</text>
+					<view class="date-row">
+						<picker class="date-picker" mode="date" :value="filterDraft.startDate" @change="changeStartDate">
+							<view class="date-value"><text class="date-text">{{ translateText(filterDraft.startDate === '' ? '开始日期' : filterDraft.startDate) }}</text></view>
+						</picker>
+						<text class="date-separator">{{ translateText('至') }}</text>
+						<picker class="date-picker" mode="date" :value="filterDraft.endDate" @change="changeEndDate">
+							<view class="date-value"><text class="date-text">{{ translateText(filterDraft.endDate === '' ? '结束日期' : filterDraft.endDate) }}</text></view>
+						</picker>
+					</view>
+				</view>
+			</scroll-view>
 
 			<view class="sheet-actions">
 				<button class="action-button secondary" @click="closeSheet">{{ translateText('取消') }}</button>
 				<button class="action-button primary" @click="confirmFilters">{{ translateText('查看结果') }}</button>
 			</view>
 		</view>
-	</view>
+	</page-container>
 </template>
 
 <script setup lang="uts">
@@ -68,6 +68,8 @@
 	function translateText(key: string): string { return t(key) }
 	/** 计算筛选弹层可用的最大窗口高度。 */
 	const sheetMaxHeight = computed((): string => windowHeightPx(0.88))
+	/** 计算筛选弹层的最小高度，保证选项区域展开后弹层整体更高更易读。 */
+	const sheetMinHeight = computed((): string => windowHeightPx(0.62))
 	/** 把父页动态筛选草稿转换为固定字段。 */
 	const filterDraft = computed((): FilterDraft => { const raw = props.draft as UTSJSONObject; return { status: (raw['status'] ?? '').toString(), inspectType: (raw['inspectType'] ?? '').toString(), startDate: (raw['startDate'] ?? '').toString(), endDate: (raw['endDate'] ?? '').toString() } })
 	/** 将状态筛选项转换为原生模板可读取的选项。 */
@@ -133,24 +135,24 @@
 </script>
 
 <style>
-	.sheet-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2200; justify-content: flex-end; background-color: rgba(15, 23, 42, 0.42); }
 	.sheet-panel { width: 100%; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
 	.sheet-header, .section-heading, .date-row, .sheet-actions { flex-direction: row; align-items: center; }
 	.sheet-header, .section-heading { justify-content: space-between; }
 	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }
 	.clear-action { color: #16a34a; font-size: 28rpx; }
+	.sheet-body { flex: 1; min-height: 0; }
 	.section { margin-top: 32rpx; }
 	.section-title { color: #334155; font-size: 28rpx; font-weight: 600; }
 	.loading-text { color: #94a3b8; font-size: 24rpx; }
 	.chip-list { flex-direction: row; flex-wrap: wrap; margin-top: 20rpx; }
-	.chip-list.nowrap { flex-wrap: nowrap; padding-right: 24rpx; }
-	.type-scroll { width: 100%; }
-	.chip { margin-right: 16rpx; margin-bottom: 16rpx; padding: 16rpx 24rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 32rpx; background-color: #ffffff; }
-	.chip.active { border-color: #16a34a; background-color: #f0fdf4; }
-	.chip-text { color: #475569; font-size: 26rpx; white-space: nowrap; }
+	.chip { margin-right: 16rpx; margin-bottom: 16rpx; padding: 16rpx 28rpx; border-width: 2rpx; border-style: solid; border-color: #e2e8f0; border-radius: 16rpx; background-color: #f8fafc; align-items: center; justify-content: center; }
+	.chip.active { border-color: #34d399; background-color: #e8f7ef; }
+	.chip-text { color: #9ca3af; font-size: 26rpx; text-align: center; }
+	.chip-text.active { color: #047857; font-weight: 600; }
 	.date-row { margin-top: 20rpx; }
 	.date-picker { flex: 1; }
-	.date-value { height: 76rpx; padding: 0 20rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; color: #334155; font-size: 26rpx; line-height: 76rpx; text-align: center; }
+	.date-value { height: 76rpx; padding: 0 20rpx; border-width: 2rpx; border-style: solid; border-color: #e2e8f0; border-radius: 16rpx; background-color: #f8fafc; align-items: center; justify-content: center; }
+	.date-text { color: #334155; font-size: 26rpx; text-align: center; }
 	.date-separator { margin: 0 16rpx; color: #94a3b8; font-size: 26rpx; }
 	.sheet-actions { margin-top: 32rpx; }
 	.action-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }

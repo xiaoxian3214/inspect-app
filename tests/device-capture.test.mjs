@@ -118,7 +118,7 @@ test('captured photos are uprighted from the device EXIF orientation while the s
   // EXIF 优先；照片缺失 EXIF 时用快门角度，回正仍走串行队列。
   assert.match(page, /import \{[^}]*needsOrientationReset[^}]*resolveCaptureRotation[^}]*resolveUprightRotation[^}]*\} from '\.\.\/\.\.\/domain\/imageOrientation\.uts'/)
   assert.match(page, /const mediaOrientationService = createAppMediaOrientationService\(resolveUprightRotation, resolveCaptureRotation, needsOrientationReset\)/)
-  assert.match(page, /if \(mediaType === 'image'\) \{\s*learnCaptureAspectRatio\(path\)\s*enqueueMediaUpright\(path, shutterRotation\)\s*\}/)
+  assert.match(page, /if \(mediaType === 'image'\) \{\s*enqueueMediaUpright\(path, shutterRotation\)\s*\}/)
   assert.match(page, /uprightChain = previous\.then\(\(\): Promise<void> => runUprightTask\(path, shutterRotation\)\)/)
   assert.match(page, /if \(previous == null\) uprightChain = runUprightTask\(path, shutterRotation\)/)
   assert.match(page, /pending = latest === pending \? null : latest/)
@@ -175,7 +175,7 @@ test('captured photos render large and without a session photo limit', async () 
 
   const thumbSize = parseInt(/\.capture-thumb \{ width: (\d+)rpx;/.exec(strip)?.[1] ?? '0')
   const stripHeight = parseInt(/\.capture-strip \{ height: (\d+)rpx;/.exec(strip)?.[1] ?? '0')
-  assert.ok(thumbSize >= 140, `缩略图需要放大到 140rpx 以上，当前 ${thumbSize}rpx`)
+  assert.ok(thumbSize >= 190, `缩略图需要放大到 190rpx 以上，当前 ${thumbSize}rpx`)
   assert.ok(stripHeight >= thumbSize, `照片区高度不能小于缩略图高度，当前 ${stripHeight}rpx`)
 
   assert.doesNotMatch(strip, /maxCount|max-count|capture-strip-count|countLabel/)
@@ -184,29 +184,27 @@ test('captured photos render large and without a session photo limit', async () 
   assert.doesNotMatch(page, /maxCaptureCount|最多拍摄/)
 })
 
-/** 取景框按成片比例铺满中间区域（裁切不拉伸），照片条贴到屏幕最下方，可用高度因此不再留底部安全区。 */
-test('custom camera fills the viewfinder area with the photo ratio and pins the strip to the bottom', async () => {
+/** 取景框铺满面板以上区域（宽度占满 + 高度用满），照片条贴到屏幕最下方。 */
+test('custom camera fills the whole preview area and pins the strip to the bottom', async () => {
   const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
   const controlBar = await readFile('components/camera/CaptureControlBar.uvue', 'utf8')
   const strip = await readFile('components/camera/CaptureStrip.uvue', 'utf8')
 
-  assert.match(page, /<view class="preview-frame" :style="previewFrameStyle">/)
+  assert.match(page, /<view class="preview-frame">/)
   assert.match(page, /<camera v-if="cameraMounted"[\s\S]*?class="camera-preview"/)
   assert.match(page, /\.camera-preview \{ width: 100%; height: 100%; \}/)
-  // 取景区裁掉取景框溢出部分，照片条不再留底部安全区，中间的取景画面因此可以铺满。
+  // 取景区就是取景框本身：宽度占满、高度用满剩余空间，取景画面不再被面板裁掉；照片条贴底，不留底部安全区。
+  assert.match(page, /\.preview-frame \{[^}]*flex: 1;[^}]*width: 100%;/)
   assert.match(page, /\.preview-wrap \{[^}]*overflow: hidden;/)
   assert.doesNotMatch(page, /panelBottomPadding|safeBottomPaddingPx/)
-  assert.match(page, /resolveCaptureFrameSize\(info\.windowWidth, availableHeight, captureAspectRatio\.value\)/)
-  // 首张成片读出真实像素后校正取景比例，读取失败时保持 4:3 默认值；临时标定行已随方向问题定位完成移除。
-  assert.match(page, /learnCaptureAspectRatio\(path\)/)
-  assert.match(page, /resolveCaptureAspectRatio\(info\.width, info\.height\)/)
+  assert.doesNotMatch(page, /previewFrameStyle|resolveCaptureFrameSize|captureAspectRatio/)
+  assert.doesNotMatch(page, /learnCaptureAspectRatio|resolveCaptureAspectRatio|getImageInfo/)
   assert.doesNotMatch(page, /captureDiagnostic|normalizeExifText/)
 
-  // 取景可用高度按底部面板实测高度扣减：控制条 140rpx + 照片区 168rpx，照片条贴底后没有额外留白。
+  // 底部面板由控制条与照片区实测高度决定，两者都必须保留高度。
   const controlHeight = parseInt(/\.capture-control-row \{ height: (\d+)rpx/.exec(controlBar)?.[1] ?? '0')
   const stripHeight = parseInt(/\.capture-strip \{ height: (\d+)rpx/.exec(strip)?.[1] ?? '0')
-  const panelHeight = parseInt(/CAPTURE_PANEL_HEIGHT_RPX = (\d+)/.exec(page)?.[1] ?? '0')
-  assert.equal(panelHeight, controlHeight + stripHeight, `取景可用高度常量必须与底部面板实际高度一致：${panelHeight}`)
+  assert.ok(controlHeight > 0 && stripHeight > 0, '控制条与照片区必须保留实测高度')
 })
 
 /** 拍照页文案全部走页面级翻译方法，必须能在英文和越南语下取到译文。 */

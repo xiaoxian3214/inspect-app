@@ -235,9 +235,11 @@ test('merge selection and download follow H5 card and footer behavior', async ()
   const list = await readFile('pages/report/list.uvue', 'utf8')
   const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
 
-  assert.match(card, /<checkbox-group[^>]*class="merge-check-wrapper"[^>]*@change="toggleMergeSelection"/s)
-  assert.match(card, /<checkbox[^>]*:checked="selectionChecked"[^>]*:disabled="selectionDisabled"/s)
-  assert.match(list, /class="group-select-all"[^>]*@change="toggleGroupSelectAll\(group\)"/s)
+  assert.match(card, /<view v-if="selectionMode" class="merge-check-wrapper"[^>]*@click\.stop="toggleMergeSelection"/s)
+  assert.match(card, /class="merge-checkbox" :class="\{ checked: selectionChecked \}"/)
+  assert.match(card, /v-if="selectionChecked" class="merge-check-mark"/)
+  assert.match(list, /class="group-select-all"[^>]*@click\.stop="toggleGroupSelectAll\(group\)"/s)
+  assert.match(list, /class="group-checkbox" :class="\{ checked: isGroupAllSelected\(group\) \}"/)
   assert.match(list, /<\/scroll-view>\s*<view v-if="mergeMode" class="merge-action-bar"/)
   assert.match(list, /class="merge-action-btn confirm"[^>]*:disabled="mergeSelectedItems\.length < 2 \|\| operationSubmitting"/s)
   assert.match(list, /getMergedPlanId\(response\)/)
@@ -258,6 +260,25 @@ test('merge checkboxes clearly distinguish selected and disabled states', async 
   assert.doesNotMatch(card, /\.merge-check-wrapper\.disabled\s*\{[^}]*opacity:/s)
   assert.match(list, /class="group-select-all" :class="\{ selected: isGroupAllSelected\(group\), disabled: !canGroupSelectAll\(group\) \}"/)
   assert.match(list, /\.group-select-all\.disabled\s*\{[^}]*background-color:\s*#cbd5e1/s)
+})
+
+/** 原生 checkbox 在 Android 渲染为大圆形，与 H5 方形复选框不一致；改为自绘方形勾选框。 */
+test('merge selection renders square custom checkboxes instead of native round ones', async () => {
+  const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
+  const list = await readFile('pages/report/list.uvue', 'utf8')
+  const search = await readFile('pages/report/search.uvue', 'utf8')
+
+  for (const source of [card, list, search]) {
+    assert.doesNotMatch(source, /<checkbox-group|<checkbox\b/, 'native checkbox renders round on Android')
+  }
+  assert.match(card, /\.merge-checkbox\s*\{[^}]*width:\s*36rpx[^}]*border-radius:\s*6rpx/s)
+  assert.match(card, /\.merge-checkbox\.checked\s*\{[^}]*background-color:\s*#1a5f3f/s)
+  assert.doesNotMatch(card, /\.merge-check-wrapper\s*\{[^}]*width:\s*68rpx/s)
+  for (const source of [list, search]) {
+    assert.match(source, /\.group-checkbox\s*\{[^}]*width:\s*36rpx[^}]*border-radius:\s*6rpx/s)
+    assert.match(source, /\.group-checkbox\.checked\s*\{[^}]*background-color:\s*#1a5f3f/s)
+    assert.doesNotMatch(source, /\.group-select-all\s*\{[^}]*width:\s*68rpx/s)
+  }
 })
 
 /** 列表合并卡片显示拆分入口，并复用预览、拆分与逐条下载弹层。 */

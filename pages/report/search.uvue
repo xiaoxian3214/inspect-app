@@ -12,7 +12,7 @@
 			</view>
 			<view class="result-toolbar">
 				<view class="result-toolbar-left"><text class="result-title">{{ translateText('搜索结果') }}</text><view class="result-divider"></view></view>
-				<button class="toolbar-btn" @click="openFilterModal">{{ translateText('筛选') }}</button>
+				<view class="toolbar-btn" @click="openFilterModal"><text class="toolbar-btn-text">{{ translateText('筛选') }}</text></view>
 			</view>
 		</view>
 
@@ -24,12 +24,12 @@
 				<view v-for="group in groupedResults" :key="group.groupKey" class="plan-group">
 					<view class="order-header">
 						<text class="order-no">{{ group.clientOrderNo }}</text>
-						<checkbox-group v-if="mergeMode" class="group-select-all" :class="{ selected: isGroupAllSelected(group), disabled: !canGroupSelectAll(group) }" @change="toggleGroupSelectAll(group)" @click.stop>
-							<label class="group-select-label">
-								<checkbox v-if="canGroupSelectAll(group)" class="group-checkbox" value="all" :checked="isGroupAllSelected(group)" :disabled="!canGroupSelectAll(group)" color="#16a34a" />
-								<text v-if="!canGroupSelectAll(group)" class="group-disabled-mark">—</text>
-							</label>
-						</checkbox-group>
+						<view v-if="mergeMode" class="group-select-all" :class="{ selected: isGroupAllSelected(group), disabled: !canGroupSelectAll(group) }" @click.stop="toggleGroupSelectAll(group)">
+							<view v-if="!canGroupSelectAll(group)" class="group-disabled-mark">—</view>
+							<view v-else class="group-checkbox" :class="{ checked: isGroupAllSelected(group) }">
+								<text v-if="isGroupAllSelected(group)" class="group-check-mark">✓</text>
+							</view>
+						</view>
 					</view>
 					<view class="supplier-row"><text class="supplier-name">{{ group.supplierName }}</text><text class="order-date">{{ formatDate(group.orderDate) }}</text></view>
 					<InspectionPlanCard
@@ -529,7 +529,8 @@
 	.result-toolbar-left { flex: 1; }
 	.result-title { color: #1e293b; font-size: 30rpx; font-weight: 700; }
 	.result-divider { flex: 1; height: 2rpx; margin-left: 20rpx; background-color: #cbd5e1; }
-	.toolbar-btn { min-width: 116rpx; height: 64rpx; margin-left: 14rpx; padding: 0 22rpx; color: #0f172a; background-color: #ffffff; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; font-size: 26rpx; }
+	.toolbar-btn { min-width: 128rpx; height: 64rpx; margin-left: 16rpx; padding: 0 24rpx; flex-direction: row; align-items: center; justify-content: center; border-width: 2rpx; border-style: solid; border-color: #d1d5db; border-radius: 16rpx; background-color: #ffffff; }
+	.toolbar-btn-text { color: #0f172a; font-size: 26rpx; font-weight: 600; text-align: center; }
 	.merge-action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; flex-direction: row; padding: 20rpx 28rpx 40rpx; border-top-width: 2rpx; border-top-color: #e5e7eb; background-color: #ffffff; }
 	.merge-action-btn { height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.merge-action-btn.cancel { width: 200rpx; margin-right: 20rpx; border-width: 2rpx; border-color: #e5e7eb; color: #334155; background-color: #ffffff; }
@@ -543,11 +544,12 @@
 	.results { padding-bottom: 24rpx; }
 	.plan-group { margin-bottom: 28rpx; border-radius: 32rpx; overflow: hidden; background-color: #ffffff; box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05); }
 	.order-header { padding: 20rpx 28rpx; background-color: #f5f5f5; flex-direction: row; align-items: center; justify-content: space-between; }
-	.group-select-all { width: 68rpx; height: 68rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 18rpx; background-color: #ffffff; align-items: center; justify-content: center; box-shadow: 0 3rpx 8rpx rgba(15, 23, 42, 0.08); }
+	.group-select-all { width: 56rpx; height: 56rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 14rpx; background-color: #ffffff; align-items: center; justify-content: center; box-shadow: 0 3rpx 8rpx rgba(15, 23, 42, 0.08); }
 	.group-select-all.selected { border-color: #22c55e; background-color: #ecfdf5; }
 	.group-select-all.disabled { border-color: #94a3b8; background-color: #cbd5e1; }
-	.group-select-label { width: 68rpx; height: 68rpx; align-items: center; justify-content: center; }
-	.group-checkbox { width: 42rpx; height: 42rpx; }
+	.group-checkbox { width: 36rpx; height: 36rpx; border-width: 2rpx; border-style: solid; border-color: #94a3b8; border-radius: 6rpx; background-color: #ffffff; align-items: center; justify-content: center; }
+	.group-checkbox.checked { border-color: #1a5f3f; background-color: #1a5f3f; }
+	.group-check-mark { color: #ffffff; font-size: 24rpx; font-weight: 700; line-height: 28rpx; }
 	.group-disabled-mark { color: #475569; font-size: 36rpx; font-weight: 700; line-height: 42rpx; }
 	.order-no { color: #0f172a; font-size: 36rpx; font-weight: 600; }
 	.supplier-row { justify-content: space-between; padding: 20rpx 28rpx 4rpx; background-color: #ffffff; }

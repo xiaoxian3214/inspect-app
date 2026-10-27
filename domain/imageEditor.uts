@@ -1,0 +1,730 @@
+/**
+ * 图片编辑器的纯逻辑：旋转角、矢量标注对象、画布几何、触摸坐标映射、画笔抽稀、命中测试与撤销历史。
+ *
+ * 关键约定：**标注坐标一律保存为源图像素坐标（未旋转）**。
+ * 预览与导出都先 `translate` 到画布中心再 `rotate`，同一份渲染函数即可保证"所见即所得"，
+ * 旋转也不需要重算任何标注坐标——这是旧实现里旋转后标注错位的根因。
+ */
+
+/** 编辑器中的点坐标（源图像素或屏幕像素，由调用场景决定）。 */
+export type EditorPoint = { x: number, y: number }
+
+/** 画布尺寸。 */
+export type EditorSize = { width: number, height: number }
+
+/** 标注对象包围盒：左上角与宽高，均在同一坐标系内。 */
+export type EditorBox = { left: number, top: number, width: number, height: number }
+
+/** 编辑器状态：旋转角（0/90/180/270）与矢量标注对象列表。 */
+export type EditorState = { rotation: number, strokes: UTSJSONObject[] }
+
+/** 编辑历史：状态快照列表与当前游标，撤销/重做只移动游标。 */
+export type EditorHistory = { entries: EditorState[], index: number }
+
+/**
+ * 画布上源图的显示几何。
+ * rotatedWidth/rotatedHeight 是旋转后外框在画布上的像素尺寸，scale 是源图像素到画布像素的比例，
+ * offsetX/offsetY 是外框相对画布可用区左上角的居中偏移。标注按 scale 缩放后与源图一起旋转。
+ */
+export type EditorDisplay = { rotatedWidth: number, rotatedHeight: number, scale: number, offsetX: number, offsetY: number }
+
+/** 可用的旋转档位：只允许直角旋转，避免导出时出现插值糊边与尺寸抖动。 */
+export const IMAGE_EDITOR_ROTATIONS: number[] = [0, 90, 180, 270]
+
+/** 每次点击"旋转"前进的角度。 */
+export const IMAGE_EDITOR_ROTATION_STEP: number = 90
+
+/** 历史快照上限：过多会占用内存，过少用户会觉得撤销不够用。 */
+export const IMAGE_EDITOR_HISTORY_LIMIT: number = 50
+
+/** 画笔可选粗细（屏幕像素），落笔时按画布缩放换算成源图像素宽度。 */
+export const IMAGE_EDITOR_BRUSH_WIDTHS: number[] = [3, 6, 12]
+
+/** 画笔取点最小间距（屏幕像素）：抽稀触摸点，避免一笔写入上千个点拖慢重绘。 */
+export const IMAGE_EDITOR_BRUSH_MIN_DISTANCE_PX: number = 2
+
+/** 选中与橡皮的命中容差（屏幕像素）。 */
+export const IMAGE_EDITOR_HIT_TOLERANCE_PX: number = 20
+
+/** 导出画布单边像素上限：按原图分辨率合成大图会瞬间占用上百 MB，Android 上直接 OOM。 */
+export const IMAGE_EDITOR_MAX_EXPORT_SIDE: number = 2048
+
+/** 文本标注的默认字号（源图像素），落笔时按画布缩放换算。 */
+export const IMAGE_EDITOR_TEXT_SIZE_PX: number = 14
+
+/**
+ * 椭圆折线近似的采样段数：64 段在照片标注场景肉眼不可见棱角，
+ * 同时点数足够少，不影响画笔/箭头共用的高频重绘性能。
+ */
+export const IMAGE_EDITOR_ELLIPSE_SEGMENTS: number = 64
+
+/**
+ * 椭圆折线近似的段数下限：防止调用方传 0/1 退化为直线。
+ */
+export const IMAGE_EDITOR_ELLIPSE_MIN_SEGMENTS: number = 3
+
+/** 文本字号下限（画布像素）：更小的字在照片标注上几乎不可见，等同"操作不生效"。 */
+export const IMAGE_EDITOR_MIN_TEXT_FONT_PX: number = 10
+
+/**
+ * 把任意角度收敛到 0/90/180/270；非法读数按 0 处理。
+ * @param angle 待收敛的角度（度）
+ * @returns 归一化后的旋转角
+ */
+export function normalizeEditorRotation(angle: number): number {
+  const value = angle ?? 0
+  // NaN 会一路污染到导出尺寸，必须先收敛成 0（不旋转）。
+  if (isNaN(value)) return 0
+  const raw = Math.round(value / IMAGE_EDITOR_ROTATION_STEP) * IMAGE_EDITOR_ROTATION_STEP
+  return ((raw % 360) + 360) % 360
+}
+
+/**
+ * 把尺寸读数收敛成正数：0、负数与 NaN 一律按 1 处理，避免几何计算出现除零或 NaN。
+ * @param value 原始尺寸
+ * @returns 可用于计算的正数
+ */
+function editorSafeSize(value: number): number {
+  return !(value > 0) ? 1 : value
+}
+
+/**
+ * 判断旋转角是否为横向交换宽高的直角（90/270）。
+ * @param rotation 旋转角（度）
+ * @returns 交换宽高时返回 true
+ */
+export function isQuarterTurn(rotation: number): boolean {
+  const normalized = normalizeEditorRotation(rotation)
+  return normalized === 90 || normalized === 270
+}
+
+/** 创建空白编辑状态。 */
+export function createEditorState(): EditorState {
+  return { rotation: 0, strokes: [] as UTSJSONObject[] }
+}
+
+/**
+ * 深拷贝标注对象：历史快照与拖动都需要独立的点数组，避免共享引用被后续拖动改写。
+ * @param stroke 原标注对象
+ * @returns 独立的标注对象副本
+ */
+function cloneEditorStroke(stroke: UTSJSONObject): UTSJSONObject {
+  return JSON.parse(JSON.stringify(stroke)) as UTSJSONObject
+}
+
+/**
+ * 深拷贝编辑状态：写入历史前必须拷贝，否则拖动中的原地修改会污染已保存的快照。
+ * @param state 原状态
+ * @returns 独立的状态副本
+ */
+export function cloneEditorState(state: EditorState): EditorState {
+  const source = state ?? createEditorState()
+  const strokes = (source.strokes ?? ([] as UTSJSONObject[])).map((stroke: UTSJSONObject): UTSJSONObject => cloneEditorStroke(stroke))
+  return { rotation: normalizeEditorRotation(source.rotation), strokes }
+}
+
+/** 创建只含当前状态的历史。 */
+export function createEditorHistory(state: EditorState): EditorHistory {
+  return { entries: [cloneEditorState(state)], index: 0 }
+}
+
+/**
+ * 记录一步新状态：丢弃已撤销的分支、追加快照并按上限裁剪。
+ * @param history 当前历史
+ * @param state 提交后的状态
+ * @param limit 快照数量上限
+ * @returns 新历史（游标指向最新快照）
+ */
+export function recordEditorHistory(history: EditorHistory, state: EditorState, limit: number = IMAGE_EDITOR_HISTORY_LIMIT): EditorHistory {
+  const safeLimit = Math.max(1, parseInt(String(limit ?? IMAGE_EDITOR_HISTORY_LIMIT)))
+  const currentIndex = Math.max(0, parseInt(String(history?.index ?? 0)))
+  const entries = (history?.entries ?? ([] as EditorState[])).slice(0, currentIndex + 1)
+  entries.push(cloneEditorState(state))
+  const overflow = entries.length - safeLimit
+  const trimmed = overflow > 0 ? entries.slice(overflow) : entries
+  return { entries: trimmed, index: trimmed.length - 1 }
+}
+
+/**
+ * 撤销一步：游标回退，状态由 currentEditorState 读取。
+ * @param history 当前历史
+ * @returns 游标回退后的历史
+ */
+export function undoEditorHistory(history: EditorHistory): EditorHistory {
+  return { entries: history?.entries ?? ([] as EditorState[]), index: Math.max(0, parseInt(String(history?.index ?? 0)) - 1) }
+}
+
+/**
+ * 重做一步：只在已撤销的分支内前进。
+ * @param history 当前历史
+ * @returns 游标前进后的历史
+ */
+export function redoEditorHistory(history: EditorHistory): EditorHistory {
+  const entries = history?.entries ?? ([] as EditorState[])
+  const lastIndex = Math.max(0, entries.length - 1)
+  return { entries, index: Math.min(lastIndex, Math.max(0, parseInt(String(history?.index ?? 0))) + 1) }
+}
+
+/** 是否还有可撤销的历史。 */
+export function canUndoEditorHistory(history: EditorHistory): boolean {
+  return Math.max(0, parseInt(String(history?.index ?? 0))) > 0
+}
+
+/** 是否还有可重做的历史。 */
+export function canRedoEditorHistory(history: EditorHistory): boolean {
+  const entries = history?.entries ?? ([] as EditorState[])
+  return Math.max(0, parseInt(String(history?.index ?? 0))) < entries.length - 1
+}
+
+/**
+ * 读取历史游标处的状态；历史为空时返回空白状态。
+ * @param history 当前历史
+ * @returns 当前状态（历史内部引用，写入前请自行拷贝）
+ */
+export function currentEditorState(history: EditorHistory): EditorState {
+  const entries = history?.entries ?? ([] as EditorState[])
+  if (entries.length === 0) return createEditorState()
+  const index = Math.min(Math.max(0, parseInt(String(history?.index ?? 0))), entries.length - 1)
+  return entries[index]
+}
+
+/**
+ * 旋转状态：只改角度，标注坐标保持源图坐标系不动，渲染时统一旋转。
+ * @param state 原状态
+ * @param step 本次旋转的角度（默认顺时针 90 度）
+ * @returns 旋转后的状态
+ */
+export function rotateEditorState(state: EditorState, step: number = IMAGE_EDITOR_ROTATION_STEP): EditorState {
+  const source = state ?? createEditorState()
+  return { rotation: normalizeEditorRotation(normalizeEditorRotation(source.rotation) + (step ?? IMAGE_EDITOR_ROTATION_STEP)), strokes: source.strokes ?? ([] as UTSJSONObject[]) }
+}
+
+/**
+ * 追加一个标注对象。
+ * @param state 原状态
+ * @param stroke 新标注对象
+ * @returns 追加后的状态
+ */
+export function appendEditorStroke(state: EditorState, stroke: UTSJSONObject): EditorState {
+  const source = state ?? createEditorState()
+  const strokes = (source.strokes ?? ([] as UTSJSONObject[])).slice()
+  strokes.push(stroke)
+  return { rotation: normalizeEditorRotation(source.rotation), strokes }
+}
+
+/**
+ * 替换指定下标的标注对象；下标越界时原样返回。
+ * @param state 原状态
+ * @param index 目标下标
+ * @param stroke 新标注对象
+ * @returns 替换后的状态
+ */
+export function replaceEditorStroke(state: EditorState, index: number, stroke: UTSJSONObject): EditorState {
+  const source = state ?? createEditorState()
+  const strokes = (source.strokes ?? ([] as UTSJSONObject[])).slice()
+  const safeIndex = parseInt(String(index ?? -1))
+  if (safeIndex < 0 || safeIndex >= strokes.length) return { rotation: normalizeEditorRotation(source.rotation), strokes }
+  strokes[safeIndex] = stroke
+  return { rotation: normalizeEditorRotation(source.rotation), strokes }
+}
+
+/**
+ * 删除指定下标的标注对象；下标越界时原样返回。
+ * @param state 原状态
+ * @param index 目标下标
+ * @returns 删除后的状态
+ */
+export function removeEditorStrokeAt(state: EditorState, index: number): EditorState {
+  const source = state ?? createEditorState()
+  const strokes = (source.strokes ?? ([] as UTSJSONObject[])).slice()
+  const safeIndex = parseInt(String(index ?? -1))
+  if (safeIndex < 0 || safeIndex >= strokes.length) return { rotation: normalizeEditorRotation(source.rotation), strokes }
+  strokes.splice(safeIndex, 1)
+  return { rotation: normalizeEditorRotation(source.rotation), strokes }
+}
+
+/**
+ * 清空全部标注（保留旋转角）。
+ * @param state 原状态
+ * @returns 只含旋转角的空状态
+ */
+export function clearEditorStrokes(state: EditorState): EditorState {
+  const source = state ?? createEditorState()
+  return { rotation: normalizeEditorRotation(source.rotation), strokes: [] as UTSJSONObject[] }
+}
+
+/**
+ * 计算源图在画布可用区内的显示几何：先按旋转交换宽高，等比缩放居中。
+ * @param sourceWidth 源图宽度（像素）
+ * @param sourceHeight 源图高度（像素）
+ * @param areaWidth 可用区宽度（画布像素）
+ * @param areaHeight 可用区高度（画布像素）
+ * @param rotation 旋转角（度）
+ * @returns 显示几何
+ */
+export function resolveEditorDisplay(sourceWidth: number, sourceHeight: number, areaWidth: number, areaHeight: number, rotation: number): EditorDisplay {
+  const sourceWide = editorSafeSize(sourceWidth)
+  const sourceHigh = editorSafeSize(sourceHeight)
+  const areaWide = editorSafeSize(areaWidth)
+  const areaHigh = editorSafeSize(areaHeight)
+  const swapped = isQuarterTurn(rotation)
+  const rotatedWide = swapped ? sourceHigh : sourceWide
+  const rotatedHigh = swapped ? sourceWide : sourceHigh
+  const scale = Math.min(areaWide / rotatedWide, areaHigh / rotatedHigh)
+  const displayWide = rotatedWide * scale
+  const displayHigh = rotatedHigh * scale
+  return { rotatedWidth: displayWide, rotatedHeight: displayHigh, scale, offsetX: (areaWide - displayWide) / 2, offsetY: (areaHigh - displayHigh) / 2 }
+}
+
+/**
+ * 把画布上的触摸点换算成源图像素坐标：先还原缩放与居中偏移，再反向旋转。
+ * @param point 画布坐标（画布像素，原点在可用区左上角）
+ * @param display 显示几何
+ * @param sourceWidth 源图宽度（像素）
+ * @param sourceHeight 源图高度（像素）
+ * @param rotation 旋转角（度）
+ * @returns 源图坐标；超出图片范围时收敛到边缘
+ */
+export function mapStagePointToSource(point: EditorPoint, display: EditorDisplay, sourceWidth: number, sourceHeight: number, rotation: number): EditorPoint {
+  const sourceWide = editorSafeSize(sourceWidth)
+  const sourceHigh = editorSafeSize(sourceHeight)
+  const scale = editorSafeSize(display?.scale ?? 0)
+  const rotatedX = ((point?.x ?? 0) - (display?.offsetX ?? 0) - (display?.rotatedWidth ?? 0) / 2) / scale
+  const rotatedY = ((point?.y ?? 0) - (display?.offsetY ?? 0) - (display?.rotatedHeight ?? 0) / 2) / scale
+  const angle = normalizeEditorRotation(rotation) * Math.PI / 180
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const centeredX = rotatedX * cos + rotatedY * sin
+  const centeredY = -rotatedX * sin + rotatedY * cos
+  return { x: clampEditorValue(centeredX + sourceWide / 2, 0, sourceWide), y: clampEditorValue(centeredY + sourceHigh / 2, 0, sourceHigh) }
+}
+
+/**
+ * 把源图坐标换算成画布坐标：与 mapStagePointToSource 互为逆运算，供命中测试与调试使用。
+ * @param point 源图坐标（像素）
+ * @param display 显示几何
+ * @param sourceWidth 源图宽度（像素）
+ * @param sourceHeight 源图高度（像素）
+ * @param rotation 旋转角（度）
+ * @returns 画布坐标（画布像素）
+ */
+export function mapSourcePointToStage(point: EditorPoint, display: EditorDisplay, sourceWidth: number, sourceHeight: number, rotation: number): EditorPoint {
+  const sourceWide = editorSafeSize(sourceWidth)
+  const sourceHigh = editorSafeSize(sourceHeight)
+  const scale = editorSafeSize(display?.scale ?? 0)
+  const centeredX = (point?.x ?? 0) - sourceWide / 2
+  const centeredY = (point?.y ?? 0) - sourceHigh / 2
+  const angle = normalizeEditorRotation(rotation) * Math.PI / 180
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const rotatedX = centeredX * cos - centeredY * sin
+  const rotatedY = centeredX * sin + centeredY * cos
+  return { x: (display?.offsetX ?? 0) + (display?.rotatedWidth ?? 0) / 2 + rotatedX * scale, y: (display?.offsetY ?? 0) + (display?.rotatedHeight ?? 0) / 2 + rotatedY * scale }
+}
+
+/**
+ * 把值收敛到区间内；非法读数按下界处理。
+ * @param value 原值
+ * @param min 下界
+ * @param max 上界
+ * @returns 收敛后的值
+ */
+function clampEditorValue(value: number, min: number, max: number): number {
+  if (!(value > min)) return min
+  if (value > max) return max
+  return value
+}
+
+/**
+ * 计算导出画布像素尺寸：按旋转交换宽高，并把长边收敛到上限内。
+ * @param sourceWidth 源图宽度（像素）
+ * @param sourceHeight 源图高度（像素）
+ * @param rotation 旋转角（度）
+ * @param maxSide 长边像素上限
+ * @returns 导出画布尺寸
+ */
+export function resolveExportCanvasSize(sourceWidth: number, sourceHeight: number, rotation: number, maxSide: number = IMAGE_EDITOR_MAX_EXPORT_SIDE): EditorSize {
+  const sourceWide = editorSafeSize(sourceWidth)
+  const sourceHigh = editorSafeSize(sourceHeight)
+  const swapped = isQuarterTurn(rotation)
+  const rotatedWide = swapped ? sourceHigh : sourceWide
+  const rotatedHigh = swapped ? sourceWide : sourceHigh
+  const safeMax = Math.max(1, parseInt(String(editorSafeSize(maxSide ?? IMAGE_EDITOR_MAX_EXPORT_SIDE))))
+  const longest = Math.max(rotatedWide, rotatedHigh)
+  const ratio = longest > safeMax ? safeMax / longest : 1
+  return { width: Math.max(1, Math.round(rotatedWide * ratio)), height: Math.max(1, Math.round(rotatedHigh * ratio)) }
+}
+
+/**
+ * 画笔取点抽稀：与上一点距离过近就丢弃，避免一笔产生上千个点。
+ * @param previous 上一个已记录的点；null 表示这是落笔第一点
+ * @param next 当前触摸点
+ * @param minDistance 最小记录间距（屏幕像素）
+ * @returns 需要记录时返回 true
+ */
+export function shouldAppendEditorPoint(previous: EditorPoint | null, next: EditorPoint, minDistance: number = IMAGE_EDITOR_BRUSH_MIN_DISTANCE_PX): boolean {
+  if (previous == null) return true
+  const safeMin = Math.max(0, minDistance ?? IMAGE_EDITOR_BRUSH_MIN_DISTANCE_PX)
+  return distanceBetweenEditorPoints(previous, next) >= safeMin
+}
+
+/**
+ * 批量抽稀点序列：保留首尾点，中间按间距过滤，用于提交一笔涂鸦前压缩数据。
+ * @param points 原始点序列
+ * @param minDistance 最小记录间距（同坐标系像素）
+ * @returns 抽稀后的点序列
+ */
+export function simplifyEditorPoints(points: EditorPoint[], minDistance: number = IMAGE_EDITOR_BRUSH_MIN_DISTANCE_PX): EditorPoint[] {
+  const source = points ?? ([] as EditorPoint[])
+  if (source.length <= 2) return source.slice()
+  const result: EditorPoint[] = [source[0]]
+  for (let i = 1; i < source.length - 1; i++) {
+    if (shouldAppendEditorPoint(result[result.length - 1], source[i], minDistance)) result.push(source[i])
+  }
+  result.push(source[source.length - 1])
+  return result
+}
+
+/**
+ * 两点间距离。
+ * @param first 第一个点
+ * @param second 第二个点
+ * @returns 距离
+ */
+export function distanceBetweenEditorPoints(first: EditorPoint, second: EditorPoint): number {
+  const deltaX = (second?.x ?? 0) - (first?.x ?? 0)
+  const deltaY = (second?.y ?? 0) - (first?.y ?? 0)
+  return Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+}
+
+/**
+ * 点到线段的最短距离：画笔与箭头按折线判定命中，只看包围盒会误判。
+ * @param point 目标点
+ * @param start 线段起点
+ * @param end 线段终点
+ * @returns 最短距离
+ */
+export function distanceToEditorSegment(point: EditorPoint, start: EditorPoint, end: EditorPoint): number {
+  const segmentX = (end?.x ?? 0) - (start?.x ?? 0)
+  const segmentY = (end?.y ?? 0) - (start?.y ?? 0)
+  const lengthSquared = segmentX * segmentX + segmentY * segmentY
+  if (!(lengthSquared > 0)) return distanceBetweenEditorPoints(point, start)
+  const projection = ((point?.x ?? 0) - (start?.x ?? 0)) * segmentX + ((point?.y ?? 0) - (start?.y ?? 0)) * segmentY
+  const ratio = clampEditorValue(projection / lengthSquared, 0, 1)
+  return distanceBetweenEditorPoints(point, { x: (start?.x ?? 0) + segmentX * ratio, y: (start?.y ?? 0) + segmentY * ratio })
+}
+
+/**
+ * 把画布宽度从屏幕像素换算成源图像素，保证不同分辨率下笔迹视觉粗细一致。
+ * @param displayWidth 用户选择的屏幕像素宽度
+ * @param scale 源图像素到画布像素的比例
+ * @returns 源图像素宽度，最小 1
+ */
+export function resolveEditorStrokeWidth(displayWidth: number, scale: number): number {
+  return Math.max(1, editorSafeSize(displayWidth) / editorSafeSize(scale))
+}
+
+/**
+ * 用折线采样点近似椭圆：uni-app x App 原生平台（Android/iOS）的
+ * CanvasRenderingContext2D.ellipse 未实现（官方类型标注 unixVer 为 x），
+ * 直接调用会在运行时抛错并中断整帧重绘。moveTo/lineTo/closePath 全平台可用，
+ * 因此椭圆统一改用采样折线绘制。
+ * @param centerX 椭圆圆心 x（与标注同坐标系）
+ * @param centerY 椭圆圆心 y（与标注同坐标系）
+ * @param radiusX x 方向半径（取绝对值，拖动方向不影响形状）
+ * @param radiusY y 方向半径（取绝对值）
+ * @param segments 采样段数，向下限收敛
+ * @returns 首尾闭合的采样点序列（segments + 1 个点）
+ */
+export function resolveEllipseSamplePoints(centerX: number, centerY: number, radiusX: number, radiusY: number, segments: number = IMAGE_EDITOR_ELLIPSE_SEGMENTS): EditorPoint[] {
+  const safeSegments = Math.max(IMAGE_EDITOR_ELLIPSE_MIN_SEGMENTS, Math.round(segments ?? IMAGE_EDITOR_ELLIPSE_SEGMENTS))
+  const rx = Math.abs(radiusX ?? 0)
+  const ry = Math.abs(radiusY ?? 0)
+  const points: EditorPoint[] = [] as EditorPoint[]
+  for (let index = 0; index <= safeSegments; index++) {
+    const angle = (index % safeSegments) / safeSegments * Math.PI * 2
+    points.push({ x: (centerX ?? 0) + rx * Math.cos(angle), y: (centerY ?? 0) + ry * Math.sin(angle) })
+  }
+  return points
+}
+
+/**
+ * 生成 App 平台可识别的 canvas 文本字体字符串。
+ * App 平台 font 只支持 font-size 与 font-family（官方类型注释），
+ * 统一从本函数生成，避免拼出平台不识别的写法导致文字绘制失效。
+ * @param fontSize 字号（画布像素），向下限收敛并四舍五入
+ * @returns 形如 "20px sans-serif" 的字体字符串
+ */
+export function resolveEditorTextFont(fontSize: number): string {
+  const size = Math.max(IMAGE_EDITOR_MIN_TEXT_FONT_PX, Math.round(editorSafeSize(fontSize)))
+  return `${size}px sans-serif`
+}
+
+/**
+ * 读取标注对象的类型标识。
+ * @param stroke 标注对象
+ * @returns 类型字符串，缺省视为 brush
+ */
+export function editorStrokeTool(stroke: UTSJSONObject): string {
+  const tool = (stroke?.['tool'] ?? 'brush').toString()
+  return tool === '' ? 'brush' : tool
+}
+
+/**
+ * 读取标注对象的数值字段：原生 JSON 里可能是字符串，统一转数字避免 NaN 扩散。
+ * @param stroke 标注对象
+ * @param key 字段名
+ * @param fallback 缺省值
+ * @returns 数值字段
+ */
+export function editorStrokeNumber(stroke: UTSJSONObject, key: string, fallback: number): number {
+  const value = stroke?.[key]
+  if (value == null) return fallback
+  const parsed = parseFloat(value.toString())
+  return isNaN(parsed) ? fallback : parsed
+}
+
+/**
+ * 读取标注对象的点序列（画笔笔迹）。
+ * @param stroke 标注对象
+ * @returns 点序列；缺省为空数组
+ */
+export function editorStrokePoints(stroke: UTSJSONObject): EditorPoint[] {
+  const value = stroke?.['points']
+  if (value == null) return [] as EditorPoint[]
+  return value as EditorPoint[]
+}
+
+/**
+ * 计算标注对象的包围盒，用于命中测试与选中框。
+ * @param stroke 标注对象
+ * @returns 包围盒（与标注同坐标系）
+ */
+export function resolveEditorStrokeBox(stroke: UTSJSONObject): EditorBox {
+  const tool = editorStrokeTool(stroke)
+  if (tool === 'brush' || tool === 'arrow') {
+    const points = editorStrokePoints(stroke)
+    if (points.length > 0) {
+      let minX = points[0].x
+      let minY = points[0].y
+      let maxX = points[0].x
+      let maxY = points[0].y
+      for (let i = 1; i < points.length; i++) {
+        minX = Math.min(minX, points[i].x)
+        minY = Math.min(minY, points[i].y)
+        maxX = Math.max(maxX, points[i].x)
+        maxY = Math.max(maxY, points[i].y)
+      }
+      return { left: minX, top: minY, width: maxX - minX, height: maxY - minY }
+    }
+    const startX = editorStrokeNumber(stroke, 'startX', 0)
+    const startY = editorStrokeNumber(stroke, 'startY', 0)
+    const endX = editorStrokeNumber(stroke, 'endX', 0)
+    const endY = editorStrokeNumber(stroke, 'endY', 0)
+    return { left: Math.min(startX, endX), top: Math.min(startY, endY), width: Math.abs(endX - startX), height: Math.abs(endY - startY) }
+  }
+  if (tool === 'rect') {
+    const x = editorStrokeNumber(stroke, 'startX', 0)
+    const y = editorStrokeNumber(stroke, 'startY', 0)
+    const width = editorStrokeNumber(stroke, 'endX', 0) - x
+    const height = editorStrokeNumber(stroke, 'endY', 0) - y
+    return { left: Math.min(x, x + width), top: Math.min(y, y + height), width: Math.abs(width), height: Math.abs(height) }
+  }
+  if (tool === 'ellipse') {
+    const centerX = editorStrokeNumber(stroke, 'startX', 0)
+    const centerY = editorStrokeNumber(stroke, 'startY', 0)
+    const radiusX = Math.abs(editorStrokeNumber(stroke, 'endX', 0) - centerX)
+    const radiusY = Math.abs(editorStrokeNumber(stroke, 'endY', 0) - centerY)
+    return { left: centerX - radiusX, top: centerY - radiusY, width: radiusX * 2, height: radiusY * 2 }
+  }
+  const textX = editorStrokeNumber(stroke, 'startX', 0)
+  const textY = editorStrokeNumber(stroke, 'startY', 0)
+  const fontSize = editorStrokeNumber(stroke, 'width', IMAGE_EDITOR_TEXT_SIZE_PX)
+  const text = (stroke?.['text'] ?? '').toString()
+  return { left: textX, top: textY - fontSize, width: Math.max(fontSize, text.length * fontSize * 0.6), height: fontSize * 1.3 }
+}
+
+/**
+ * 命中测试：返回最上层命中的标注下标。
+ * 画笔与箭头按点到折线的距离判定（线宽计入容差），其余对象按包围盒判定。
+ * @param strokes 标注列表
+ * @param point 目标点（与标注同坐标系）
+ * @param tolerance 容差（同坐标系像素）
+ * @returns 命中的下标；未命中返回 -1
+ */
+export function hitTestEditorStrokes(strokes: UTSJSONObject[], point: EditorPoint, tolerance: number = IMAGE_EDITOR_HIT_TOLERANCE_PX): number {
+  const list = strokes ?? ([] as UTSJSONObject[])
+  const pad = Math.max(1, tolerance ?? IMAGE_EDITOR_HIT_TOLERANCE_PX)
+  for (let i = list.length - 1; i >= 0; i--) {
+    const stroke = list[i]
+    const tool = editorStrokeTool(stroke)
+    if (tool === 'brush' || tool === 'arrow') {
+      const points = editorStrokePoints(stroke)
+      const halfWidth = Math.max(1, editorStrokeNumber(stroke, 'width', 2)) / 2
+      if (points.length === 1) {
+        if (distanceBetweenEditorPoints(point, points[0]) <= pad + halfWidth) return i
+        continue
+      }
+      let near = false
+      for (let p = 1; p < points.length; p++) {
+        if (distanceToEditorSegment(point, points[p - 1], points[p]) <= pad + halfWidth) { near = true; break }
+      }
+      if (near) return i
+      continue
+    }
+    const box = resolveEditorStrokeBox(stroke)
+    if (point.x >= box.left - pad && point.x <= box.left + box.width + pad && point.y >= box.top - pad && point.y <= box.top + box.height + pad) return i
+  }
+  return -1
+}
+
+/**
+ * 平移标注对象：返回独立副本，原对象不变，拖动中的临时状态不会污染历史快照或原状态。
+ * @param stroke 原标注对象
+ * @param deltaX 水平位移（与标注同坐标系）
+ * @param deltaY 垂直位移（与标注同坐标系）
+ * @returns 平移后的新标注对象
+ */
+export function translateEditorStroke(stroke: UTSJSONObject, deltaX: number, deltaY: number): UTSJSONObject {
+  const moved = cloneEditorStroke(stroke)
+  const offsetX = deltaX ?? 0
+  const offsetY = deltaY ?? 0
+  const tool = editorStrokeTool(moved)
+  if (tool === 'brush') {
+    const points = editorStrokePoints(moved).map((point: EditorPoint): EditorPoint => ({ x: point.x + offsetX, y: point.y + offsetY }))
+    moved['points'] = points
+    return moved
+  }
+  moved['startX'] = editorStrokeNumber(moved, 'startX', 0) + offsetX
+  moved['startY'] = editorStrokeNumber(moved, 'startY', 0) + offsetY
+  // 文字只有落点，其余形状的终点也要一起平移。
+  if (tool !== 'text') {
+    moved['endX'] = editorStrokeNumber(moved, 'endX', 0) + offsetX
+    moved['endY'] = editorStrokeNumber(moved, 'endY', 0) + offsetY
+  }
+  return moved
+}
+
+/**
+ * 判断一笔标注是否值得保留：轻点产生的极小标注直接丢弃，避免误触后留下看不见的对象。
+ * @param stroke 待判断的标注对象
+ * @param minExtent 最小可保留尺寸（与标注同坐标系）
+ * @returns 需要保留时返回 true
+ */
+export function isMeaningfulEditorStroke(stroke: UTSJSONObject, minExtent: number): boolean {
+  if (editorStrokeTool(stroke) === 'text') return true
+  const box = resolveEditorStrokeBox(stroke)
+  return Math.max(box.width, box.height) >= Math.max(0, minExtent ?? 0)
+}
+/** 导出图片与目标位图的长宽比容差：各端位图口径（物理像素/逻辑像素）不同，比例一致即视为整张图。 */
+export const IMAGE_EDITOR_ASPECT_TOLERANCE: number = 0.02
+
+/** 导出位图的最小边长（px）：低于它说明画布没有铺开，导出应判失败而不是覆盖原图。 */
+export const IMAGE_EDITOR_MIN_EXPORT_SIDE: number = 64
+
+/**
+ * 编辑结果转 JPEG 的质量（0~100）：上传接口只接受 jpg，而 2D 画布只能导出 PNG，必须转码；
+ * 取 92 与 iOS 基准编辑器 toDataURL('image/jpeg', 0.92) 一致，兼顾画质与上传体积。
+ */
+export const IMAGE_EDITOR_JPEG_QUALITY: number = 92
+
+/**
+ * 计算编辑器的图片可绘制区：与查看页 .preview-content 完全一致（左右留白 + 状态栏与标题栏之下铺到底），
+ * 这样编辑器里图片的显示尺寸、位置与查看页逐像素相同。
+ * @param windowWidth 窗口宽度（px）
+ * @param windowHeight 可使用窗口高度（px）
+ * @param statusBarHeight 状态栏高度（px）
+ * @param sidePadding 左右留白（px）
+ * @param headerHeight 标题栏高度（px）
+ * @returns 可绘制区矩形，宽高至少为 1
+ */
+export function resolveEditorImageArea(windowWidth: number, windowHeight: number, statusBarHeight: number, sidePadding: number, headerHeight: number): EditorBox {
+  const padding = Math.max(0, sidePadding ?? 0)
+  const top = Math.max(0, statusBarHeight ?? 0) + Math.max(0, headerHeight ?? 0)
+  return {
+    left: padding,
+    top,
+    width: Math.max(1, (windowWidth ?? 0) - padding * 2),
+    height: Math.max(1, (windowHeight ?? 0) - top)
+  }
+}
+
+/**
+ * 计算画布在可绘制区内居中后的矩形：画布紧贴图片外框，触摸坐标要按它换算。
+ * @param area 图片可绘制区
+ * @param canvasWidth 画布宽度（px）
+ * @param canvasHeight 画布高度（px）
+ * @returns 画布矩形
+ */
+export function resolveEditorCanvasRect(area: EditorBox, canvasWidth: number, canvasHeight: number): EditorBox {
+  const width = Math.max(0, canvasWidth ?? 0)
+  const height = Math.max(0, canvasHeight ?? 0)
+  return {
+    left: (area?.left ?? 0) + Math.max(0, ((area?.width ?? 0) - width) / 2),
+    top: (area?.top ?? 0) + Math.max(0, ((area?.height ?? 0) - height) / 2),
+    width,
+    height
+  }
+}
+
+/**
+ * 按设备像素比折算导出画布元素的 CSS 尺寸。
+ * App 平台按官方高清屏写法用 canvas.width = offsetWidth * dpr 决定位图，
+ * 因此元素 CSS 尺寸必须取"目标像素 / dpr"，导出的 PNG 才会正好是目标像素。
+ * @param target 目标位图尺寸（px）
+ * @param pixelRatio 设备像素比
+ * @returns 画布元素的 CSS 尺寸，读数异常时按 1 处理，宽高至少为 1
+ */
+export function resolveEditorExportElementSize(target: EditorSize, pixelRatio: number): EditorSize {
+  const ratio = pixelRatio != null && pixelRatio > 0 ? pixelRatio : 1
+  return {
+    width: Math.max(1, Math.round(editorSafeSize(target?.width) / ratio)),
+    height: Math.max(1, Math.round(editorSafeSize(target?.height) / ratio))
+  }
+}
+
+/**
+ * 判断导出图片与目标位图长宽比是否一致：方向或比例不符说明只导出了局部，必须判失败。
+ * @param width 导出图片宽度
+ * @param height 导出图片高度
+ * @param targetWidth 目标位图宽度
+ * @param targetHeight 目标位图高度
+ * @returns 长宽比一致返回 true
+ */
+export function isSameEditorAspectRatio(width: number, height: number, targetWidth: number, targetHeight: number): boolean {
+  if (!(width > 0) || !(height > 0) || !(targetWidth > 0) || !(targetHeight > 0)) return false
+  const actualRatio = width / height
+  const expectedRatio = targetWidth / targetHeight
+  const base = Math.max(actualRatio, expectedRatio)
+  return Math.abs(actualRatio - expectedRatio) / base <= IMAGE_EDITOR_ASPECT_TOLERANCE
+}
+
+/**
+ * 判断原生实测矩形是否可用：测量 API 不可用时会返回全 0，此时必须回退到推算几何。
+ * @param box 实测矩形，可为 null
+ * @param minSide 可用矩形的最小边长（px）
+ * @returns 可用返回 true
+ */
+export function isUsableEditorBox(box: EditorBox | null, minSide: number): boolean {
+  const width = box?.width ?? 0
+  const height = box?.height ?? 0
+  const min = Math.max(0, minSide ?? 0)
+  return width >= min && height >= min
+}
+
+/**
+ * 从图片可绘制区里扣掉底部工具条浮层占用的高度：图片必须完整显示在操作区上方，不能被浮层挡住。
+ * 只收缩高度、保持左上角原点不变，画布坐标与触摸坐标的换算才不会跟着漂移。
+ * @param area 图片可绘制区
+ * @param reservedBottom 底部浮层占用的高度（px）
+ * @returns 实际用于取景的区域，宽高至少为 1
+ */
+export function resolveEditorFitArea(area: EditorBox, reservedBottom: number): EditorBox {
+  const reserved = Math.max(0, reservedBottom ?? 0)
+  return {
+    left: area?.left ?? 0,
+    top: area?.top ?? 0,
+    width: Math.max(1, area?.width ?? 0),
+    height: Math.max(1, (area?.height ?? 0) - reserved)
+  }
+}

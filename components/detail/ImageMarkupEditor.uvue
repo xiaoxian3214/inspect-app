@@ -1,47 +1,59 @@
 <template>
 	<view v-if="visible" class="markup-root">
-		<TopSafeArea background-color="#222222" />
+		<TopSafeArea background-color="#1f2937" />
 		<view class="markup-header">
 			<text class="header-action" @click="cancelEdit">{{ cancelLabel }}</text>
 			<text class="header-title">{{ editorTitle }}</text>
-			<text class="header-action save-action" :class="{ disabled: saving }" @click="saveImage">{{ saveLabel }}</text>
+			<text class="header-action save-action" :class="{ disabled: saving || !canvasReady }" @click="saveImage">{{ saveLabel }}</text>
 		</view>
-		<view class="editor-body">
-			<view v-if="displaySrc !== ''" class="image-stage" :style="stageStyle" @touchstart="handleStageTouchStart" @touchmove="handleStageTouchMove" @touchend="handleStageTouchEnd">
-				<image class="edit-image" :src="displaySrc" mode="aspectFit" :style="imageStyle" />
-				<view class="annotation-layer">
-					<template v-for="item, index in visibleObjects" :key="item.id">
-						<view v-if="item.type === 'arrow'" class="annotation-line" :class="{ selected: item === selectedObj }" :style="lineStyle(item)">
-							<view class="arrow-head" :style="arrowHeadStyle(item)"></view>
-						</view>
-						<view v-else-if="item.type === 'rect'" class="annotation-rect" :class="{ selected: item === selectedObj }" :style="rectStyle(item)"></view>
-						<view v-else-if="item.type === 'ellipse'" class="annotation-ellipse" :class="{ selected: item === selectedObj }" :style="ellipseStyle(item)"></view>
-						<text v-else-if="item.type === 'text'" class="annotation-text" :class="{ selected: item === selectedObj }" :style="textStyle(item)">{{ item.text }}</text>
-						<template v-else-if="item.type === 'path'">
-							<view v-for="seg, segIndex in pathSegments(item)" :key="`s_${segIndex}`" class="annotation-line" :style="segmentStyle(seg, item)"></view>
-						</template>
-					</template>
+		<view id="markup-body" class="editor-body">
+			<canvas
+				id="markup-canvas"
+				type="2d"
+				class="edit-canvas"
+				:style="canvasStyle"
+				@touchstart="handleCanvasTouchStart"
+				@touchmove="handleCanvasTouchMove"
+				@touchend="handleCanvasTouchEnd"
+				@touchcancel="handleCanvasTouchCancel"
+			/>
+			<view v-if="loading || loadFailed" class="editor-hint" @click="retryLoad">
+				<text class="hint-text">{{ loadFailed ? loadFailedLabel : loadingLabel }}</text>
+			</view>
+		</view>
+		<view id="markup-toolbars" class="editor-toolbars">
+			<view class="editor-toolbar">
+				<view v-for="tool in tools" :key="tool.id" class="tool-item" :class="{ active: currentTool === tool.id }" @click="selectTool(tool.id)">
+					<text class="tool-icon" :class="{ 'tool-active': currentTool === tool.id }">{{ tool.icon }}</text>
+					<text class="tool-label" :class="{ 'tool-active': currentTool === tool.id }">{{ tool.label }}</text>
+				</view>
+				<view class="tool-item" @click="rotateImage">
+					<text class="tool-icon">↻</text>
+					<text class="tool-label">{{ rotateLabel }}</text>
 				</view>
 			</view>
-			<view v-else-if="loading" class="editor-loading"><text>{{ loadingLabel }}</text></view>
-			<view v-else class="editor-loading" @click="retryLoad"><text>{{ loadFailedLabel }}</text></view>
-		</view>
-		<view class="editor-toolbar">
-			<view v-for="tool in tools" :key="tool.id" class="tool-item" :class="{ active: currentTool === tool.id }" @click="selectTool(tool.id)">
-				<text class="tool-icon" :class="{ 'tool-active': currentTool === tool.id }">{{ tool.icon }}</text>
-				<text class="tool-label" :class="{ 'tool-active': currentTool === tool.id }">{{ tool.label }}</text>
-			</view>
-		</view>
-		<view v-if="showColorBar" class="sub-toolbar">
-			<view class="color-selector">
-				<view v-for="c in colorOptions" :key="c" class="color-dot" :class="{ active: activeColor === c }" :style="{ backgroundColor: c }" @click="activeColor = c"></view>
+			<view class="editor-subbar" :style="subbarStyle">
+				<view class="color-row">
+					<view v-for="color in colorOptions" :key="color" class="color-dot" :class="{ active: activeColor === color }" :style="{ backgroundColor: color }" @click="activeColor = color"></view>
+				</view>
+				<view class="width-row">
+					<text class="subbar-label">{{ widthLabel }}</text>
+					<view v-for="option in brushWidthOptions" :key="option.index" class="width-dot" :class="{ active: activeWidthIndex === option.index }" @click="selectBrushWidth(option.index)">
+						<view class="width-bar" :style="{ width: option.barWidth + 'px', height: option.barHeight + 'px' }"></view>
+					</view>
+				</view>
+				<view class="history-row">
+					<text class="history-btn" :class="{ disabled: !canUndo }" @click="undoEdit">{{ undoLabel }}</text>
+					<text class="history-btn" :class="{ disabled: !canRedo }" @click="redoEdit">{{ redoLabel }}</text>
+					<text class="history-btn" @click="clearAnnotations">{{ clearLabel }}</text>
+				</view>
 			</view>
 		</view>
 		<view v-if="showTextInput" class="text-input-overlay" @click="cancelTextInput">
-			<view class="text-input-box" @click.stop="() => {}">
-				<input class="text-input" :value="textInputValue" maxlength="60" :placeholder="textPlaceholder" @input="onTextInput" @confirm="confirmTextInput" />
+			<view class="text-input-box" @click.stop="stopEvent">
+				<input class="text-input" :value="textInputValue" maxlength="60" :placeholder="textPlaceholder" :focus="showTextInput" @input="onTextInput" @confirm="confirmTextInput" />
 				<view class="text-color-row">
-					<view v-for="c in colorOptions" :key="c" class="color-dot" :class="{ active: activeColor === c }" :style="{ backgroundColor: c }" @click="activeColor = c"></view>
+					<view v-for="color in colorOptions" :key="color" class="color-dot" :class="{ active: activeColor === color }" :style="{ backgroundColor: color }" @click="activeColor = color"></view>
 				</view>
 				<view class="text-input-actions">
 					<text class="text-btn cancel" @click="cancelTextInput">{{ cancelLabel }}</text>
@@ -49,7 +61,13 @@
 				</view>
 			</view>
 		</view>
-		<canvas v-if="saving" id="markup-save-canvas" type="2d" class="save-canvas" :width="saveCanvasWidth" :height="saveCanvasHeight" :style="{ width: saveCanvasWidth + 'px', height: saveCanvasHeight + 'px' }" />
+		<canvas
+			v-if="saving"
+			id="markup-export-canvas"
+			type="2d"
+			class="export-canvas"
+			:style="exportCanvasStyle"
+		/>
 	</view>
 </template>
 
@@ -57,509 +75,1089 @@
 	import { computed, getCurrentInstance, nextTick, ref, watch } from 'vue'
 	import TopSafeArea from '../common/TopSafeArea.uvue'
 	import { safeBottomPaddingPx } from '../../domain/nativeLayout.uts'
-	import { canvasImageSource } from '../../domain/mediaViewer.uts'
+	import { canvasImageSource, normalizeCanvasImagePath } from '../../domain/mediaViewer.uts'
+	import { nativeImageSourceCandidates } from '../../services/mediaOrientationService.uts'
+	import { createAppMediaPersistenceService } from '../../services/mediaPersistenceService.uts'
+	import { MEDIA_PREVIEW_HEADER_HEIGHT_RPX, MEDIA_PREVIEW_SIDE_PADDING_RPX } from '../../domain/mediaZoom.uts'
 	import { t } from '../../i18n/index.uts'
+	import {
+		EditorBox, EditorDisplay, EditorHistory, EditorPoint, EditorState,
+		IMAGE_EDITOR_BRUSH_MIN_DISTANCE_PX, IMAGE_EDITOR_BRUSH_WIDTHS, IMAGE_EDITOR_HIT_TOLERANCE_PX, IMAGE_EDITOR_TEXT_SIZE_PX,
+		appendEditorStroke, canRedoEditorHistory, canUndoEditorHistory, clearEditorStrokes, createEditorHistory, createEditorState,
+		currentEditorState, editorStrokeNumber, editorStrokePoints, editorStrokeTool, hitTestEditorStrokes, isMeaningfulEditorStroke,
+		mapStagePointToSource, recordEditorHistory, redoEditorHistory, removeEditorStrokeAt, replaceEditorStroke, resolveEditorDisplay,
+		resolveEditorTextFont, resolveEllipseSamplePoints,
+		IMAGE_EDITOR_MIN_EXPORT_SIDE, IMAGE_EDITOR_JPEG_QUALITY, isSameEditorAspectRatio, isUsableEditorBox, resolveEditorCanvasRect, resolveEditorExportElementSize,
+		resolveEditorFitArea, resolveEditorImageArea, resolveEditorStrokeBox, resolveEditorStrokeWidth, resolveExportCanvasSize, rotateEditorState,
+		shouldAppendEditorPoint, translateEditorStroke, undoEditorHistory
+	} from '../../domain/imageEditor.uts'
 
 	const props = defineProps({ visible: { type: Boolean, default: false }, source: { type: String, default: '' } })
 	const emit = defineEmits(['cancel', 'edited'])
 	const instance = getCurrentInstance()?.proxy
+	/* 编辑结果必须是可上传的 jpg，落盘复用相机/相册同一条持久化链路。 */
+	const mediaPersistenceService = createAppMediaPersistenceService()
 
-	/** 读取取消按钮的当前语言文案。 */
-	const cancelLabel = computed(() => t('取消'))
-	/** 读取图片编辑器标题的当前语言文案。 */
-	const editorTitle = computed(() => t('编辑图片'))
-	/** 读取图片加载中的当前语言提示。 */
-	const loadingLabel = computed(() => t('加载中...'))
-	/** 读取图片加载失败时的当前语言重试提示。 */
-	const loadFailedLabel = computed(() => t('加载失败，点击重试'))
-	/** 读取标注文字输入框的当前语言占位提示。 */
-	const textPlaceholder = computed(() => t('输入文字'))
-	/** 读取确认按钮的当前语言文案。 */
-	const confirmLabel = computed(() => t('确定'))
+	type ImageInfo = { width: number, height: number, path: string }
+	type ElementRect = { left: number, top: number, width: number, height: number }
+	type EditorTool = { id: string, icon: string, label: string }
+	type BrushWidthOption = { index: number, barWidth: number, barHeight: number }
 
-	/** 编辑工具定义 */
-	const tools = [
-		{ id: 'select', icon: '☝', label: t('选择') },
-		{ id: 'arrow', icon: '➤', label: t('箭头') },
-		{ id: 'draw', icon: '✏', label: t('画笔') },
-		{ id: 'text', icon: 'T', label: t('文字') },
-		{ id: 'rect', icon: '□', label: t('矩形') },
-		{ id: 'ellipse', icon: '○', label: t('圆形') },
-		{ id: 'rotate', icon: '↻', label: t('旋转') },
-		{ id: 'undo', icon: '↩', label: t('撤销') },
-		{ id: 'delete', icon: '🗑', label: t('删除') }
-	]
-	const colorOptions = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff', '#000000']
-
+	/* 状态声明必须早于引用它的计算方法，Kotlin 不支持前向引用。 */
 	const currentTool = ref('select')
 	const activeColor = ref('#ef4444')
-	const showColorBar = computed(() => ['arrow', 'draw', 'rect', 'ellipse', 'text'].includes(currentTool.value))
+	const activeWidthIndex = ref(1)
 	const showTextInput = ref(false)
 	const textInputValue = ref('')
 	const displaySrc = ref('')
-	const sourceImage = ref({ width: 0, height: 0, path: '' } as ImageInfo)
-	const stageWidth = ref(375)
-	const stageHeight = ref(280)
-	const stageTop = ref(0)
-	const stageRect = ref<StageOffset>({ left: 0, top: 0 })
-	const saveCanvasWidth = ref(1)
-	const saveCanvasHeight = ref(1)
-	const saving = ref(false)
-	/** 按保存状态选择当前语言按钮文案。 */
-	const saveLabel = computed(() => t(saving.value ? '保存中…' : '完成'))
 	const loading = ref(true)
-	const rotation = ref(0)
+	const loadFailed = ref(false)
+	const saving = ref(false)
+	const canvasReady = ref(false)
+	const canUndo = ref(false)
+	const canRedo = ref(false)
+	const sourceImage = ref<ImageInfo>({ width: 0, height: 0, path: '' })
+	const editorDisplay = ref<EditorDisplay>({ rotatedWidth: 1, rotatedHeight: 1, scale: 1, offsetX: 0, offsetY: 0 })
+	/** 导出画布元素的 CSS 尺寸：按 dpr 折算，位图才会等于目标像素。 */
+	/** 画布尺寸（CSS px）：铺满图片可绘制区。 */
+	const editorAreaWidth = ref(1)
+	const editorAreaHeight = ref(1)
+	const exportElementWidth = ref(1)
+	const exportElementHeight = ref(1)
 
-	const objects = ref<AnnotationObject[]>([])
-	const selectedObj = ref<AnnotationObject | null>(null)
-	const currentDraft = ref<AnnotationObject | null>(null)
-	const visibleObjects = computed(() => currentDraft.value != null ? [...objects.value, currentDraft.value] : objects.value)
+	/** 读取取消按钮的当前语言文案。 */
+	const cancelLabel = computed((): string => t('取消'))
+	/** 读取图片编辑器标题的当前语言文案。 */
+	const editorTitle = computed((): string => t('编辑图片'))
+	/** 读取图片加载中的当前语言提示。 */
+	const loadingLabel = computed((): string => t('正在初始化画布…'))
+	/** 读取图片加载失败时的当前语言重试提示。 */
+	const loadFailedLabel = computed((): string => t('加载失败，点击重试'))
+	/** 读取标注文字输入框的当前语言占位提示。 */
+	const textPlaceholder = computed((): string => t('输入文字'))
+	/** 读取确认按钮的当前语言文案。 */
+	const confirmLabel = computed((): string => t('确定'))
+	/** 读取旋转按钮的当前语言文案。 */
+	const rotateLabel = computed((): string => t('旋转'))
+	/** 读取撤销按钮的当前语言文案。 */
+	const undoLabel = computed((): string => t('撤销'))
+	/** 读取重做按钮的当前语言文案。 */
+	const redoLabel = computed((): string => t('重做'))
+	/** 读取清空按钮的当前语言文案。 */
+	const clearLabel = computed((): string => t('清空'))
+	/** 读取画笔粗细的当前语言标题。 */
+	const widthLabel = computed((): string => t('粗细'))
+	/** 按保存状态选择当前语言按钮文案。 */
+	const saveLabel = computed((): string => t(saving.value ? '保存中...' : '完成'))
 
-	const imageDisplayWidth = computed(() => rotation.value === 90 || rotation.value === 270 ? stageHeight.value : stageWidth.value)
-	const imageDisplayHeight = computed(() => rotation.value === 90 || rotation.value === 270 ? stageWidth.value : stageHeight.value)
-	const stageStyle = computed(() => ({ width: stageWidth.value + 'px', height: stageHeight.value + 'px', marginTop: stageTop.value + 'px' }))
-	const imageStyle = computed(() => ({ width: imageDisplayWidth.value + 'px', height: imageDisplayHeight.value + 'px', transform: `translate(-50%, -50%) rotate(${rotation.value}deg)` }))
-	/** 舞台始终按当前旋转后的图片比例布局，标注坐标直接覆盖完整舞台。 */
-	const imageFitRect = computed((): StageRect => ({ left: 0, top: 0, width: stageWidth.value, height: stageHeight.value }))
+	/** 工具栏定义：文案随当前语言切换重新计算。 */
+	const tools = computed((): EditorTool[] => [
+		{ id: 'select', icon: '☝', label: t('选择') },
+		{ id: 'brush', icon: '✏', label: t('画笔') },
+		{ id: 'eraser', icon: '⌫', label: t('橡皮') },
+		{ id: 'arrow', icon: '➤', label: t('箭头') },
+		{ id: 'rect', icon: '□', label: t('矩形') },
+		{ id: 'ellipse', icon: '○', label: t('圆形') },
+		{ id: 'text', icon: 'T', label: t('文字') }
+	])
+	/** 可选的标注颜色。 */
+	const colorOptions = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#8b5cf6', '#ffffff', '#000000']
+	/** 画笔粗细档位的展示尺寸：数值越大条越粗，保持与真实线宽一致。 */
+	const brushWidthOptions = computed((): BrushWidthOption[] => IMAGE_EDITOR_BRUSH_WIDTHS.map((width: number, index: number): BrushWidthOption => ({ index, barWidth: width * 3, barHeight: Math.max(2, width) })))
 
-	// 导出画布单边最大像素：必须限制内存占用，否则 1200 万像素原图会创建约 4032×3024 位图（近 50MB×2 加 PNG 编码缓冲），
-	// 在 Android 上触发 OOM 导致点击保存闪退。2048 在画质（约 300 万像素）与稳定性之间取平衡。
-	const MAX_SAVE_CANVAS_SIDE = 2048
-	let isDrawing = false
-	let isDragging = false
-	let dragStartPoint: Point | null = null
-	let dragOriginal: AnnotationObject | null = null
-	let textPlacePoint: Point = { x: 0, y: 0 }
-	let objectId = 0
+
+	/** 画布尺寸跟随图片外框，保证触摸坐标可以直接映射到画布坐标系。 */
+	/**
+	 * 画布铺满整个图片可绘制区：resolveEditorDisplay 的居中偏移量是相对该区域左上角的，
+	 * 画布只有等于该区域，绘制与触摸换算的坐标系才一致（否则图片会被整体推偏）。
+	 */
+	const canvasStyle = computed((): UTSJSONObject => ({ width: editorAreaWidth.value + 'px', height: editorAreaHeight.value + 'px' }))
+	/** 底部操作区留出安全区，避免被 iOS 小白条遮挡。 */
+	const subbarStyle = computed((): UTSJSONObject => ({ paddingBottom: safeBottomPaddingPx(16) }))
+	/** 导出画布元素尺寸：按 dpr 折算后的 CSS 尺寸，画布位图随之等于导出目标像素。 */
+	const exportCanvasStyle = computed((): UTSJSONObject => ({ width: exportElementWidth.value + 'px', height: exportElementHeight.value + 'px' }))
+
+	/**
+	 * 编辑状态与历史放在响应式系统之外：画布是命令式重绘，
+	 * 一笔涂鸦可能带上千个点，交给 Vue 做深度响应式只会拖慢拖动。
+	 */
+	let editorHistory: EditorHistory = createEditorHistory(createEditorState())
+	let canvasHolder: CanvasContext | null = null
+	let canvasContext: CanvasRenderingContext2D | null = null
+	let sourceCanvasImage: Image | null = null
+	let imageInfoReady = false
+	let selectedIndex = -1
+	let gestureMode = ''
+	let activeDraftStroke: UTSJSONObject | null = null
+	let activeDragStroke: UTSJSONObject | null = null
+	let activeDragIndex = -1
+	let dragStartSourcePoint: EditorPoint = { x: 0, y: 0 }
+	let textPlaceSourcePoint: EditorPoint = { x: 0, y: 0 }
+	let lastBrushSourcePoint: EditorPoint | null = null
+	let strokeSequence = 0
+	/** 当前图片可绘制区（与查看页取景框一致），画布铺满该区域，触摸坐标即画布坐标。 */
+	let editorAreaRect: EditorBox = { left: 0, top: 0, width: 0, height: 0 }
+	/** 工具条浮层高度测量失败时的兜底高度（rpx）：按工具条两行按钮的样式估算，宁可多留也不压住图片。 */
+	const EDITOR_TOOLBARS_ESTIMATE_RPX = 266
+
+	let pixelRatio = 1
 	let loadRequestId = 0
 
-	type ImageInfo = { width: number, height: number, path: string }
-	type Point = { x: number, y: number }
-	type StageOffset = { left: number, top: number }
-	type ObjectBox = { x: number, y: number, w: number, h: number }
-	type StageRect = { left: number, top: number, width: number, height: number }
-	type Segment = { x1: number, y1: number, x2: number, y2: number }
-	type AnnotationObject = UTSJSONObject
-
-	/** 重置编辑器到初始状态 */
-	function resetEditorState() {
-		loadRequestId += 1
-		objects.value = []
-		selectedObj.value = null
-		currentDraft.value = null
-		currentTool.value = 'select'
-		rotation.value = 0
-		displaySrc.value = ''
-		sourceImage.value = { width: 0, height: 0, path: '' }
-		isDrawing = false
-		isDragging = false
-		dragStartPoint = null
-		dragOriginal = null
-		loading.value = true
-		/* 重新打开编辑器时必须解除上一次导出遗留的保存态，避免保存按钮失效。 */
-		saving.value = false
-	}
-
-	/** 根据图片实际宽高比计算舞台尺寸，填满可用空间（对标预览模式）。 */
-	function layoutStage(imageWidth: number, imageHeight: number) {
-		const sys = uni.getWindowInfo()
-		const bodyReserve = 250
-		const availableWidth = Math.max(320, Math.floor(sys.windowWidth))
-		const availableHeight = Math.max(260, sys.windowHeight - bodyReserve)
-		const stageRotated = rotation.value === 90 || rotation.value === 270
-		const displayWidth = stageRotated ? imageHeight : imageWidth
-		const displayHeight = stageRotated ? imageWidth : imageHeight
-		const imageRatio = displayWidth / Math.max(1, displayHeight)
-		const availableRatio = availableWidth / availableHeight
-		if (imageRatio >= availableRatio) {
-			stageWidth.value = availableWidth
-			stageHeight.value = Math.round(availableWidth / imageRatio)
-		} else {
-			stageHeight.value = availableHeight
-			stageWidth.value = Math.round(availableHeight * imageRatio)
-		}
-		stageTop.value = Math.max(0, Math.floor((availableHeight - stageHeight.value) / 2))
-		const scale = Math.min(1, MAX_SAVE_CANVAS_SIDE / Math.max(displayWidth, displayHeight, 1))
-		saveCanvasWidth.value = Math.max(1, Math.round(displayWidth * scale))
-		saveCanvasHeight.value = Math.max(1, Math.round(displayHeight * scale))
+	/**
+	 * 读取设备像素比：画布位图按它放大，避免高清屏上笔迹发虚。
+	 * @returns 大于 0 的像素比，读数异常时为 1
+	 */
+	function resolvePixelRatio(): number {
+		const ratio = uni.getWindowInfo().pixelRatio
+		return ratio > 0 ? ratio : 1
 	}
 
 	/**
-	 * 查询舞台在屏幕中的位置。
-	 * 弹层已关闭时直接返回，避免延迟回调把布局状态写回已经销毁的渲染子树。
+	 * 同步读取元素实测矩形：异步查询会拿到上一帧布局，落笔位置会整体偏移。
+	 * @param elementId 元素 id
+	 * @returns 元素矩形；元素未挂载时返回全 0
 	 */
-	function queryStageRect() {
-		if (!props.visible) return
-		uni.createSelectorQuery().in(instance!).select('.image-stage').boundingClientRect().exec((rects) => {
-			const rect = rects[0] as NodeInfo
-			if (rect != null) stageRect.value = { left: parseFloat((rect.left ?? 0).toString()), top: parseFloat((rect.top ?? 0).toString()) }
-		})
+	function measureElementRect(elementId: string): ElementRect {
+		const element = uni.getElementById(elementId)
+		if (element == null) return { left: 0, top: 0, width: 0, height: 0 }
+		const rect = element.getBoundingClientRect()
+		return { left: rect.x, top: rect.y, width: rect.width, height: rect.height }
 	}
 
-	/** 加载图片并计算舞台布局 */
-	function loadImage() {
-		const src = (props.source ?? '').toString().trim()
-		if (src === '') { loading.value = false; return }
-		const requestId = ++loadRequestId
-		uni.getImageInfo({
-			src: src,
-			success: (info) => {
-				if (requestId !== loadRequestId || !props.visible) return
-				const w = parseFloat((info.width ?? 0).toString())
-				const h = parseFloat((info.height ?? 0).toString())
-				if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) { loading.value = false; return }
-				sourceImage.value = { width: w, height: h, path: (info.path ?? src).toString() }
-				displaySrc.value = (info.path ?? src).toString()
-				layoutStage(w, h)
-				loading.value = false
-				setTimeout(queryStageRect, 60)
-			},
-			fail: () => { if (requestId === loadRequestId && props.visible) loading.value = false }
-		})
+	/** 同步撤销/重做按钮的可用状态。 */
+	function syncEditorHistoryFlags() {
+		canUndo.value = canUndoEditorHistory(editorHistory)
+		canRedo.value = canRedoEditorHistory(editorHistory)
 	}
 
-	/** 生成唯一标注 ID */
-	function nextObjectId(): string { objectId += 1; return `a_${Date.now()}_${objectId}` }
-
-	/** 深拷贝标注对象 */
-	function cloneObject(item: AnnotationObject): AnnotationObject { return JSON.parse(JSON.stringify(item)) as AnnotationObject }
-
-	/** 限制坐标在舞台范围内 */
-	function clampPoint(point: Point): Point { return { x: Math.max(0, Math.min(stageWidth.value, point.x)), y: Math.max(0, Math.min(stageHeight.value, point.y)) } }
-
-	/** 将触摸事件转换为舞台坐标 */
-	function getEventPoint(e: UniTouchEvent): Point {
-		const touch = e.touches[0]
-		if (touch == null) return { x: 0, y: 0 }
-		const touchX: number = parseFloat((touch.clientX ?? 0).toString())
-		const touchY: number = parseFloat((touch.clientY ?? 0).toString())
-		return clampPoint({ x: touchX - stageRect.value.left, y: touchY - stageRect.value.top })
+	/** 读取历史游标处的编辑状态。 */
+	function activeEditorState(): EditorState {
+		return currentEditorState(editorHistory)
 	}
 
-	/** 两点间距离 */
-	function distance(x1: number, y1: number, x2: number, y2: number): number { const dx = x2 - x1; const dy = y2 - y1; return Math.sqrt(dx * dx + dy * dy) }
-
-	/** 判断草稿标注是否有效 */
-	function isValidDraft(item: AnnotationObject): boolean {
-		if (item['type'] === 'path') { const points = item['points'] as Point[]; return Array.isArray(points) && points.length > 1 }
-		if (item['type'] === 'arrow') return distance(parseInt((item['x1']).toString()), parseInt((item['y1']).toString()), parseInt((item['x2']).toString()), parseInt((item['y2']).toString())) > 5
-		if (item['type'] === 'rect') return Math.abs(parseInt((item['w'] ?? 0).toString())) > 5 || Math.abs(parseInt((item['h'] ?? 0).toString())) > 5
-		if (item['type'] === 'ellipse') return parseInt((item['rx'] ?? 0).toString()) > 5 || parseInt((item['ry'] ?? 0).toString()) > 5
-		return true
+	/** 组装本帧要渲染的状态：叠加正在绘制或拖动中的临时标注，提交前不写入历史。 */
+	function activeRenderState(): EditorState {
+		const state = activeEditorState()
+		if (activeDraftStroke != null) return appendEditorStroke(state, activeDraftStroke)
+		if (activeDragStroke != null && activeDragIndex >= 0) return replaceEditorStroke(state, activeDragIndex, activeDragStroke)
+		return state
 	}
 
-	/** 移动标注对象 */
-	function moveObject(target: AnnotationObject, original: AnnotationObject, dx: number, dy: number) {
-		if (target['type'] === 'arrow') { target['x1'] = parseInt((original['x1']).toString()) + dx; target['y1'] = parseInt((original['y1']).toString()) + dy; target['x2'] = parseInt((original['x2']).toString()) + dx; target['y2'] = parseInt((original['y2']).toString()) + dy }
-		else if (target['type'] === 'path') target['points'] = (original['points'] as Point[]).map(p => ({ x: p.x + dx, y: p.y + dy }))
-		else if (target['type'] === 'rect') { target['x'] = parseInt((original['x']).toString()) + dx; target['y'] = parseInt((original['y']).toString()) + dy }
-		else if (target['type'] === 'ellipse') { target['cx'] = parseInt((original['cx']).toString()) + dx; target['cy'] = parseInt((original['cy']).toString()) + dy }
-		else if (target['type'] === 'text') { target['x'] = parseInt((original['x']).toString()) + dx; target['y'] = parseInt((original['y']).toString()) + dy }
+	/**
+	 * 计算编辑器的图片可绘制区：优先用原生实测矩形，测量不可用时按查看页同款几何推算。
+	 * 两条路径都必须与查看页 .preview-content 一致，否则编辑器里的图片会和查看页尺寸对不上。
+	 * @returns 图片可绘制区矩形
+	 */
+	function resolveEditorArea(): EditorBox {
+		const windowInfo = uni.getWindowInfo()
+		const fallback = resolveEditorImageArea(
+			windowInfo.windowWidth,
+			windowInfo.windowHeight,
+			windowInfo.statusBarHeight,
+			uni.rpx2px(MEDIA_PREVIEW_SIDE_PADDING_RPX),
+			uni.rpx2px(MEDIA_PREVIEW_HEADER_HEIGHT_RPX)
+		)
+		const bodyRect = measureElementRect('markup-body')
+		// 测量 API 不可用时返回全 0，必须回退到推算几何，否则画布会按错误区域取景。
+		if (!isUsableEditorBox(bodyRect, 40)) return fallback
+		return { left: bodyRect.left, top: bodyRect.top, width: bodyRect.width, height: bodyRect.height }
 	}
 
-	/** 获取标注包围盒 */
-	function getObjectBox(item: AnnotationObject): ObjectBox {
-		if (item['type'] === 'arrow') { const x = Math.min(parseInt((item['x1']).toString()), parseInt((item['x2']).toString())); const y = Math.min(parseInt((item['y1']).toString()), parseInt((item['y2']).toString())); return { x, y, w: Math.abs(parseInt((item['x2']).toString()) - parseInt((item['x1']).toString())), h: Math.abs(parseInt((item['y2']).toString()) - parseInt((item['y1']).toString())) } }
-		if (item['type'] === 'path') { const points = (item['points'] as Point[]) ?? []; const xs = points.map(p => p.x); const ys = points.map(p => p.y); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) } }
-		if (item['type'] === 'rect') return { x: Math.min(parseInt((item['x']).toString()), parseInt((item['x']).toString()) + parseInt((item['w']).toString())), y: Math.min(parseInt((item['y']).toString()), parseInt((item['y']).toString()) + parseInt((item['h']).toString())), w: Math.abs(parseInt((item['w']).toString())), h: Math.abs(parseInt((item['h']).toString())) }
-		if (item['type'] === 'ellipse') return { x: parseInt((item['cx']).toString()) - parseInt((item['rx']).toString()), y: parseInt((item['cy']).toString()) - parseInt((item['ry']).toString()), w: parseInt((item['rx']).toString()) * 2, h: parseInt((item['ry']).toString()) * 2 }
-		if (item['type'] === 'text') return { x: parseInt((item['x']).toString()), y: parseInt((item['y']).toString()) - parseInt((item['fontSize'] ?? 24).toString()), w: (item['text'] ?? '').toString().length * parseInt((item['fontSize'] ?? 24).toString()) * 0.65, h: parseInt((item['fontSize'] ?? 24).toString()) * 1.2 }
-		return { x: 0, y: 0, w: 0, h: 0 }
+	/**
+	 * 计算底部工具条浮层占用的高度：工具条覆盖在图片上方，取景必须让开这段高度。
+	 * 原生测量不可用时按样式估算值兜底，宁可多留白也不能让图片被操作区挡住。
+	 * @returns 浮层高度（px）
+	 */
+	function resolveToolbarsHeight(): number {
+		const toolbarsRect = measureElementRect('markup-toolbars')
+		if (isUsableEditorBox(toolbarsRect, 1)) return toolbarsRect.height
+		return uni.rpx2px(EDITOR_TOOLBARS_ESTIMATE_RPX) + uni.getWindowInfo().safeAreaInsets.bottom
 	}
 
-	/** 查找触点下的标注 */
-	function findObjectAtPoint(point: Point): AnnotationObject | null {
-		for (let i = objects.value.length - 1; i >= 0; i--) {
-			const box = getObjectBox(objects.value[i])
-			const pad = 18
-			if (point.x >= box.x - pad && point.x <= box.x + box.w + pad && point.y >= box.y - pad && point.y <= box.y + box.h + pad) return objects.value[i]
-		}
-		return null
+	/** 按可绘制区计算画布尺寸与显示几何：画布铺满可绘制区，图片在工具条上方居中显示。 */
+	function layoutEditor() {
+		const sourceWidth = sourceImage.value.width
+		const sourceHeight = sourceImage.value.height
+		if (!(sourceWidth > 0) || !(sourceHeight > 0)) return
+		const area = resolveEditorArea()
+		editorAreaRect = area
+		editorAreaWidth.value = Math.max(1, area.width)
+		editorAreaHeight.value = Math.max(1, area.height)
+		// 取景区扣掉工具条浮层高度，图片完整显示在操作区上方。
+		const fitArea = resolveEditorFitArea(area, resolveToolbarsHeight())
+		editorDisplay.value = resolveEditorDisplay(sourceWidth, sourceHeight, fitArea.width, fitArea.height, activeEditorState().rotation)
 	}
 
-	/** 触摸开始 */
-	function handleStageTouchStart(e: UniTouchEvent) {
-		queryStageRect()
-		if (e.touches.length === 0) return
-		const point = getEventPoint(e)
-		if (currentTool.value === 'text') { textPlacePoint = point; return }
-		if (currentTool.value === 'select') {
-			const selected = findObjectAtPoint(point)
-			selectedObj.value = selected
-			if (selected != null) { isDragging = true; dragStartPoint = point; dragOriginal = cloneObject(selected) }
-			return
-		}
-		isDrawing = true
-		const base: UTSJSONObject = { id: nextObjectId(), type: currentTool.value, color: activeColor.value, width: 3 }
-		if (currentTool.value === 'draw') currentDraft.value = { ...base, type: 'path', points: [point] }
-		else if (currentTool.value === 'arrow') currentDraft.value = { ...base, x1: point.x, y1: point.y, x2: point.x, y2: point.y }
-		else if (currentTool.value === 'rect') currentDraft.value = { ...base, x: point.x, y: point.y, w: 0, h: 0 }
-		else if (currentTool.value === 'ellipse') currentDraft.value = { ...base, cx: point.x, cy: point.y, rx: 0, ry: 0 }
+	/** 按当前可绘制区重建画布位图：模板尺寸属性不保证重置原生缓冲，重建后必须重设显示缩放。 */
+	function ensureCanvasBitmap() {
+		const rc = canvasContext
+		if (rc == null) return
+		const ratio = pixelRatio
+		const pixelWidth = Math.max(1, Math.round(editorAreaWidth.value * ratio))
+		const pixelHeight = Math.max(1, Math.round(editorAreaHeight.value * ratio))
+		if (rc.canvas.width !== pixelWidth) rc.canvas.width = pixelWidth
+		if (rc.canvas.height !== pixelHeight) rc.canvas.height = pixelHeight
+		// 重建位图会清空画布并重置变换，因此每次重绘都从单位矩阵重新设置显示缩放。
+		rc.setTransform(ratio, 0, 0, ratio, 0, 0)
 	}
 
-	/** 触摸移动 */
-	function handleStageTouchMove(e: UniTouchEvent) {
-		if (e.touches.length === 0) return
-		const point = getEventPoint(e)
-		const selected = selectedObj.value
-		const original = dragOriginal
-		const start = dragStartPoint
-		if (isDragging && selected != null && original != null && start != null) {
-			moveObject(selected, original, point.x - start.x, point.y - start.y)
-			return
-		}
-		const draft = currentDraft.value
-		if (!isDrawing || draft == null) return
-		if (draft['type'] === 'path') {
-			const points = draft['points'] as Point[]
-			currentDraft.value = { ...draft, points: [...points, point] }
-		} else if (draft['type'] === 'arrow') currentDraft.value = { ...draft, x2: point.x, y2: point.y }
-		else if (draft['type'] === 'rect') currentDraft.value = { ...draft, w: point.x - parseFloat((draft['x'] ?? 0).toString()), h: point.y - parseFloat((draft['y'] ?? 0).toString()) }
-		else if (draft['type'] === 'ellipse') currentDraft.value = { ...draft, rx: Math.abs(point.x - parseFloat((draft['cx'] ?? 0).toString())), ry: Math.abs(point.y - parseFloat((draft['cy'] ?? 0).toString())) }
+	/** 把画布坐标系切到"以图片中心为原点、已按旋转角旋转"的状态，图片与标注共用同一变换。 */
+	function applyEditorRotation(rc: CanvasRenderingContext2D, display: EditorDisplay, rotation: number) {
+		rc.translate(display.offsetX + display.rotatedWidth / 2, display.offsetY + display.rotatedHeight / 2)
+		rc.rotate(rotation * Math.PI / 180)
 	}
 
-	/** 触摸结束 */
-	function handleStageTouchEnd() {
-		if (currentTool.value === 'text') { showTextInput.value = true; return }
-		if (isDragging) { isDragging = false; dragStartPoint = null; dragOriginal = null; return }
-		const draft = currentDraft.value
-		if (!isDrawing || draft == null) return
-		isDrawing = false
-		if (isValidDraft(draft)) objects.value = [...objects.value, draft]
-		currentDraft.value = null
-	}
-
-	/** 路径分段 */
-	function pathSegments(item: AnnotationObject): Segment[] {
-		const points = (item['points'] as Point[]) ?? []
-		const segs: Segment[] = []
-		for (let i = 1; i < points.length; i++) segs.push({ x1: points[i - 1].x, y1: points[i - 1].y, x2: points[i].x, y2: points[i].y })
-		return segs
-	}
-
-	/** 线段 CSS 样式 */
-	function segmentStyle(seg: Segment, item: AnnotationObject): UTSJSONObject {
-		const x1 = seg.x1, y1 = seg.y1, x2 = seg.x2, y2 = seg.y2
-		const len = distance(x1, y1, x2, y2)
-		const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
-		const w = parseInt((item['width'] ?? 3).toString())
-		return { left: x1 + 'px', top: (y1 - w / 2) + 'px', width: len + 'px', height: w + 'px', backgroundColor: (item['color']).toString(), transform: `rotate(${angle}deg)` }
-	}
-
-	/** 箭头线段样式 */
-	function lineStyle(item: AnnotationObject) { return segmentStyle({ x1: parseInt((item['x1']).toString()), y1: parseInt((item['y1']).toString()), x2: parseInt((item['x2']).toString()), y2: parseInt((item['y2']).toString()) }, item) }
-
-	/** 箭头头部样式 */
-	function arrowHeadStyle(item: AnnotationObject): UTSJSONObject {
-		const len = distance(parseInt((item['x1']).toString()), parseInt((item['y1']).toString()), parseInt((item['x2']).toString()), parseInt((item['y2']).toString()))
-		return { left: Math.max(0, len - 2) + 'px', borderLeftColor: (item['color']).toString() }
-	}
-
-	/** 矩形样式 */
-	function rectStyle(item: AnnotationObject): UTSJSONObject {
-		const x = Math.min(parseInt((item['x']).toString()), parseInt((item['x']).toString()) + parseInt((item['w']).toString())), y = Math.min(parseInt((item['y']).toString()), parseInt((item['y']).toString()) + parseInt((item['h']).toString()))
-		return { left: x + 'px', top: y + 'px', width: Math.abs(parseInt((item['w']).toString())) + 'px', height: Math.abs(parseInt((item['h']).toString())) + 'px', borderColor: (item['color']).toString(), borderWidth: parseInt((item['width'] ?? 3).toString()) + 'px' }
-	}
-
-	/** 圆形样式 */
-	function ellipseStyle(item: AnnotationObject): UTSJSONObject {
-		return { left: (parseInt((item['cx']).toString()) - parseInt((item['rx']).toString())) + 'px', top: (parseInt((item['cy']).toString()) - parseInt((item['ry']).toString())) + 'px', width: (parseInt((item['rx']).toString()) * 2) + 'px', height: (parseInt((item['ry']).toString()) * 2) + 'px', borderColor: (item['color']).toString(), borderWidth: parseInt((item['width'] ?? 3).toString()) + 'px' }
-	}
-
-	/** 文字样式 */
-	function textStyle(item: AnnotationObject): UTSJSONObject {
-		const fs = parseInt((item['fontSize'] ?? 24).toString())
-		return { left: parseInt((item['x']).toString()) + 'px', top: (parseInt((item['y']).toString()) - fs) + 'px', color: (item['color']).toString(), fontSize: fs + 'px' }
-	}
-
-	/** 选择工具 */
-	function selectTool(toolId: string) {
-		if (toolId === 'undo') { objects.value = objects.value.slice(0, -1); selectedObj.value = null; return }
-		if (toolId === 'delete') { if (selectedObj.value != null) objects.value = objects.value.filter(item => item !== selectedObj.value); else objects.value = objects.value.slice(0, -1); selectedObj.value = null; return }
-		if (toolId === 'rotate') { rotation.value = ((rotation.value + 90) % 360 + 360) % 360; selectedObj.value = null; const si = sourceImage.value; if (si.width > 0) layoutStage(si.width, si.height); setTimeout(queryStageRect, 80); return }
-		currentTool.value = toolId; selectedObj.value = null; currentDraft.value = null
-	}
-
-	/** 确认文字输入 */
-	function confirmTextInput() {
-		const text = textInputValue.value.trim()
-		if (text !== '') objects.value = [...objects.value, { id: nextObjectId(), type: 'text', text, x: textPlacePoint.x, y: textPlacePoint.y, color: activeColor.value, fontSize: 24 }]
-		showTextInput.value = false; textInputValue.value = ''
-	}
-
-	/** 取消文字输入 */
-	function cancelTextInput() { showTextInput.value = false; textInputValue.value = '' }
-
-	/** 输入框内容变化 */
-	function onTextInput(e: UniInputEvent) { textInputValue.value = e.detail.value }
-
-	/** 取消编辑 */
-	function cancelEdit() { if (!saving.value) { resetEditorState(); emit('cancel') } }
-
-	/** 点击重试 */
-	function retryLoad() { resetEditorState(); loadImage() }
-
-	/** 在 Canvas 上绘制标注 */
-	function drawAnnotationToCanvas(rc: CanvasRenderingContext2D, item: AnnotationObject, sx: number, sy: number, rect: StageRect) {
-		const map = (x: number, y: number): Point => ({ x: (x - rect.left) * sx, y: (y - rect.top) * sy })
+	/**
+	 * 在已旋转的画布坐标系里绘制一个标注：坐标以图片中心为原点，单位是画布像素。
+	 * @param rc 目标 2D 上下文
+	 * @param stroke 标注对象（源图像素坐标）
+	 * @param scale 源图像素到画布像素的比例
+	 * @param sourceWidth 源图宽度（像素）
+	 * @param sourceHeight 源图高度（像素）
+	 */
+	function drawEditorStroke(rc: CanvasRenderingContext2D, stroke: UTSJSONObject, scale: number, sourceWidth: number, sourceHeight: number) {
+		const tool = editorStrokeTool(stroke)
+		const originX = sourceWidth / 2
+		const originY = sourceHeight / 2
+		const color = (stroke['color'] ?? '#ef4444').toString()
+		const lineWidth = Math.max(1, editorStrokeNumber(stroke, 'width', 3) * scale)
+		const startX = (editorStrokeNumber(stroke, 'startX', 0) - originX) * scale
+		const startY = (editorStrokeNumber(stroke, 'startY', 0) - originY) * scale
+		const endX = (editorStrokeNumber(stroke, 'endX', 0) - originX) * scale
+		const endY = (editorStrokeNumber(stroke, 'endY', 0) - originY) * scale
 		rc.save()
-		const w = parseInt((item['width'] ?? 3).toString()) * sx
-		if (item['type'] === 'arrow') {
-			const s = map(parseInt((item['x1']).toString()), parseInt((item['y1']).toString())); const e = map(parseInt((item['x2']).toString()), parseInt((item['y2']).toString()))
-			rc.strokeStyle = (item['color']).toString(); rc.fillStyle = (item['color']).toString(); rc.lineWidth = w; rc.lineCap = 'round'
-			rc.beginPath(); rc.moveTo(s.x, s.y); rc.lineTo(e.x, e.y); rc.stroke()
-			const head = Math.max(w * 5, 12); const angle = Math.atan2(e.y - s.y, e.x - s.x)
-			rc.beginPath(); rc.moveTo(e.x, e.y)
-			rc.lineTo(e.x - head * Math.cos(angle - Math.PI / 6), e.y - head * Math.sin(angle - Math.PI / 6))
-			rc.lineTo(e.x - head * Math.cos(angle + Math.PI / 6), e.y - head * Math.sin(angle + Math.PI / 6)); rc.closePath(); rc.fill()
-		} else if (item['type'] === 'path') {
-			rc.strokeStyle = (item['color']).toString(); rc.lineWidth = w; rc.lineCap = 'round'; rc.lineJoin = 'round'
-			const points = (item['points'] as Point[]) ?? []
-			if (points.length > 0) { rc.beginPath(); const first = map(points[0].x, points[0].y); rc.moveTo(first.x, first.y); for (let i = 1; i < points.length; i++) { const p = map(points[i].x, points[i].y); rc.lineTo(p.x, p.y) }; rc.stroke() }
-		} else if (item['type'] === 'rect') {
-			rc.strokeStyle = (item['color']).toString(); rc.lineWidth = w
-			const p = map(Math.min(parseInt((item['x']).toString()), parseInt((item['x']).toString()) + parseInt((item['w']).toString())), Math.min(parseInt((item['y']).toString()), parseInt((item['y']).toString()) + parseInt((item['h']).toString())))
-			rc.strokeRect(p.x, p.y, Math.abs(parseInt((item['w']).toString())) * sx, Math.abs(parseInt((item['h']).toString())) * sy)
-		} else if (item['type'] === 'ellipse') {
-			rc.strokeStyle = (item['color']).toString(); rc.lineWidth = w
-			const c = map(parseInt((item['cx']).toString()), parseInt((item['cy']).toString()))
-			rc.beginPath(); rc.ellipse(c.x, c.y, parseInt((item['rx']).toString()) * sx, parseInt((item['ry']).toString()) * sy, 0, 0, Math.PI * 2); rc.stroke()
-		} else if (item['type'] === 'text') {
-			rc.fillStyle = (item['color']).toString(); rc.font = `${parseInt((item['fontSize'] ?? 24).toString()) * sx}px sans-serif`
-			const p = map(parseInt((item['x']).toString()), parseInt((item['y']).toString())); rc.fillText((item['text'] ?? '').toString(), p.x, p.y)
+		rc.strokeStyle = color
+		rc.fillStyle = color
+		rc.lineWidth = lineWidth
+		rc.lineCap = 'round'
+		rc.lineJoin = 'round'
+		if (tool === 'brush') {
+			const points = editorStrokePoints(stroke)
+			if (points.length === 1) {
+				rc.beginPath()
+				rc.arc((points[0].x - originX) * scale, (points[0].y - originY) * scale, lineWidth / 2, 0, Math.PI * 2)
+				rc.fill()
+			} else if (points.length > 1) {
+				rc.beginPath()
+				rc.moveTo((points[0].x - originX) * scale, (points[0].y - originY) * scale)
+				for (let index = 1; index < points.length; index++) rc.lineTo((points[index].x - originX) * scale, (points[index].y - originY) * scale)
+				rc.stroke()
+			}
+		} else if (tool === 'arrow') {
+			rc.beginPath()
+			rc.moveTo(startX, startY)
+			rc.lineTo(endX, endY)
+			rc.stroke()
+			const angle = Math.atan2(endY - startY, endX - startX)
+			const headLength = Math.max(lineWidth * 3, 6)
+			rc.beginPath()
+			rc.moveTo(endX, endY)
+			rc.lineTo(endX - headLength * Math.cos(angle - Math.PI / 6), endY - headLength * Math.sin(angle - Math.PI / 6))
+			rc.lineTo(endX - headLength * Math.cos(angle + Math.PI / 6), endY - headLength * Math.sin(angle + Math.PI / 6))
+			rc.closePath()
+			rc.fill()
+		} else if (tool === 'rect') {
+			rc.strokeRect(Math.min(startX, endX), Math.min(startY, endY), Math.abs(endX - startX), Math.abs(endY - startY))
+		} else if (tool === 'ellipse') {
+			// uni-app x App 原生平台未实现 ellipse（运行时抛错会中断整帧重绘），
+			// 椭圆一律用采样折线绘制：moveTo/lineTo/closePath 全平台可用，预览与导出共用保证所见即所得。
+			const ellipsePoints = resolveEllipseSamplePoints(startX, startY, endX - startX, endY - startY)
+			rc.beginPath()
+			for (let index = 0; index < ellipsePoints.length; index++) {
+				const point = ellipsePoints[index]
+				if (index === 0) rc.moveTo(point.x, point.y)
+				else rc.lineTo(point.x, point.y)
+			}
+			rc.closePath()
+			rc.stroke()
+		} else if (tool === 'text') {
+			// 字体字符串由纯函数生成：App 平台 font 只认 font-size/font-family，写法不符时文字绘制失效。
+			rc.font = resolveEditorTextFont(lineWidth)
+			// 文字垂直中心对准落点：默认基线会把文字悬在落点上方，落点贴近图片上缘时文字直接画出图外。
+			rc.textBaseline = 'middle'
+			rc.fillText((stroke['text'] ?? '').toString(), startX, startY)
 		}
 		rc.restore()
 	}
 
-	/** 检查写入的图片与画布像素宽高一致；尺寸不符时不替换原图，避免只保存左上角局部。 */
-	function verifyExportedImage(path: string, width: number, height: number, settle: (error: Error | null, resultPath: string) => void): void {
+	/**
+	 * 在任意 2D 画布上重绘"原图 + 标注"：预览与导出共用这一份绘制代码，保证所见即所得。
+	 * @param rc 目标 2D 上下文
+	 * @param state 待渲染的编辑状态
+	 * @param display 目标画布的显示几何（含缩放与居中偏移）
+	 * @param targetImage 已解码的原图
+	 * @param sourceWidth 源图宽度（像素）
+	 * @param sourceHeight 源图高度（像素）
+	 */
+	function renderEditor(rc: CanvasRenderingContext2D, state: EditorState, display: EditorDisplay, targetImage: Image, sourceWidth: number, sourceHeight: number, clearWidth: number, clearHeight: number) {
+		const drawWidth = sourceWidth * display.scale
+		const drawHeight = sourceHeight * display.scale
+		// 画布可能大于图片显示区（可绘制区留白），必须整块清空，否则旋转/撤销后会残留上一帧画面。
+		rc.clearRect(0, 0, Math.max(1, clearWidth), Math.max(1, clearHeight))
+		rc.save()
+		applyEditorRotation(rc, display, state.rotation)
+		rc.drawImage(targetImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+		const strokes = state.strokes ?? ([] as UTSJSONObject[])
+		for (let index = 0; index < strokes.length; index++) drawEditorStroke(rc, strokes[index], display.scale, sourceWidth, sourceHeight)
+		rc.restore()
+	}
+
+	/** 在预览画布上标出当前选中的标注，方便选择工具确认拖动对象；导出时刻意不绘制。 */
+	function drawSelectionIndicator(rc: CanvasRenderingContext2D, state: EditorState, display: EditorDisplay) {
+		const strokes = state.strokes ?? ([] as UTSJSONObject[])
+		if (selectedIndex < 0 || selectedIndex >= strokes.length) return
+		const box = resolveEditorStrokeBox(strokes[selectedIndex])
+		const originX = sourceImage.value.width / 2
+		const originY = sourceImage.value.height / 2
+		const scale = display.scale
+		rc.save()
+		applyEditorRotation(rc, display, state.rotation)
+		rc.strokeStyle = '#22c55e'
+		rc.lineWidth = 1
+		rc.strokeRect((box.left - originX) * scale - 4, (box.top - originY) * scale - 4, box.width * scale + 8, box.height * scale + 8)
+		rc.restore()
+	}
+
+	/**
+	 * 重绘预览画布：图片与标注走同一渲染函数，选中提示只画在预览上。
+	 * 画布异常必须就地隔离：一旦冒泡到事件处理器，vapor 渲染管线会被中断，
+	 * 工具选中态、撤销/重做按钮等全部 UI 状态停在原地（表现为"点了没反应"）。
+	 */
+	function repaint() {
+		const rc = canvasContext
+		const image = sourceCanvasImage
+		if (!canvasReady.value || rc == null || image == null) return
+		try {
+			ensureCanvasBitmap()
+			const state = activeRenderState()
+			const display = editorDisplay.value
+			renderEditor(rc, state, display, image, sourceImage.value.width, sourceImage.value.height, editorAreaWidth.value, editorAreaHeight.value)
+			drawSelectionIndicator(rc, state, display)
+		} catch (error) {
+			// 只放弃本帧画面，交互与状态更新照常进行，用户仍可切换工具或撤销问题标注。
+			console.error('markup repaint failed:', error)
+		}
+	}
+
+	/**
+	 * 深拷贝一个标注对象：拖动开始时留一份原始快照，拖动中改的是副本，历史不会被污染。
+	 * @param stroke 原标注对象
+	 * @returns 独立的标注对象副本
+	 */
+	function snapshotEditorStroke(stroke: UTSJSONObject): UTSJSONObject {
+		return JSON.parse(JSON.stringify(stroke)) as UTSJSONObject
+	}
+
+	/** 读取触摸事件的横坐标：touchend 的 touches 为空，必须回退到 changedTouches。 */
+	function resolveTouchClientX(event: TouchEvent): number {
+		return event.touches[0]?.clientX ?? event.changedTouches[0]?.clientX ?? 0
+	}
+
+	/** 读取触摸事件的纵坐标：touchend 的 touches 为空，必须回退到 changedTouches。 */
+	function resolveTouchClientY(event: TouchEvent): number {
+		return event.touches[0]?.clientY ?? event.changedTouches[0]?.clientY ?? 0
+	}
+
+	/**
+	 * 把触摸点换算成源图像素坐标：画布位置用元素实测矩形计算，避免异步查询拿到上一帧的旧布局。
+	 * @param event 原生触摸事件
+	 * @returns 源图坐标；画布未就绪或画布尚未布局时返回 null
+	 */
+	function resolveSourceTouchPoint(event: TouchEvent): EditorPoint | null {
+		if (!canvasReady.value) return null
+		const display = editorDisplay.value
+		const rect = measureElementRect('markup-canvas')
+		// 实测矩形优先；测量不可用时直接按可绘制区推算（画布铺满该区域），避免整笔偏移。
+		const origin = isUsableEditorBox(rect, 1)
+			? rect
+			: resolveEditorCanvasRect(editorAreaRect, editorAreaWidth.value, editorAreaHeight.value)
+		const canvasPoint: EditorPoint = { x: resolveTouchClientX(event) - origin.left, y: resolveTouchClientY(event) - origin.top }
+		return mapStagePointToSource(canvasPoint, display, sourceImage.value.width, sourceImage.value.height, activeEditorState().rotation)
+	}
+
+	/**
+	 * 按当前工具、颜色与粗细创建一个待提交的标注对象。
+	 * @param tool 工具标识
+	 * @param point 落笔点（源图像素坐标）
+	 * @returns 新的标注对象
+	 */
+	function beginStrokeAt(tool: string, point: EditorPoint): UTSJSONObject {
+		strokeSequence += 1
+		const selectedWidth = IMAGE_EDITOR_BRUSH_WIDTHS[activeWidthIndex.value] ?? IMAGE_EDITOR_BRUSH_WIDTHS[0]
+		const lineWidth = resolveEditorStrokeWidth(selectedWidth, editorDisplay.value.scale)
+		const textWidth = resolveEditorStrokeWidth(IMAGE_EDITOR_TEXT_SIZE_PX, editorDisplay.value.scale)
+		// 画笔轨迹从落笔点开始累积；形状与文字只用起止点，轨迹数组留空。
+		const points: EditorPoint[] = [] as EditorPoint[]
+		if (tool === 'brush') points.push({ x: point.x, y: point.y })
+		return {
+			id: `s_${Date.now()}_${strokeSequence}`,
+			tool,
+			color: activeColor.value,
+			width: tool === 'text' ? textWidth : lineWidth,
+			startX: point.x,
+			startY: point.y,
+			endX: point.x,
+			endY: point.y,
+			points,
+			text: ''
+		}
+	}
+
+	/**
+	 * 在源图坐标系里做命中判定：容差按屏幕像素换算，缩放到任何大小手感一致。
+	 * @param point 源图坐标
+	 * @returns 命中的标注下标；未命中返回 -1
+	 */
+	function hitTestAtSourcePoint(point: EditorPoint): number {
+		const scale = editorDisplay.value.scale > 0 ? editorDisplay.value.scale : 1
+		return hitTestEditorStrokes(activeEditorState().strokes, point, IMAGE_EDITOR_HIT_TOLERANCE_PX / scale)
+	}
+
+	/**
+	 * 提交一步可撤销的编辑：写入历史、刷新按钮、按最新旋转角重排画布并重绘。
+	 * 落笔、拖动、擦除、旋转、文字与清空都必须经这里提交，撤销栈才完整。
+	 * @param nextState 提交后的编辑状态
+	 */
+	function commitEditorState(nextState: EditorState) {
+		// 临时标注已进入正式状态，清掉草稿避免重复绘制。
+		activeDraftStroke = null
+		activeDragStroke = null
+		activeDragIndex = -1
+		editorHistory = recordEditorHistory(editorHistory, nextState)
+		syncEditorHistoryFlags()
+		layoutEditor()
+		repaint()
+	}
+
+	/** 橡皮：命中即删除该标注，矢量删除让撤销能完整恢复，不必重画像素。 */
+	function eraseStrokeAt(point: EditorPoint) {
+		const index = hitTestAtSourcePoint(point)
+		if (index < 0) return
+		selectedIndex = -1
+		commitEditorState(removeEditorStrokeAt(activeEditorState(), index))
+	}
+
+	/** 选择工具：命中标注则开始拖动，未命中则取消选中。 */
+	function beginSelectGesture(point: EditorPoint) {
+		const state = activeEditorState()
+		const index = hitTestAtSourcePoint(point)
+		selectedIndex = index
+		if (index < 0) { repaint(); return }
+		activeDragIndex = index
+		activeDragStroke = snapshotEditorStroke(state.strokes[index])
+		dragStartSourcePoint = point
+		gestureMode = 'drag'
+		repaint()
+	}
+
+	/** 拖动选中标注：按"落点到当前点的总位移"平移原始快照，抬手时才提交历史。 */
+	function dragSelectedStrokeTo(point: EditorPoint) {
+		const original = activeEditorState().strokes[activeDragIndex] ?? null
+		if (original == null) return
+		activeDragStroke = translateEditorStroke(original, point.x - dragStartSourcePoint.x, point.y - dragStartSourcePoint.y)
+		repaint()
+	}
+
+	/** 结束当前手势并清理临时状态，避免下一次落笔继承上一次的草稿。 */
+	function clearCanvasGesture() {
+		gestureMode = ''
+		activeDraftStroke = null
+		activeDragStroke = null
+		activeDragIndex = -1
+		lastBrushSourcePoint = null
+	}
+
+	/**
+	 * 切换编辑工具。
+	 * @param toolId 工具标识
+	 */
+	function selectTool(toolId: string) {
+		currentTool.value = toolId
+		clearCanvasGesture()
+		selectedIndex = -1
+		repaint()
+	}
+
+	/**
+	 * 选择画笔粗细档位。
+	 * @param index 档位下标，越界时收敛到有效范围
+	 */
+	function selectBrushWidth(index: number) {
+		activeWidthIndex.value = Math.max(0, Math.min(IMAGE_EDITOR_BRUSH_WIDTHS.length - 1, index))
+	}
+
+	/**
+	 * 落笔：按当前工具决定是开始画笔/形状、擦除、拖动还是输入文字。
+	 * @param event 原生触摸事件
+	 */
+	function handleCanvasTouchStart(event: TouchEvent) {
+		if (!canvasReady.value || saving.value) return
+		const point = resolveSourceTouchPoint(event)
+		if (point == null) return
+		gestureMode = ''
+		const tool = currentTool.value
+		if (tool === 'select') { beginSelectGesture(point); return }
+		if (tool === 'eraser') { gestureMode = 'erase'; eraseStrokeAt(point); return }
+		if (tool === 'text') {
+			textPlaceSourcePoint = point
+			textInputValue.value = ''
+			showTextInput.value = true
+			return
+		}
+		activeDraftStroke = beginStrokeAt(tool, point)
+		lastBrushSourcePoint = point
+		gestureMode = 'draw'
+		repaint()
+	}
+
+	/**
+	 * 移动手指：画笔持续加点、形状拖出范围、橡皮持续擦除、选择工具拖动标注。
+	 * @param event 原生触摸事件
+	 */
+	function handleCanvasTouchMove(event: TouchEvent) {
+		if (gestureMode === '' || saving.value) return
+		const point = resolveSourceTouchPoint(event)
+		if (point == null) return
+		const scale = editorDisplay.value.scale > 0 ? editorDisplay.value.scale : 1
+		if (gestureMode === 'draw') {
+			const draft = activeDraftStroke
+			if (draft == null) return
+			if (editorStrokeTool(draft) === 'brush') {
+				// 抽稀触摸点：太近的点不记录，手写再长也不会写入上千个点拖慢重绘。
+				if (!shouldAppendEditorPoint(lastBrushSourcePoint, point, IMAGE_EDITOR_BRUSH_MIN_DISTANCE_PX / scale)) return
+				const points = editorStrokePoints(draft)
+				points.push(point)
+				draft['points'] = points
+				lastBrushSourcePoint = point
+			} else {
+				draft['endX'] = point.x
+				draft['endY'] = point.y
+			}
+			repaint()
+			return
+		}
+		if (gestureMode === 'erase') { eraseStrokeAt(point); return }
+		if (gestureMode === 'drag') { dragSelectedStrokeTo(point); return }
+	}
+
+	/**
+	 * 抬手：把临时标注提交成一步可撤销的编辑；轻点产生的极小标注直接丢弃。
+	 * @param event 原生触摸事件
+	 */
+	function handleCanvasTouchEnd(event: TouchEvent) {
+		if (saving.value) { clearCanvasGesture(); repaint(); return }
+		const mode = gestureMode
+		if (mode === 'draw') {
+			const draft = activeDraftStroke
+			activeDraftStroke = null
+			gestureMode = ''
+			if (draft != null && isMeaningfulEditorStroke(draft, 6 / (editorDisplay.value.scale > 0 ? editorDisplay.value.scale : 1))) commitEditorState(appendEditorStroke(activeEditorState(), draft))
+			else repaint()
+			return
+		}
+		if (mode === 'drag') {
+			const moved = activeDragStroke
+			const index = activeDragIndex
+			gestureMode = ''
+			if (moved != null && index >= 0) commitEditorState(replaceEditorStroke(activeEditorState(), index, moved))
+			else repaint()
+			return
+		}
+		clearCanvasGesture()
+	}
+
+	/**
+	 * 触摸被系统打断：结束手势并回到已提交状态，不留下半截草稿。
+	 * @param event 原生触摸事件
+	 */
+	function handleCanvasTouchCancel(event: TouchEvent) {
+		clearCanvasGesture()
+		repaint()
+	}
+
+	/** 顺时针旋转 90 度：只改状态角度，标注坐标保持源图坐标系不动，旋转本身也可撤销。 */
+	function rotateImage() {
+		if (!canvasReady.value) return
+		clearCanvasGesture()
+		selectedIndex = -1
+		commitEditorState(rotateEditorState(activeEditorState()))
+	}
+
+	/** 撤销一步：游标回退后按历史状态重排画布并重绘，旋转、清空同样可以还原。 */
+	function undoEdit() {
+		if (!canUndo.value) return
+		clearCanvasGesture()
+		selectedIndex = -1
+		editorHistory = undoEditorHistory(editorHistory)
+		syncEditorHistoryFlags()
+		layoutEditor()
+		repaint()
+	}
+
+	/** 重做一步：只在已撤销的分支内前进。 */
+	function redoEdit() {
+		if (!canRedo.value) return
+		clearCanvasGesture()
+		selectedIndex = -1
+		editorHistory = redoEditorHistory(editorHistory)
+		syncEditorHistoryFlags()
+		layoutEditor()
+		repaint()
+	}
+
+	/** 清空全部标注：作为一步历史提交，误清后可以整体撤销。 */
+	function clearAnnotations() {
+		if (activeEditorState().strokes.length === 0) return
+		clearCanvasGesture()
+		selectedIndex = -1
+		commitEditorState(clearEditorStrokes(activeEditorState()))
+	}
+
+	/**
+	 * 同步文字输入框内容。
+	 * @param event 原生输入事件
+	 */
+	function onTextInput(event: UniInputEvent) {
+		textInputValue.value = event.detail.value
+	}
+
+	/** 确认文字标注：空文本不生成标注，非空按落点生成一步可撤销的编辑。 */
+	function confirmTextInput() {
+		const text = textInputValue.value.trim()
+		showTextInput.value = false
+		textInputValue.value = ''
+		if (text === '') return
+		const stroke = beginStrokeAt('text', textPlaceSourcePoint)
+		stroke['text'] = text
+		commitEditorState(appendEditorStroke(activeEditorState(), stroke))
+	}
+
+	/** 取消文字输入：不生成任何标注。 */
+	function cancelTextInput() {
+		showTextInput.value = false
+		textInputValue.value = ''
+	}
+
+	/** 阻止文字弹层内容区点击冒泡到遮罩：内联空箭头函数在 App 端不拦截冒泡，弹层会被误关。 */
+	function stopEvent() {}
+
+	/** 取消编辑：直接关闭编辑器，原图保持不变。 */
+	function cancelEdit() {
+		clearCanvasGesture()
+		emit('cancel')
+	}
+
+	/** 画布上下文与原图尺寸都就绪后才解码原图：任何一方先到都必须等另一方，避免半初始化状态。 */
+	function refreshEditorWhenReady() {
+		if (!props.visible || !canvasReady.value || !imageInfoReady) return
+		const holder = canvasHolder
+		if (holder == null) return
+		const requestId = loadRequestId
+		layoutEditor()
+		repaint()
+		const image = holder.createImage()
+		image.onload = () => {
+			if (requestId !== loadRequestId || !props.visible) return
+			sourceCanvasImage = image
+			loading.value = false
+			loadFailed.value = false
+			// 首次打开时工具栏可能还没撑开，按最终布局重新测量后再绘制，避免画布尺寸与实际可用区不符。
+			layoutEditor()
+			repaint()
+		}
+		image.onerror = () => {
+			if (requestId !== loadRequestId || !props.visible) return
+			sourceCanvasImage = null
+			loading.value = false
+			loadFailed.value = true
+		}
+		// 先挂载回调再赋值 src，避免原生解码回调早于注册而丢失。
+		image.src = normalizeCanvasImagePath(canvasImageSource({ path: sourceImage.value.path, width: sourceImage.value.width, height: sourceImage.value.height }, displaySrc.value))
+	}
+
+	/** 取得预览画布的 2D 上下文：原生画布需要挂载并布局一次后才能访问。 */
+	function initCanvas() {
+		if (!props.visible) return
+		const requestId = loadRequestId
+		let attempts = 0
+		/** 轮询画布元素后再取上下文；元素还没生成时直接取上下文会失败。 */
+		const acquire = () => {
+			if (requestId !== loadRequestId || !props.visible) return
+			if (uni.getElementById('markup-canvas') == null && attempts < 20) {
+				attempts += 1
+				setTimeout(() => { acquire() }, 30)
+				return
+			}
+			uni.createCanvasContextAsync({
+				id: 'markup-canvas',
+				component: instance!,
+				success: (context) => {
+					if (requestId !== loadRequestId || !props.visible) return
+					const rc = context.getContext('2d')
+					if (rc == null) { canvasReady.value = false; loading.value = false; loadFailed.value = true; return }
+					canvasHolder = context
+					canvasContext = rc
+					pixelRatio = resolvePixelRatio()
+					canvasReady.value = true
+					refreshEditorWhenReady()
+				},
+				fail: (error) => {
+					if (requestId !== loadRequestId || !props.visible) return
+					canvasReady.value = false
+					loading.value = false
+					loadFailed.value = true
+					uni.showToast({ title: t('画布初始化失败，请重试'), icon: 'none' })
+				}
+			})
+		}
+		acquire()
+	}
+
+	/** 读取原图尺寸：画布几何与导出尺寸都依赖源图像素，失败时给出可点击重试的提示。 */
+	function loadEditorImage() {
+		const src = (props.source ?? '').toString().trim()
+		if (src === '') { loading.value = false; loadFailed.value = true; return }
+		// 只读取当前请求号，绝不在这里自增：画布初始化用的还是同一个请求号，自增会让它的回调被判为过期。
+		const requestId = loadRequestId
+		uni.getImageInfo({
+			src,
+			success: (info) => {
+				if (requestId !== loadRequestId || !props.visible) return
+				const width = parseFloat((info.width ?? 0).toString())
+				const height = parseFloat((info.height ?? 0).toString())
+				if (!(width > 0) || !(height > 0)) { loading.value = false; loadFailed.value = true; return }
+				sourceImage.value = { width, height, path: (info.path ?? src).toString() }
+				displaySrc.value = (info.path ?? src).toString()
+				imageInfoReady = true
+				refreshEditorWhenReady()
+			},
+			fail: () => {
+				if (requestId !== loadRequestId || !props.visible) return
+				imageInfoReady = false
+				loading.value = false
+				loadFailed.value = true
+			}
+		})
+	}
+
+	/** 重新打开编辑器时清空上一次的编辑状态与异步回调，避免旧回调写回已关闭的界面。 */
+	function resetEditorState() {
+		loadRequestId += 1
+		editorHistory = createEditorHistory(createEditorState())
+		syncEditorHistoryFlags()
+		selectedIndex = -1
+		currentTool.value = 'select'
+		activeWidthIndex.value = 1
+		showTextInput.value = false
+		textInputValue.value = ''
+		displaySrc.value = ''
+		sourceImage.value = { width: 0, height: 0, path: '' }
+		editorDisplay.value = { rotatedWidth: 1, rotatedHeight: 1, scale: 1, offsetX: 0, offsetY: 0 }
+		canvasReady.value = false
+		imageInfoReady = false
+		canvasHolder = null
+		canvasContext = null
+		sourceCanvasImage = null
+		clearCanvasGesture()
+		loading.value = true
+		loadFailed.value = false
+		/* 重新打开编辑器时必须解除上一次导出遗留的保存态，避免保存按钮失效。 */
+		saving.value = false
+	}
+
+	/** 加载失败后点击重试：重新走一遍画布初始化与原图读取。 */
+	function retryLoad() {
+		if (!props.visible || !loadFailed.value) return
+		// 重试换新的请求号，旧尝试的失败回调不会覆盖本次重试的结果。
+		loadRequestId += 1
+		loading.value = true
+		loadFailed.value = false
+		imageInfoReady = false
+		canvasReady.value = false
+		canvasHolder = null
+		canvasContext = null
+		sourceCanvasImage = null
+		initCanvas()
+		loadEditorImage()
+	}
+
+	/**
+	 * 校验落盘图片与目标位图长宽比一致：比例不符说明只导出了局部，必须判失败而不是覆盖原图。
+	 * 各端位图口径（物理像素/逻辑像素）不同，用精确像素相等会误判成"尺寸异常"。
+	 * @param path 导出的图片路径
+	 * @param bitmapWidth 目标位图宽度（像素）
+	 * @param bitmapHeight 目标位图高度（像素）
+	 * @param settle 结束导出并回传结果
+	 */
+	function verifyExportedImage(path: string, bitmapWidth: number, bitmapHeight: number, settle: (error: Error | null, resultPath: string) => void): void {
 		uni.getImageInfo({
 			src: path,
 			success: (info) => {
-				if (Math.round(Number(info.width)) !== width || Math.round(Number(info.height)) !== height) {
+				const width = Number(info.width)
+				const height = Number(info.height)
+				if (!(width > 0) || !(height > 0)) {
+					settle(new Error('图片导出失败，请重试'), '')
+					return
+				}
+				if (!isSameEditorAspectRatio(width, height, bitmapWidth, bitmapHeight)) {
 					settle(new Error('编辑图片尺寸异常，请重试'), '')
 					return
 				}
 				settle(null, path)
 			},
-			fail: (error) => settle(new Error(error.errMsg ?? '编辑图片校验失败'), '')
+			fail: (error) => settle(new Error(`编辑图片校验失败：${error.errMsg ?? ''}`), '')
 		})
 	}
 
-	/** 保存图片：无标注时直接返回原路径（无变更）；有标注时用 Canvas 合成导出。 */
-	async function saveImage() {
-		if (saving.value || displaySrc.value === '') return
-		saving.value = true
-		const si = sourceImage.value
-		const srcPath = si.path !== '' ? si.path : displaySrc.value
-		// 无标注、无旋转：直接回传原路径，无需 Canvas
-		if (objects.value.length === 0 && rotation.value === 0) {
-			saving.value = false
-			emit('edited', srcPath)
-			return
+	/**
+	 * 用原生压缩把画布写出的 PNG 转成 JPEG：上传接口只接受 jpg，而 2D 画布只能导出 PNG。
+	 * 逐个候选路径重试，避免沙盒路径缺少 file:// 前缀时把可用文件误判成导出失败。
+	 * @param pngPath 画布写出的 PNG 路径（仅作转码输入）
+	 * @returns 转码后的 JPEG 临时文件路径
+	 */
+	async function convertExportToJpeg(pngPath: string): Promise<string> {
+		let failure = t('图片导出失败，请重试')
+		for (const source of nativeImageSourceCandidates(pngPath)) {
+			try {
+				const jpegPath = await new Promise<string>((resolve, reject) => {
+					uni.compressImage({
+						src: source,
+						quality: IMAGE_EDITOR_JPEG_QUALITY,
+						success: (result) => resolve((result.tempFilePath ?? '').trim()),
+						fail: (error) => reject(new Error(`图片导出失败：${error.errMsg ?? ''}`))
+					})
+				})
+				if (jpegPath !== '') return jpegPath
+				failure = t('图片导出失败，请重试')
+			} catch (error) {
+				failure = (error as Error)?.message ?? failure
+			}
 		}
-		// 有标注或旋转：Canvas 合成（尺寸已在 layoutStage 中按原图分辨率设定）
-		try {
-			await nextTick()
-			await new Promise<void>(resolve => {
-				setTimeout(() => { resolve() }, 80)
-			})
-			await new Promise<void>((resolve, reject) => {
-				let finished = false
-				// 导出看门狗：原生回调若始终不触发，页面会永久停留在“保存中”，超时后明确失败并恢复按钮。
-				const watchdog = setTimeout(() => {
-					if (finished) return
-					finished = true
-					reject(new Error('图片导出超时，请重试'))
-				}, 15000)
-				/** 结束导出并清理看门狗，保证 Promise 只结算一次；编辑器已关闭时不再回传结果。 */
-				const settle = (error: Error | null, resultPath: string) => {
-					if (finished) return
-					finished = true
-					clearTimeout(watchdog)
-					if (error != null) { reject(error); return }
-					if (props.visible) emit('edited', resultPath)
-					resolve()
-				}
-				uni.createCanvasContextAsync({ id: 'markup-save-canvas', component: instance!, success: (ctx) => {
-					try {
-						const rc = ctx.getContext('2d')
-						if (rc == null) { settle(new Error('canvas context is null'), ''); return }
-						const cw = saveCanvasWidth.value; const ch = saveCanvasHeight.value
-						// 画布组件的 :width/:height 不保证更新原生 2D 位图；必须在 context 上设置实际导出像素尺寸。
-						rc.canvas.width = cw
-						rc.canvas.height = ch
-						rc.clearRect(0, 0, cw, ch)
-						rc.fillStyle = '#ffffff'; rc.fillRect(0, 0, cw, ch)
-						rc.save(); rc.translate(cw / 2, ch / 2); rc.rotate(rotation.value * Math.PI / 180)
-						const img = ctx.createImage()
-						img.onload = () => {
-							try {
-								const exportRotated = rotation.value === 90 || rotation.value === 270
-								const drawWidth = exportRotated ? ch : cw
-								const drawHeight = exportRotated ? cw : ch
-								rc.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
-								rc.restore()
-								const rect = imageFitRect.value; const sx = cw / Math.max(1, rect.width); const sy = ch / Math.max(1, rect.height)
-								for (const item of objects.value) drawAnnotationToCanvas(rc, item, sx, sy, rect)
-								const dataUrl = ctx.toDataURL()
-								if (!dataUrl.startsWith('data:image/png;base64,')) { settle(new Error('导出失败'), ''); return }
-								const path = `${uni.env.USER_DATA_PATH}/inspection-edit-${Date.now()}.png`
-								uni.getFileSystemManager().writeFile({ filePath: path, data: dataUrl.split(',')[1], encoding: 'base64', success: () => verifyExportedImage(path, cw, ch, settle), fail: (err) => settle(new Error(err.errMsg), '') })
-							} catch (err) { settle(new Error((err).toString()), '') }
-						}
-						img.onerror = () => settle(new Error('原图解码失败'), '')
-						// 先挂载回调再设置 src，避免解码回调早于 onload/onerror 注册而丢失。
-						img.src = canvasImageSource({ path: si.path, width: si.width, height: si.height }, displaySrc.value)
-					} catch (err) { settle(new Error((err).toString()), '') }
-				}, fail: (err) => settle(new Error(err.errMsg), '') })
-			})
-		} catch (error) { const errorMessage = ((error as Error)?.message ?? '').toString(); uni.showToast({ title: errorMessage !== '' ? t(errorMessage) : t('保存失败'), icon: 'none' }) } finally { if (props.visible) saving.value = false }
+		throw new Error(failure)
 	}
 
 	/**
-	 * 弹层可见性或图片来源变化时重建画布并加载图片。
-	 * 关闭（visible 变为 false）时不得写入内部状态：根节点已被 v-if 销毁，此时写入会驱动
-	 * 已销毁的渲染子树在 vapor 原生渲染线程重新渲染并闪退；重置与加载由打开时的同一次变化完成。
+	 * 把转码后的 JPEG 落盘到持久媒体目录：临时文件会被系统回收，离线重试上传时照片路径必须仍然可用。
+	 * @param jpegPath compressImage 输出的 JPEG 临时文件路径
+	 * @returns inspection_media 下的持久 JPEG 路径
 	 */
+	async function persistExportJpeg(jpegPath: string): Promise<string> {
+		const persistedPath = await mediaPersistenceService.persistMediaPath(jpegPath, false)
+		if ((persistedPath ?? '').trim() === '') throw new Error(t('图片导出失败，请重试'))
+		return persistedPath
+	}
+
+	/**
+	 * 转码、落盘后校验编辑结果：任一步失败都回传统一错误文案，避免把不可上传的图交给上传队列。
+	 * @param pngPath 画布写出的 PNG 路径
+	 * @param bitmapWidth 导出位图宽度（像素）
+	 * @param bitmapHeight 导出位图高度（像素）
+	 * @param settle 结束导出并回传结果
+	 */
+	async function saveExportAsJpeg(pngPath: string, bitmapWidth: number, bitmapHeight: number, settle: (error: Error | null, resultPath: string) => void): Promise<void> {
+		try {
+			const jpegPath = await convertExportToJpeg(pngPath)
+			const path = await persistExportJpeg(jpegPath)
+			verifyExportedImage(path, bitmapWidth, bitmapHeight, settle)
+		} catch (error) {
+			// 保留转码/落盘的真实原因，缺少原因时回退到可翻译的通用文案。
+			const reason = ((error as Error)?.message ?? '').trim()
+			settle(new Error(reason !== '' ? reason : t('图片导出失败，请重试')), '')
+		}
+	}
+
+	/**
+	 * 把画布导出的 PNG 转码成 JPEG 再落盘校验：上传接口只接受 jpg，PNG 直接入库会被服务端拒绝。
+	 * @param dataUrl 画布导出的 PNG data URL
+	 * @param bitmapWidth 导出位图宽度（像素）
+	 * @param bitmapHeight 导出位图高度（像素）
+	 * @param settle 结束导出并回传结果
+	 */
+	function saveExportDataUrl(dataUrl: string, bitmapWidth: number, bitmapHeight: number, settle: (error: Error | null, resultPath: string) => void) {
+		// PNG 只是转码输入，放缓存目录，避免不可上传的 PNG 混进照片媒体文件。
+		const pngPath = `${uni.env.CACHE_PATH}/inspection-edit-${Date.now()}.png`
+		uni.getFileSystemManager().writeFile({
+			filePath: pngPath,
+			data: dataUrl.split(',')[1],
+			encoding: 'base64',
+			success: () => { saveExportAsJpeg(pngPath, bitmapWidth, bitmapHeight, settle) },
+			fail: (error) => settle(new Error(`写入文件失败：${error.errMsg ?? ''}`), '')
+		})
+	}
+
+	/**
+	 * 把画布内容编码成 PNG 写入缓存：空数据时短暂等待后重试一次，避免原生还没刷完像素就判失败。
+	 * @param context 导出画布的 CanvasContext
+	 * @param bitmapWidth 导出位图宽度（像素）
+	 * @param bitmapHeight 导出位图高度（像素）
+	 * @param settle 结束导出并回传结果
+	 */
+	function writeExportDataUrl(context: CanvasContext, bitmapWidth: number, bitmapHeight: number, settle: (error: Error | null, resultPath: string) => void) {
+		const dataUrl = context.toDataURL()
+		if (dataUrl.startsWith('data:image/png;base64,')) { saveExportDataUrl(dataUrl, bitmapWidth, bitmapHeight, settle); return }
+		setTimeout(() => {
+			const retryUrl = context.toDataURL()
+			if (!retryUrl.startsWith('data:image/png;base64,')) { settle(new Error('画布导出为空，请重试'), ''); return }
+			saveExportDataUrl(retryUrl, bitmapWidth, bitmapHeight, settle)
+		}, 150)
+	}
+
+	/** 等待导出画布挂载：固定延时在低端机上不够稳，改成轮询元素是否可用。 */
+	function waitForExportCanvas(): Promise<void> {
+		return new Promise<void>((resolve) => {
+			let attempts = 0
+			/** 轮询导出画布元素；超过上限后直接放行，由取上下文的结果决定成败。 */
+			const poll = () => {
+				attempts += 1
+				if (uni.getElementById('markup-export-canvas') != null || attempts >= 20) { resolve(); return }
+				setTimeout(() => { poll() }, 30)
+			}
+			poll()
+		})
+	}
+
+	/**
+	 * 在离屏画布上合成导出图：与预览共用渲染函数，导出的就是用户看到的那张图。
+	 * @param state 待导出的编辑状态
+	 * @returns 导出完成的 Promise，失败时抛出可展示的具体原因
+	 */
+	function exportEditedImage(state: EditorState): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			let finished = false
+			// 导出看门狗：原生回调若始终不触发，页面会永久停留在"保存中"，超时后明确失败并恢复按钮。
+			const watchdog = setTimeout(() => {
+				if (finished) return
+				finished = true
+				reject(new Error('图片导出超时，请重试'))
+			}, 20000)
+			/** 结束导出并清理看门狗，保证 Promise 只结算一次；编辑器已关闭时不再回传结果。 */
+			const settle = (error: Error | null, resultPath: string) => {
+				if (finished) return
+				finished = true
+				clearTimeout(watchdog)
+				if (error != null) { reject(error); return }
+				if (props.visible) emit('edited', resultPath)
+				resolve()
+			}
+			uni.createCanvasContextAsync({
+				id: 'markup-export-canvas',
+				component: instance!,
+				success: (context) => {
+					try {
+						const rc = context.getContext('2d')
+						if (rc == null) { settle(new Error('画布初始化失败，请重试'), ''); return }
+						// App 平台按官方高清屏写法以"元素 CSS 尺寸 × dpr"决定位图，这里按实测元素尺寸设置位图。
+						const rect = measureElementRect('markup-export-canvas')
+						const cssWidth = isUsableEditorBox(rect, 1) ? rect.width : exportElementWidth.value
+						const cssHeight = isUsableEditorBox(rect, 1) ? rect.height : exportElementHeight.value
+						const targetWidth = Math.max(1, Math.round(cssWidth * pixelRatio))
+						const targetHeight = Math.max(1, Math.round(cssHeight * pixelRatio))
+						rc.canvas.width = targetWidth
+						rc.canvas.height = targetHeight
+						// 该属性在 App 平台只读：读回值才是真实位图尺寸，渲染与校验都以它为准。
+						const bitmapWidth = rc.canvas.width > 0 ? rc.canvas.width : targetWidth
+						const bitmapHeight = rc.canvas.height > 0 ? rc.canvas.height : targetHeight
+						if (bitmapWidth < IMAGE_EDITOR_MIN_EXPORT_SIDE || bitmapHeight < IMAGE_EDITOR_MIN_EXPORT_SIDE) {
+							settle(new Error('画布导出为空，请重试'), '')
+							return
+						}
+						const display = resolveEditorDisplay(sourceImage.value.width, sourceImage.value.height, bitmapWidth, bitmapHeight, state.rotation)
+						const exportImage = context.createImage()
+						exportImage.onload = () => {
+							try {
+								// 导出画布的位图就是最终像素，先复位变换再按导出几何重绘，避免叠加显示用的缩放。
+								rc.setTransform(1, 0, 0, 1, 0, 0)
+								renderEditor(rc, state, display, exportImage, sourceImage.value.width, sourceImage.value.height, bitmapWidth, bitmapHeight)
+								writeExportDataUrl(context, bitmapWidth, bitmapHeight, settle)
+							} catch (error) {
+								settle(new Error('图片导出失败，请重试'), '')
+							}
+						}
+						exportImage.onerror = () => settle(new Error('原图解码失败，请重试'), '')
+						// 先挂载回调再赋值 src，避免原生解码回调早于注册而丢失。
+						exportImage.src = normalizeCanvasImagePath(canvasImageSource({ path: sourceImage.value.path, width: sourceImage.value.width, height: sourceImage.value.height }, displaySrc.value))
+					} catch (error) {
+						settle(new Error('图片导出失败，请重试'), '')
+					}
+				},
+				fail: (error) => settle(new Error(`画布初始化失败：${error.errMsg ?? ''}`), '')
+			})
+		})
+	}
+
+	/** 保存图片：没有标注和旋转时直接回传原路径，否则在离屏画布上合成导出。 */
+	async function saveImage() {
+		if (saving.value || !canvasReady.value || displaySrc.value === '') return
+		const state = activeEditorState()
+		const originalPath = sourceImage.value.path !== '' ? sourceImage.value.path : displaySrc.value
+		// 没有标注也没有旋转时不存在可保存的修改，直接回传原路径，省掉一次大图合成。
+		if (state.strokes.length === 0 && state.rotation === 0) {
+			emit('edited', originalPath)
+			return
+		}
+		// 目标像素（长边受上限约束）-> 元素 CSS 尺寸（按 dpr 折算），位图才会等于目标像素。
+		const exportSize = resolveExportCanvasSize(sourceImage.value.width, sourceImage.value.height, state.rotation)
+		const elementSize = resolveEditorExportElementSize(exportSize, pixelRatio)
+		exportElementWidth.value = elementSize.width
+		exportElementHeight.value = elementSize.height
+		saving.value = true
+		try {
+			await nextTick()
+			await waitForExportCanvas()
+			await exportEditedImage(state)
+		} catch (error) {
+			// 失败原因可能是画布、解码、编码或写文件，逐条给出可定位的提示。
+			uni.showToast({ title: t(((error as Error)?.message ?? t('保存失败')).toString()), icon: 'none' })
+		} finally {
+			if (props.visible) saving.value = false
+		}
+	}
+
 	watch((): string => `${props.visible}:${props.source}`, () => {
 		if (!props.visible) return
 		resetEditorState()
-		if (props.source !== '') loadImage()
+		nextTick(() => {
+			if (!props.visible) return
+			initCanvas()
+			loadEditorImage()
+		})
 	}, { immediate: true })
 </script>
 
 <style>
-	.markup-root { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2600; background-color: #1a1a1a; }
-	.markup-header { height: 100rpx; padding: 0 32rpx; flex-direction: row; align-items: center; justify-content: space-between; background-color: #222222; }
-	.header-action { color: #cccccc; font-size: 28rpx; padding: 20rpx 16rpx; min-width: 96rpx; }
-	.header-title { color: #ffffff; font-size: 30rpx; font-weight: 600; }
+	.markup-root { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 2600; flex-direction: column; background-color: #1f2937; }
+	.markup-header { flex-direction: row; align-items: center; justify-content: space-between; height: 100rpx; padding: 0 24rpx; background-color: #1f2937; }
+	.header-action { font-size: 30rpx; color: #f9fafb; padding: 12rpx 8rpx; }
+	.header-action.disabled { color: #6b7280; }
 	.save-action { color: #22c55e; font-weight: 600; }
-	.save-action.disabled { opacity: 0.7; }
-	.editor-body { flex: 1; overflow: hidden; background-color: #111111; }
-	.image-stage { position: relative; width: 100%; overflow: hidden; background-color: #000000; }
-	.edit-image { position: absolute; left: 50%; top: 50%; transform-origin: center center; }
-	.annotation-layer { position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 1; }
-	.annotation-line { position: absolute; transform-origin: 0 50%; border-radius: 999px; }
-	.annotation-line.selected { box-shadow: 0 0 0 4rpx rgba(34, 197, 94, 0.6); }
-	.arrow-head { position: absolute; top: 50%; width: 0; height: 0; border-top: 10rpx solid transparent; border-bottom: 10rpx solid transparent; border-left: 18rpx solid #ef4444; transform: translateY(-50%); }
-	.annotation-rect { position: absolute; box-sizing: border-box; border-style: solid; }
-	.annotation-rect.selected { box-shadow: 0 0 0 4rpx rgba(34, 197, 94, 0.6); }
-	.annotation-ellipse { position: absolute; border-radius: 50%; box-sizing: border-box; border-style: solid; }
-	.annotation-ellipse.selected { box-shadow: 0 0 0 4rpx rgba(34, 197, 94, 0.6); }
-	.annotation-text { position: absolute; font-weight: 700; line-height: 1.2; }
-	.annotation-text.selected { text-shadow: 0 0 8rpx #22c55e; }
-	.editor-loading { flex: 1; align-items: center; justify-content: center; color: #94a3b8; font-size: 28rpx; }
-	.editor-toolbar { position: relative; z-index: 3; flex-direction: row; align-items: center; justify-content: space-around; padding: 16rpx 8rpx; background-color: #222222; flex-wrap: wrap; }
-	.tool-item { flex-direction: column; align-items: center; padding: 12rpx 16rpx; border-radius: 12rpx; min-width: 80rpx; }
-	.tool-item.active { background-color: #333333; }
-	.tool-icon { color: #cccccc; font-size: 32rpx; }
-	.tool-label { color: #999999; font-size: 20rpx; }
-	.tool-active { color: #22c55e; }
-	.sub-toolbar { position: relative; z-index: 3; flex-direction: row; align-items: center; justify-content: center; padding: 16rpx 32rpx 36rpx; background-color: #1a1a1a; }
-	.color-selector { flex-direction: row; }
-	.color-dot { width: 48rpx; height: 48rpx; margin: 0 8rpx; border-radius: 50%; border: 3rpx solid #555555; }
-	.color-dot.active { border-color: #ffffff; box-shadow: 0 0 0 3rpx #22c55e; }
+	.header-title { font-size: 32rpx; color: #f9fafb; font-weight: 600; }
+	/* 左右留白与查看页 .preview-content 相同，图片显示尺寸才能和查看页完全一致。 */
+	.editor-body { position: relative; flex: 1; overflow: hidden; margin-left: 32rpx; margin-right: 32rpx; align-items: center; justify-content: center; background-color: #111827; }
+	.edit-canvas { background-color: #111827; }
+	.editor-hint { position: absolute; left: 0; top: 0; right: 0; bottom: 0; align-items: center; justify-content: center; }
+	.hint-text { font-size: 28rpx; color: #d1d5db; }
+	/* 工具条覆盖在图片下方，不占用图片高度，保证取景框与查看页等高。 */
+	.editor-toolbars { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; }
+	.editor-toolbar { flex-direction: row; align-items: center; justify-content: space-between; padding: 12rpx 8rpx 6rpx 8rpx; background-color: rgba(31, 41, 55, 0.88); }
+	.tool-item { flex: 1; align-items: center; justify-content: center; padding: 8rpx 0; border-radius: 12rpx; border-width: 2rpx; border-color: transparent; background-color: transparent; }
+	/* 选中态同时给背景、描边与文字三个维度的反馈，避免单一信号在深色底上不明显。 */
+	.tool-item.active { background-color: #374151; border-color: #22c55e; }
+	.tool-icon { font-size: 34rpx; color: #9ca3af; }
+	.tool-label { font-size: 20rpx; color: #9ca3af; margin-top: 4rpx; }
+	.tool-icon.tool-active { color: #22c55e; font-weight: 700; }
+	.tool-label.tool-active { color: #22c55e; font-weight: 700; }
+	.editor-subbar { flex-direction: column; padding: 8rpx 16rpx 8rpx 16rpx; background-color: rgba(31, 41, 55, 0.88); }
+	.color-row { flex-direction: row; align-items: center; justify-content: center; }
+	.color-dot { width: 48rpx; height: 48rpx; border-radius: 24rpx; margin: 0 8rpx; border: 4rpx solid transparent; }
+	.color-dot.active { border-color: #ffffff; }
+	.width-row { flex-direction: row; align-items: center; justify-content: center; margin-top: 8rpx; }
+	.subbar-label { font-size: 22rpx; color: #9ca3af; margin-right: 12rpx; }
+	.width-dot { width: 72rpx; height: 48rpx; align-items: center; justify-content: center; border-radius: 8rpx; border: 2rpx solid transparent; }
+	.width-dot.active { border-color: #22c55e; }
+	.width-bar { background-color: #e5e7eb; border-radius: 8rpx; }
+	.history-row { flex-direction: row; align-items: center; justify-content: center; margin-top: 8rpx; }
+	.history-btn { font-size: 26rpx; color: #f9fafb; padding: 10rpx 28rpx; margin: 0 10rpx; border-radius: 10rpx; background-color: #374151; }
+	.history-btn.disabled { color: #6b7280; background-color: #2b3444; }
 	.text-input-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 300; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.6); }
 	.text-input-box { width: 80%; padding: 32rpx; border-radius: 16rpx; background-color: #ffffff; }
 	.text-input { width: 100%; height: 80rpx; padding: 0 16rpx; border: 2rpx solid #e5e7eb; border-radius: 8rpx; font-size: 28rpx; }
@@ -568,5 +1166,5 @@
 	.text-btn { padding: 12rpx 32rpx; border-radius: 8rpx; font-size: 26rpx; margin-left: 16rpx; }
 	.text-btn.cancel { background-color: #f3f4f6; color: #666666; }
 	.text-btn.confirm { background-color: #22c55e; color: #ffffff; }
-	.save-canvas { position: fixed; left: -10000px; top: -10000px; pointer-events: none; }
+	.export-canvas { position: fixed; left: -10000px; top: -10000px; pointer-events: none; }
 </style>

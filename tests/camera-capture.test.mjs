@@ -251,26 +251,51 @@ test('zoom control shows a single circular button and cycles the level on each t
 })
 
 /**
- * 相机回调返回的是原生绝对路径，缩略图必须先补成 file:// 形式，否则 image 组件一直空白。
+ * 取景框铺满取景区：宽度占满屏幕、高度用满面板以上的全部空间，用户能看到最多画面。
+ * 取景比例由系统相机的预览流协商（预览 aspectFill 裁剪、成片不按预览裁剪），页面不再自行限定 4:3 / 16:9。
  */
-/**
- * 取景框铺满中间区域并保持成片比例：成片是相机原生的 4:3，取景框按同一比例放大后被取景区裁切，
- * 既不拉伸变形，也不再用黑边浪费空间；比例由首张成片的真实像素校正。
- */
-test('capture framing keeps the photo aspect ratio instead of filling the screen', () => {
-  // 长短边比例与拍摄方向无关：横拍竖拍都得到同一个取景比例。
-  assert.equal(captureModule.resolveCaptureAspectRatio(4000, 3000), 0.75)
-  assert.equal(captureModule.resolveCaptureAspectRatio(3000, 4000), 0.75)
-  assert.equal(captureModule.resolveCaptureAspectRatio(1920, 1080), 0.5625)
-  assert.equal(captureModule.resolveCaptureAspectRatio(0, 0), captureModule.DEFAULT_CAPTURE_ASPECT_RATIO)
-  assert.equal(captureModule.resolveCaptureAspectRatio(Number.NaN, 4000), captureModule.DEFAULT_CAPTURE_ASPECT_RATIO)
+test('viewfinder fills the whole preview area instead of a fixed photo ratio', async () => {
+  const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
 
-  // 取景框铺满取景区：竖屏取景区比成片更窄，按高度铺满后左右各溢出一部分（裁切、不拉伸、不留黑边）。
-  assert.deepEqual(captureModule.resolveCaptureFrameSize(400, 600, 0.75), { width: 450, height: 600 })
-  // 取景区相对更宽时按宽度铺满，上下溢出。
-  assert.deepEqual(captureModule.resolveCaptureFrameSize(400, 400, 0.75), { width: 400, height: 533 })
-  assert.deepEqual(captureModule.resolveCaptureFrameSize(400, 600, Number.NaN), { width: 450, height: 600 })
-  assert.deepEqual(captureModule.resolveCaptureFrameSize(0, 0, 0.75), { width: 1, height: 1 })
+  assert.match(page, /<view class="preview-frame">/)
+  assert.match(page, /\.preview-frame \{[^}]*flex: 1;[^}]*width: 100%;/)
+  assert.match(page, /\.preview-wrap \{[^}]*flex: 1;[^}]*overflow: hidden;/)
+  assert.match(page, /\.camera-preview \{ width: 100%; height: 100%; \}/)
+  // 取景框不再由脚本按比例算高，也不再读取成片像素校正比例。
+  assert.doesNotMatch(page, /previewFrameStyle|resolveCaptureFrameSize|captureAspectRatio/)
+  assert.doesNotMatch(page, /learnCaptureAspectRatio|resolveCaptureAspectRatio|getImageInfo/)
+})
+
+/**
+ * 拍照按钮保持紧凑的圆形底板，里面的相机图标放大：图标按当前握持角反向补角，横屏竖屏都保持正向。
+ */
+test('compact shutter button carries a larger upright camera glyph that follows the handset', async () => {
+  const page = await readFile('pages/report/simple-camera.uvue', 'utf8')
+  const controlBar = await readFile('components/camera/CaptureControlBar.uvue', 'utf8')
+
+  const shutterSize = parseInt(/\.shutter-wrap \{[^}]*width: (\d+)rpx/.exec(controlBar)?.[1] ?? '0')
+  const iconSize = parseInt(/\.shutter-icon \{[^}]*width: (\d+)rpx/.exec(controlBar)?.[1] ?? '0')
+  const rowHeight = parseInt(/\.capture-control-row \{ height: (\d+)rpx/.exec(controlBar)?.[1] ?? '0')
+  const glyphSize = parseInt(/<AppIcon type="camera" :size="(\d+)"/.exec(controlBar)?.[1] ?? '0')
+  // 按钮直径收回紧凑档（156rpx 那一档过大），操作行只需比按钮略高即可放下。
+  assert.ok(shutterSize >= 116 && shutterSize <= 136, `拍照按钮应保持在 116~136rpx，当前 ${shutterSize}rpx`)
+  assert.ok(iconSize < shutterSize && iconSize >= shutterSize - 12, `按钮底板要略小于按钮直径，当前 ${iconSize}rpx`)
+  assert.ok(rowHeight >= shutterSize && rowHeight <= shutterSize + 28, `操作行高度要贴合按钮，当前 ${rowHeight}rpx`)
+  // 按钮变小后图标反而要更显眼：Camera 图标放大到 36px 以上（AppIcon 的 size 是 px）。
+  assert.ok(glyphSize >= 36, `按钮内的相机图标需要放大到 36px 以上，当前 ${glyphSize}px`)
+
+  // 按钮内叠加可复用的相机图标；录像模式仍显示录制/停止图标，不叠加相机图标。
+  assert.match(controlBar, /import AppIcon from '\.\.\/icons\/AppIcon\.uvue'/)
+  assert.match(controlBar, /v-if="captureMode === 'photo'" class="shutter-glyph"/)
+  assert.match(controlBar, /<AppIcon type="camera" :size="\d+" color="#0f172a" \/>/)
+  // 相机图标绝对居中压在底板上，旋转容器必须自己建立定位上下文。
+  assert.match(controlBar, /\.shutter-rotate \{[^}]*position: relative;/)
+  assert.match(controlBar, /\.shutter-glyph \{[^}]*position: absolute;/)
+  // 图标按当前握持角反向补角：手机横过来时按钮里的相机图标仍然朝上。
+  assert.match(controlBar, /deviceRotation: \{ type: Number, default: 0 \}/)
+  assert.match(controlBar, /resolveThumbnailRotation\(props\.deviceRotation\)/)
+  assert.match(controlBar, /class="shutter-rotate"/)
+  assert.match(page, /<CaptureControlBar[^>]*:device-rotation="deviceRotation"/)
 })
 
 /** 保存的文件由回正队列转正；底部缩略图跟随机身反向旋转便于观看，大图仍按照片自身像素展示。 */
@@ -288,7 +313,7 @@ test('custom capture previews keep the uprighted file while the strip follows th
   assert.match(strip, /resolveThumbnailRotation\(props\.deviceRotation\)/)
   // 大图按照片自身已回正的像素展示，不再叠加机身角度。
   assert.doesNotMatch(preview, /deviceRotation|resolveThumbnailRotation|previewRotationStyle|preview-media-rotated/)
-  assert.match(preview, /<image v-else class="preview-media" :src="displaySource" mode="aspectFit" \/>/)
+  assert.match(preview, /<image class="preview-media" :src="displaySource" mode="aspectFit" \/>/)
   // 自定义原生方向插件已移除：拔掉的是插件本身，不是方向能力。
   assert.doesNotMatch(page, /inspection-device-orientation|startDeviceOrientation|stopDeviceOrientation/)
   assert.doesNotMatch(page, /document\.|window\./)
@@ -299,7 +324,13 @@ test('captured media strip exposes a wider row for horizontal swipe', async () =
   const strip = await readFile('components/camera/CaptureStrip.uvue', 'utf8')
   assert.match(strip, /<scroll-view[^>]*class="capture-strip-scroll"[^>]*direction="horizontal"/)
   assert.match(strip, /class="capture-strip-row"[^>]*:style="\{ width: stripRowWidth \}"/)
-  assert.match(strip, /stripRowWidth\s*=\s*computed\([^\n]*mediaItems\.value\.length\s*\*\s*168/)
+  // 缩略图之间的间距收窄到 12rpx 以内，照片多了也不至于把画面挤散。
+  const thumbGap = parseInt(/\.capture-thumb-wrap\s*\{[^}]*margin-right:\s*(\d+)rpx/.exec(strip)?.[1] ?? '0')
+  assert.ok(thumbGap > 0 && thumbGap <= 12, `缩略图之间的间距需要收窄，当前 ${thumbGap}rpx`)
+  // 内容宽度必须按每张缩略图实际尺寸加实际间距计算，改尺寸或改间距时不能漏改这里。
+  const thumbSize = parseInt(/\.capture-thumb \{ width: (\d+)rpx;/.exec(strip)?.[1] ?? '0')
+  const rowStep = parseInt(/mediaItems\.value\.length \* (\d+)/.exec(strip)?.[1] ?? '0')
+  assert.equal(rowStep, thumbSize + thumbGap, `横向内容宽度必须按缩略图 ${thumbSize}rpx + ${thumbGap}rpx 间距计算，当前 ${rowStep}rpx`)
   assert.match(strip, /\.capture-thumb-wrap\s*\{[^}]*flex-shrink:\s*0/)
 })
 

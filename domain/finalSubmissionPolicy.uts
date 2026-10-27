@@ -29,18 +29,51 @@ export function isPhotoUploaded(photo: UTSJSONObject | null): boolean {
 }
 
 /**
+ * 判断 draft 照片是否仍被某个已保存的疵点持有：
+ * 疵点编辑中暂存的 draft 照片在“保存疵点”时才激活上传、“取消编辑”时删除；
+ * 一旦没有任何存活疵点持有它（如中途杀进程残留），它既不会被上传也无法由用户处理，
+ * 属于可丢弃残留，不应永远阻断最终提交。
+ * @param photo 单条照片记录
+ * @param defects 当前报告的全部疵点记录
+ * @returns 是否仍被存活疵点持有
+ */
+function isDraftHeldByLiveDefect(photo: UTSJSONObject | null, defects: UTSJSONObject[] | null): boolean {
+  if (String(photo?.ownerType ?? '').trim().toLowerCase() !== 'defect') return false
+  const ownerIds = new Set<string>()
+  ;(Array.isArray(defects) ? defects : ([] as UTSJSONObject[])).forEach((defect) => {
+    const defectId = String(defect?.defectId ?? defect?.id ?? '').trim()
+    if (defectId !== '') ownerIds.add(defectId)
+  })
+  if (ownerIds.size === 0) return false
+  const ownerId = String(photo?.ownerId ?? photo?.defectId ?? '').trim()
+  return ownerId !== '' && ownerIds.has(ownerId)
+}
+
+/**
  * 汇总最终提交前的图片状态，并返回可直接展示给用户的阻断原因。
+ * defects 为当前报告的疵点列表：仍被存活疵点持有的 draft 照片照常阻断（等待用户保存/取消疵点），
+ * 无人持有的孤儿 draft 视为残留直接忽略。
  * @param photos 当前报告的全部图片记录
+ * @param defects 当前报告的全部疵点记录，缺省时按空列表处理
  * @returns 含 ready、数量统计和阻断提示文案的结果对象
  */
-export function evaluateFinalSubmissionPhotos(photos: UTSJSONObject[] | null): UTSJSONObject {
+export function evaluateFinalSubmissionPhotos(photos: UTSJSONObject[] | null, defects: UTSJSONObject[] | null = null): UTSJSONObject {
   const source = Array.isArray(photos) ? photos.filter(isPhotoRecord) : ([] as UTSJSONObject[])
-  const unfinished = source.filter((photo) => !isPhotoUploaded(photo))
+  const unfinished = source.filter((photo) => {
+    if (isPhotoUploaded(photo)) return false
+    const status = String(photo?.uploadStatus ?? '').trim().toLowerCase()
+    return !(status === 'draft' && !isDraftHeldByLiveDefect(photo, defects))
+  })
   const failedStatuses = new Set(['failed', 'error', 'needs_attention'])
   const failedCount = unfinished.filter((photo) => {
     return failedStatuses.has(String(photo?.uploadStatus ?? '').trim().toLowerCase())
   }).length
   const pendingCount = unfinished.length
+  const draftCount = source.filter((photo) => {
+    if (isPhotoUploaded(photo)) return false
+    const status = String(photo?.uploadStatus ?? '').trim().toLowerCase()
+    return status === 'draft' && !isDraftHeldByLiveDefect(photo, defects)
+  }).length
 
   return {
     ready: pendingCount === 0,
@@ -48,6 +81,7 @@ export function evaluateFinalSubmissionPhotos(photos: UTSJSONObject[] | null): U
     uploadedCount: source.length - pendingCount,
     pendingCount,
     failedCount,
+    draftCount,
     message: pendingCount > 0
       ? `仍有 ${pendingCount} 张图片未上传完成，请联网后重试`
       : ''

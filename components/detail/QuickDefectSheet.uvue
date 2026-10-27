@@ -5,7 +5,7 @@
 				<view class="dialog-head">
 					<AppButton class="head-action" variant="icon" icon-type="close" :icon-size="24" icon-color="#334155" @press="closeSheet" />
 					<text class="dialog-title">{{ translateText(isEditing ? '编辑疵点' : '新增疵点') }}</text>
-					<AppButton class="header-camera" variant="icon" icon-type="camera" :icon-size="28" icon-color="#1a5f3f" :disabled="atPhotoLimit" @press="addPhoto" />
+					<AppButton class="header-camera" variant="icon" icon-type="camera" :icon-size="28" icon-color="#1a5f3f" @press="addPhoto" />
 				</view>
 				<scroll-view class="dialog-body" direction="vertical">
 					<view class="section media-section"><text class="label">{{ translateText('媒体库') }}</text><InspectionMediaGrid :photos="draft.photos" add-label="拍照" @capture-media="addPhoto" @remove-media="removePhoto" @preview-media="previewPhoto" @retry-media="retryPhoto" /></view>
@@ -31,8 +31,9 @@
 	import DefectCategorySheet from './DefectCategorySheet.uvue'
 	import InspectionMediaGrid from './InspectionMediaGrid.uvue'
 	import { createDefectDraft, getDefectQuantity, selectDefectQuantity, setDefectCommon, validateDefectDraft } from '../../domain/quickDefectForm.uts'
-	/** 疵点编辑草稿；quantity 按 domain/quickDefectForm.uts 的 createDefectDraft/selectDefectQuantity 取值：1-19 的数字、'other' 文案，普遍性疵点为 null。 */
-	type DefectDraft = { type: string, photos: UTSJSONObject[], quantity: number | string | null, customQuantity: string, commonFlag: number, defectCode: string, defectDesc: string, checkItemName: string, checkItemId: string, description: string, tier1Code: string, tier2Code: string, tier3Code: string }
+	import { resolveDefectCategoryPath } from '../../domain/defectCategoryPath.uts'
+	/** 疵点编辑草稿；身份与关联字段（id/defectId/checkItemResultId/sonPlanId）必须在类型中声明，否则 UTSJSONObject as DefectDraft 转换会裁掉它们，导致照片 ownerId 与保存后的疵点 id 对不上。 */
+	type DefectDraft = { id: string, defectId: string, type: string, photos: UTSJSONObject[], quantity: number | string | null, customQuantity: string, commonFlag: number, defectCode: string, defectDesc: string, checkItemName: string, checkItemId: string, checkItemResultId: string, sonPlanId: string | null, description: string, tier1Code: string, tier2Code: string, tier3Code: string }
 	const props = defineProps({ visible: { type: Boolean, default: false }, editing: { type: Boolean, default: false }, defect: { type: Object, default: () => ({}) }, items: { type: Array, default: () => [] }, levelOptions: { type: Array, default: () => [] }, categoryTree: { type: Array, default: () => [] } })
 	const emit = defineEmits(['close', 'save', 'delete', 'add-photo', 'remove-photo', 'preview-photo', 'retry-photo'])
 	const draft = ref<DefectDraft>(createDefectDraft({}) as DefectDraft)
@@ -49,16 +50,21 @@
 	const dialogMaxHeight = computed((): string => windowHeightPx(0.9))
 	/** 使用打开弹层时的业务状态，不因新疵点拍照生成本地 ID 而误判编辑。 */
 	const isEditing = computed((): boolean => props.editing)
-	/** 达到媒体数量上限时停用顶部拍照入口。 */
-	const atPhotoLimit = computed((): boolean => draft.value.photos.length >= 30)
 	/** 优先显示带入的检查点名称，老数据仅有 ID 时从清单中回填。 */
 	const selectedItemLabel = computed((): string => {
 		if (draft.value.checkItemName) return draft.value.checkItemName
 		const item = (props.items as UTSJSONObject[]).find((candidate: UTSJSONObject) => firstNonEmptyText([candidate['baseItemId'], candidate['itemId'], candidate['id']], '') === draft.value.checkItemId)
 		return item != null ? firstNonEmptyText([item['itemName'], item['name']], '') : ''
 	})
-	/** 返回已选疵点类别的编码和名称。 */
-	const selectedCategoryLabel = computed((): string => draft.value.defectCode ? `${draft.value.defectCode}: ${draft.value.defectDesc}` : '点击以选择疵点类别')
+	/** 返回已选疵点类别的编码和名称；服务端记录缺名称时按编码从分类树反查，反查不到回退编码本身。 */
+	const selectedCategoryLabel = computed((): string => {
+		if (draft.value.defectCode) {
+			if (draft.value.defectDesc) return `${draft.value.defectCode}: ${draft.value.defectDesc}`
+			const resolved = resolveDefectCategoryPath(props.categoryTree as UTSJSONObject[], { defectCode: draft.value.defectCode, tier3Code: draft.value.tier3Code, defectDesc: draft.value.defectDesc })
+			return `${draft.value.defectCode}: ${resolved.tier3Name !== '' ? resolved.tier3Name : draft.value.defectCode}`
+		}
+		return '点击以选择疵点类别'
+	})
 	/** 用传入疵点重置编辑草稿，保留只读的检查项关联。 */
 	function resetDraft(defect: UTSJSONObject): void { draft.value = createDefectDraft(defect) as DefectDraft }
 	/** 选择疵点严重等级。 */
@@ -75,8 +81,8 @@
 	function closeCategorySheet(): void { showCategorySheet.value = false }
 	/** 将分类组件返回的三级编码和名称写入疵点草稿。 */
 	function applyCategory(category: UTSJSONObject): void { draft.value = { ...draft.value, tier1Code: (category['tier1Code'] ?? '').toString(), tier2Code: (category['tier2Code'] ?? '').toString(), tier3Code: (category['tier3Code'] ?? '').toString(), defectCode: (category['defectCode'] ?? '').toString(), defectDesc: (category['defectDesc'] ?? '').toString() }; closeCategorySheet() }
-	/** 请求页面使用原生相机给当前疵点添加本地图片。 */
-	function addPhoto(): void { if (draft.value.photos.length < 30) emit('add-photo', draft.value) }
+	/** 请求页面使用原生相机给当前疵点添加本地图片；无张数上限，入口始终保持可用。 */
+	function addPhoto(): void { emit('add-photo', draft.value) }
 	/** 请求页面删除当前疵点图片。 */
 	function removePhoto(photo: UTSJSONObject): void { emit('remove-photo', { defect: draft.value, photo }) }
 	/** 请求页面预览当前疵点图片。 */

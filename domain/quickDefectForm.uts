@@ -1,17 +1,34 @@
 /**
  * 从服务端或本地疵点恢复编辑草稿，保留检查项和合并验货关联。
+ * 服务端记录只带三级编码时（defectCode 有值、defectDesc 为空），以 tier3Code 兜底，
+ * 保证编辑弹层仍能按编码反查并展示完整类别名称。
  * @param defect 服务端或本地疵点记录
  * @returns 归一化后的疵点编辑草稿
  */
+/**
+ * 生成前端本地的疵点 ID（对齐 H5 createDefectId）：
+ * crypto.randomUUID 可用时直接使用，否则用 毫秒时间戳+随机串 兜底，
+ * 保证同一毫秒内反复"新建疵点"也不会产生相同 ID 导致照片错挂。
+ * @returns 带缺陷前缀的全局唯一本地疵点 ID
+ */
+export function createDefectId(): string {
+  const random = Math.random().toString(16).slice(2, 8)
+  return `defect-${Date.now()}-${random}`
+}
+
 export function createDefectDraft(defect: UTSJSONObject): UTSJSONObject {
   const commonFlag = parseInt(String(defect?.commonFlag ?? (defect?.isCommon ? 1 : 0))) === 1 ? 1 : 0
   const quantity = parseFloat(String(defect?.quantity === 'other' ? defect?.customQuantity : (defect?.quantity ?? defect?.defectCount ?? 1)))
   const usesOtherQuantity = defect?.quantity === 'other' || quantity > 19
+  const defectCode = String(defect?.defectCode ?? defect?.tier3Code ?? '')
   return {
     ...defect,
+    id: defect?.id ?? defect?.defectId ?? '',
+    defectId: defect?.defectId ?? defect?.id ?? '',
     type: String(defect?.type ?? defect?.defectType ?? 'MINOR').toUpperCase(),
-    tier1Code: defect?.tier1Code ?? '', tier2Code: defect?.tier2Code ?? '', tier3Code: defect?.tier3Code ?? '',
-    defectCode: defect?.defectCode ?? '', defectDesc: defect?.defectDesc ?? '',
+    tier1Code: defect?.tier1Code ?? '', tier2Code: defect?.tier2Code ?? '', tier3Code: defect?.tier3Code ?? defectCode,
+    defectCode,
+    defectDesc: defect?.defectDesc ?? '',
     quantity: commonFlag === 1 ? null : (usesOtherQuantity ? 'other' : (quantity > 0 ? quantity : 1)),
     customQuantity: commonFlag === 1 ? '' : (usesOtherQuantity ? String(defect?.customQuantity ?? quantity) : ''),
     commonFlag,

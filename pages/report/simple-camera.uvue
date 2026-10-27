@@ -2,16 +2,16 @@
 	<view class="camera-page">
 		<TopSafeArea background-color="#000000" />
 		<view class="preview-wrap">
-			<view class="preview-frame" :style="previewFrameStyle">
+			<view class="preview-frame">
 				<camera v-if="cameraMounted" :key="cameraSession" id="camera" class="camera-preview" :resolution="'high'" :device-position="devicePosition" :flash="flashMode"
 					photo-resolution="original" :frame-size="'large'" @initdone="handleCameraInitDone" @error="handleCameraError" @stop="handleCameraStop">
 				</camera>
-			</view>
-			<view class="preview-overlay">
-				<text v-if="previewStateText !== ''" class="preview-state-text">{{ previewStateText }}</text>
-				<view v-if="recording" class="recording-badge">
-					<view class="recording-dot"></view>
-					<text class="recording-label">{{ recordingLabel }}</text>
+				<view class="preview-overlay">
+					<text v-if="previewStateText !== ''" class="preview-state-text">{{ previewStateText }}</text>
+					<view v-if="recording" class="recording-badge">
+						<view class="recording-dot"></view>
+						<text class="recording-label">{{ recordingLabel }}</text>
+					</view>
 				</view>
 			</view>
 			<view class="orientation-badge">
@@ -25,16 +25,16 @@
 			</view>
 		</view>
 		<view class="capture-panel">
-			<CaptureControlBar :flash-on="flashOn" :zoom-options="zoomOptions" :active-zoom="activeZoom" :capture-mode="captureMode"
+			<CaptureControlBar :flash-on="flashOn" :zoom-options="zoomOptions" :active-zoom="activeZoom" :capture-mode="captureMode" :device-rotation="deviceRotation"
 				:recording="recording" :shutter-disabled="shutterDisabled" :finish-enabled="captureEnabled"
 				@cancel-capture="handleCancelCapture" @toggle-flash="toggleFlash" @change-zoom="applyZoom"
 				@switch-capture-mode="switchCaptureMode" @switch-camera="switchCamera"
 				@press-shutter="takePhoto" @finish-capture="handleFinishCapture" />
 			<CaptureStrip :items="captureItems" :device-rotation="deviceRotation" @remove-photo="removeCapture" @preview-photo="openCapturePreview" />
 		</view>
-		<CapturePreview :visible="showCapturePreview" :source="selectedCapturePath" :index="selectedCaptureIndex"
+		<CapturePreview :visible="showCapturePreview" :source="selectedCapturePath" :index="selectedCaptureIndex" :total="captureTotal"
 			:is-video="selectedCaptureIsVideo" :saving="previewEditSaving"
-			@close-preview="closeCapturePreview" @edited="savePreviewEdit" />
+			@close-preview="closeCapturePreview" @edited="savePreviewEdit" @change-index="handlePreviewIndexChange" />
 	</view>
 </template>
 
@@ -47,17 +47,15 @@
 	import CaptureStrip from '../../components/camera/CaptureStrip.uvue'
 	import CapturePreview from '../../components/camera/CapturePreview.uvue'
 	import CaptureControlBar from '../../components/camera/CaptureControlBar.uvue'
-	import { appendCapturePaths, buildCameraCaptureEventName, buildCameraZoomOptions, DEFAULT_CAPTURE_ASPECT_RATIO, formatVideoDurationLabel, replaceCapturePath, resolveCaptureAspectRatio, resolveCaptureFrameSize } from '../../domain/cameraCapture.uts'
+	import { appendCapturePaths, buildCameraCaptureEventName, buildCameraZoomOptions, formatVideoDurationLabel, replaceCapturePath } from '../../domain/cameraCapture.uts'
 	import { isDeviceCaptureCancelledMessage, normalizeDeviceCapturePaths } from '../../domain/deviceCapture.uts'
 	import { applyGyroscopeSample, createDeviceRotationState, DEVICE_ROTATION_UNKNOWN, needsOrientationReset, resolveAccelerometerFailureLabel, resolveAccelerometerRotation, resolveCaptureRotation, resolveDeviceOrientationLabel, resolveGyroscopeFailureLabel, resolveUprightRotation } from '../../domain/imageOrientation.uts'
 	import { MAX_VIDEO_DURATION_SECONDS } from '../../domain/photoUploadPolicy.uts'
 	import { createAppMediaPersistenceService } from '../../services/mediaPersistenceService.uts'
-	import { createAppMediaOrientationService, nativeImageSourceCandidates } from '../../services/mediaOrientationService.uts'
+	import { createAppMediaOrientationService } from '../../services/mediaOrientationService.uts'
 
 	/** 等待相机 initdone 的兜底时长；超时只提示仍在启动，不能据此判断权限状态。 */
 	const CAMERA_READY_TIMEOUT_MS = 4000
-	/** 底部面板高度（rpx）：控制条 140 + 照片区 168；照片条贴屏幕最下方，不再留底部安全区。 */
-	const CAPTURE_PANEL_HEIGHT_RPX = 308
 	/** 录像启动兜底时长：原生回调不返回时也必须恢复快门，避免取景页整体失去响应。 */
 	const VIDEO_START_TIMEOUT_MS = 4000
 	/** 陀螺仪首帧等待时长：超时没有任何采样即可判定设备或基座没有可用的陀螺仪。 */
@@ -108,10 +106,6 @@
 	const orientationDiagnostic = ref('')
 	/** 最近一次加速度计原始读数文案（x / y）：真机核对轴向符号标定用，按固定间隔节流刷新。 */
 	const orientationSampleLabel = ref('')
-	/** 取景框使用的成片比例（宽/高）：默认系统相机的 4:3，首张成片读出真实像素后按设备实际输出校正。 */
-	const captureAspectRatio = ref(DEFAULT_CAPTURE_ASPECT_RATIO)
-	/** 成片比例是否已由真实照片校正过：只成功校正一次，避免每张照片都读取图片信息。 */
-	let captureAspectRatioResolved = false
 	const showCapturePreview = ref(false)
 	const selectedCaptureIndex = ref(-1)
 	const previewEditSaving = ref(false)
@@ -119,6 +113,8 @@
 	const selectedCapturePath = computed((): string => selectedCaptureIndex.value >= 0 && selectedCaptureIndex.value < capturedPaths.value.length ? capturedPaths.value[selectedCaptureIndex.value] : '')
 	/** 录像可播放预览，但只允许照片进入标注编辑器。 */
 	const selectedCaptureIsVideo = computed((): boolean => selectedCaptureIndex.value >= 0 && capturedMediaTypes.value[selectedCaptureIndex.value] === 'video')
+	/** 已拍媒体总数：大图预览用它显示"第几张 / 共几张"，并据此在首尾隐藏左右箭头。 */
+	const captureTotal = computed((): number => capturedPaths.value.length)
 	/** 页面销毁标记：相机回调与定时器可能晚于卸载返回，卸载后不再写入响应式状态。 */
 	let disposed = false
 	/** 本次拍摄是否已向调用方广播结果：完成、取消与硬件返回三条路径只允许结算一次。 */
@@ -200,18 +196,6 @@
 	const orientationAngleLabel = computed((): string => deviceRotation.value >= 0 ? `${deviceRotation.value}°` : '')
 	/** 方向未知时在角标上说明原因：基座缺模块、启动失败，还是监听成功但收不到数据。 */
 	const orientationDiagnosticText = computed((): string => orientationDiagnostic.value === '' ? '' : translateText(orientationDiagnostic.value))
-	/**
-	 * 取景框样式：按成片比例铺满取景区（短边贴边、长边溢出），溢出的部分由取景区裁掉，
-	 * 因此既不拉伸取景画面也不留黑边；可用高度扣掉顶部安全区与底部面板（控制条 + 照片区）。
-	 */
-	const previewFrameStyle = computed((): UTSJSONObject => {
-		const info = uni.getWindowInfo()
-		const insets = info.safeAreaInsets
-		const availableHeight = info.windowHeight - insets.top - uni.rpx2px(CAPTURE_PANEL_HEIGHT_RPX)
-		const size = resolveCaptureFrameSize(info.windowWidth, availableHeight, captureAspectRatio.value)
-		return { width: `${size.width}px`, height: `${size.height}px` }
-	})
-
 	/** 传给底部照片区的媒体列表；未完成回正的照片只显示占位，不泄露歪图预览。 */
 	const captureItems = computed((): UTSJSONObject[] => capturedPaths.value.map((path: string, index: number): UTSJSONObject => {
 		const mediaType = index < capturedMediaTypes.value.length ? capturedMediaTypes.value[index] : 'image'
@@ -261,11 +245,11 @@
 		const pages = getCurrentPages()
 		if (pages.length >= 2) {
 			const previousPage = pages[pages.length - 2]
-			try {
-				previousPage?.$vm?.$callMethod('setImage', { path: savedPaths[0], paths: savedPaths })
-			} catch (error) {
-				// 调用页没有暴露 setImage（例如示例页）时忽略，结果事件仍然可用。
-				console.log('setImage callback skipped', error)
+			// 上一页用 uni.$on 事件接收（如验货详情页）时没有 setImage 方法，
+			// 无条件 $callMethod 会在原生层报 method setImage not found，必须先探测再调用。
+			const previousVm = previousPage?.$vm
+			if (previousVm != null && typeof (previousVm as any)['setImage'] === 'function') {
+				previousVm.$callMethod('setImage', { path: savedPaths[0], paths: savedPaths })
 			}
 		}
 		uni.navigateBack()
@@ -339,45 +323,9 @@
 	}
 
 	/**
-	 * 用首张成片校正取景框比例：读的是照片真实像素，设备实际输出不是 4:3 时取景框会自动跟着成片比例。
-	 * 只成功校正一次；读取失败时保持 4:3 默认值，不影响拍照与回正。
-	 * @param path 自定义相机或系统相机返回的本地图片路径
-	 */
-	function learnCaptureAspectRatio(path: string): void {
-		if (disposed) return
-		applyCaptureAspectRatioFromImage(path, 0)
-	}
-
-	/**
-	 * 按候选地址依次读取图片信息：原生绝对路径可能需要 file:// 前缀，某个地址失败时继续试下一个。
-	 * @param path 本地图片路径
-	 * @param candidateIndex 候选地址下标，越界即视为读取失败
-	 */
-	function applyCaptureAspectRatioFromImage(path: string, candidateIndex: number): void {
-		const candidates = nativeImageSourceCandidates(path)
-		if (candidateIndex >= candidates.length) {
-			console.log('capture aspect ratio unavailable, keep the default 4:3 framing', path)
-			return
-		}
-		uni.getImageInfo({
-			src: candidates[candidateIndex],
-			success: (info) => {
-				if (disposed) return
-				if (captureAspectRatioResolved) return
-				captureAspectRatioResolved = true
-				captureAspectRatio.value = resolveCaptureAspectRatio(info.width, info.height)
-			},
-			fail: () => {
-				if (disposed) return
-				applyCaptureAspectRatioFromImage(path, candidateIndex + 1)
-			}
-		})
-	}
-
-	/**
 	 * 拍照成功即记录临时路径；照片回正成功前只显示占位，拍摄期间不做复制、不落盘。
 	 * 只有新增的非重复路径才补充类型与时长，顺序与最终回传列表一致；
-	 * 图片同时按成片像素校正取景比例并排入回正队列，优先读取 EXIF；自定义相机缺少 EXIF 时使用快门姿态，视频不做处理。
+	 * 图片排入回正队列，优先读取 EXIF；自定义相机缺少 EXIF 时使用快门姿态，视频不做处理。
 	 * @param paths 自定义相机或系统相机返回的本地路径列表
 	 * @param mediaType image 或 video
 	 * @param durationSeconds 视频时长（照片传 0）
@@ -391,7 +339,6 @@
 			capturedMediaTypes.value = [...capturedMediaTypes.value, mediaType]
 			capturedDurations.value = [...capturedDurations.value, durationSeconds]
 			if (mediaType === 'image') {
-				learnCaptureAspectRatio(path)
 				enqueueMediaUpright(path, shutterRotation)
 			}
 		}
@@ -546,6 +493,20 @@
 	/** 关闭预览时只切换可见性，不立刻清空路径，避免 vapor 已销毁子树读取新入参。 */
 	function closeCapturePreview(): void {
 		if (!previewEditSaving.value) showCapturePreview.value = false
+	}
+
+	/**
+	 * 大图预览里点击左右箭头或左右滑动后切换当前预览下标。
+	 * 复用 openCapturePreview 的方向检查：目标媒体仍在回正或已回正失败时不切换，
+	 * 避免用滑动绕过检查看到尚未回正的原图（页面仍是媒体列表的唯一来源）。
+	 * @param index 目标下标，由预览组件按相邻偏移算出
+	 */
+	function handlePreviewIndexChange(index: number): void {
+		if (disposed || !showCapturePreview.value) return
+		if (index < 0 || index >= capturedPaths.value.length) return
+		const path = capturedPaths.value[index]
+		if (pendingUprightPaths.value.includes(path) || failedUprightPaths.value.includes(path)) return
+		selectedCaptureIndex.value = index
 	}
 
 	/** 只替换已回正图片的编辑结果，不允许通过编辑操作绕过方向失败检查。 */
@@ -1032,14 +993,15 @@
 
 <style>
 	.camera-page { flex: 1; background-color: #000000; }
-	/* 取景画面占据上方主要区域（约 85% 窗口高度），底部面板按控制条内容高度自适应，确保操作不被裁切。 */
-	/* 取景区铺满中间区域，取景框按成片比例放大后被这里裁掉溢出部分；照片条贴屏幕最下方，不再留底部安全区。 */
+	/* 取景区占据底部面板以上的全部空间，照片条贴屏幕最下方，不再留底部安全区。 */
+	/* 取景框就是取景区本身：宽度占满、高度用满剩余空间，取景画面因此能看到最多内容。 */
 	.preview-wrap { flex: 1; position: relative; overflow: hidden; align-items: center; justify-content: center; background-color: #000000; }
-	.preview-frame { position: relative; overflow: hidden; background-color: #000000; }
+	.preview-frame { flex: 1; width: 100%; position: relative; overflow: hidden; background-color: #000000; }
 	.camera-preview { width: 100%; height: 100%; }
+	/* 取景状态与录像角标跟随取景画面居中显示。 */
 	.preview-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; align-items: center; justify-content: center; }
 	.preview-state-text { padding: 16rpx 28rpx; color: #f8fafc; font-size: 26rpx; border-radius: 16rpx; background-color: rgba(15, 23, 42, 0.72); }
-	/* 方向角标固定在取景画面左上角：实时显示横屏还是竖屏，便于核对底部照片的跟随转向。 */
+	/* 方向角标固定在取景画面左上角：实时显示横屏还是竖屏，便于核对底部照片与快门图标的跟随转向。 */
 	.orientation-badge { position: absolute; top: 24rpx; left: 24rpx; flex-direction: row; align-items: center; padding: 8rpx 20rpx; border-radius: 24rpx; background-color: rgba(15, 23, 42, 0.76); }
 	.orientation-badge-state { color: #f8fafc; font-size: 24rpx; }
 	.orientation-badge-angle { margin-left: 10rpx; color: #facc15; font-size: 22rpx; }

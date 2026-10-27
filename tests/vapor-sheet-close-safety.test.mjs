@@ -87,8 +87,8 @@ test('vapor sheet components guard every watcher with the visibility flag', asyn
 test('check item sheet skips draft resets while hidden and rebuilds on open', async () => {
   const source = await readFile('components/detail/CheckItemSheet.uvue', 'utf8')
   assert.match(source, /function isSheetVisible\(\): boolean \{ return props\.visible === true \}/)
-  assert.match(source, /watch\(\(\): UTSJSONObject => itemData\.value, \(item: UTSJSONObject\) => \{ if \(isSheetVisible\(\)\) resetDraft\(item\) \}\)/)
-  assert.match(source, /watch\(\(\): boolean => props\.visible, \(visible: boolean\) => \{ if \(visible\) resetDraft\(itemData\.value\) \}, \{ immediate: true \}\)/)
+  assert.match(source, /watch\(\(\): UTSJSONObject => itemData\.value, \(item: UTSJSONObject\) => \{ if \(isSheetVisible\(\)\) resetDraft\(item, !isSameEditingItem\(item\)\) \}\)/)
+  assert.match(source, /watch\(\(\): boolean => props\.visible, \(visible: boolean\) => \{ if \(visible\) resetDraft\(itemData\.value, true\) \}, \{ immediate: true \}\)/)
   assert.doesNotMatch(source, /resetDraft\(item\), \{ immediate: true, deep: true \}/)
   assert.match(source, /watch\(\(\): number => props\.sortSavedRevision, \(\) => \{ if \(isSheetVisible\(\)\) completePhotoSort\(\) \}\)/)
 })
@@ -126,10 +126,11 @@ test('photo sort, preview and markup sheets avoid writes after closing', async (
   assert.match(previewSheet, /finally \{ if \(props\.visible\) openingEditor\.value = false \}/)
   const markupEditor = await readFile('components/detail/ImageMarkupEditor.uvue', 'utf8')
   assert.match(markupEditor, /watch\(\(\): string => `\$\{props\.visible\}:\$\{props\.source\}`, \(\) => \{\s*if \(!props\.visible\) return/)
-  assert.match(markupEditor, /function queryStageRect\(\) \{\s*if \(!props\.visible\) return/)
+  /* 画布初始化与原图读取的异步回调同样先校验可见性，避免关闭后写回已销毁的子树。 */
+  assert.match(markupEditor, /function refreshEditorWhenReady\(\) \{\s*if \(!props\.visible/)
   /* 导出结束后的回写同样带守卫；保存态改为在重置时解除，避免重新打开后按钮失效。 */
   assert.match(markupEditor, /if \(props\.visible\) emit\('edited', resultPath\)/)
-  assert.match(markupEditor, /\} finally \{ if \(props\.visible\) saving\.value = false \}/)
+  assert.match(markupEditor, /\} finally \{\s*if \(props\.visible\) saving\.value = false/)
   assert.match(markupEditor, /saving\.value = false\s*\n\t\}/)
 })
 

@@ -38,12 +38,12 @@
 			</view>
 
 					<view class="card-right">
-						<checkbox-group v-if="selectionMode" class="merge-check-wrapper" :class="{ selected: selectionChecked, disabled: selectionDisabled }" @change="toggleMergeSelection" @click.stop>
-							<label class="merge-check-label">
-								<checkbox v-if="!selectionDisabled" class="merge-checkbox" :value="operationId" :checked="selectionChecked" :disabled="selectionDisabled" color="#16a34a" />
-								<text v-if="selectionDisabled" class="merge-disabled-mark">—</text>
-							</label>
-						</checkbox-group>
+						<view v-if="selectionMode" class="merge-check-wrapper" :class="{ selected: selectionChecked, disabled: selectionDisabled }" @click.stop="toggleMergeSelection">
+							<view v-if="selectionDisabled" class="merge-disabled-mark">—</view>
+							<view v-else class="merge-checkbox" :class="{ checked: selectionChecked }">
+								<text v-if="selectionChecked" class="merge-check-mark">✓</text>
+							</view>
+						</view>
 						<view v-else-if="isMerged" class="merge-flag">
 							<MergePlanIcon />
 						</view>
@@ -154,6 +154,7 @@
 	import MergePlanIcon from '../icons/MergePlanIcon.uvue'
 	import MoreDotsIcon from '../icons/MoreDotsIcon.uvue'
 		import { buildCardActions, resolveCardClickAction, resolveDownloadState } from '../../domain/listActionViewModel.uts'
+	import { openUrlInSystemBrowser } from '../../domain/openUrlInSystemBrowser.uts'
 		import { normalizePlanStatus } from '../../domain/planViewModel.uts'
 	import { extractCopiedPlanId, firstNonEmptyText, getItemInspectType, getItemParentPlanId, getMergePreviewRow, getPlanInspectTypeLabel, getPlanOperationId } from '../../domain/searchViewModel.uts'
 	import { initializeRuntime, planApi, planDownloadService, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
@@ -231,8 +232,6 @@
 	function formatDate(value: string): string { if (value.length >= 10) return value.substring(0, 10); return value === '' ? '-' : value }
 	/** 将嵌套卡片计划收窄为可索引的 UTS 对象。 */
 	const itemData = computed((): UTSJSONObject => props.item as UTSJSONObject)
-	/** 提前计算卡片操作 ID，避免原生模板直接调用导入函数。 */
-	const operationId = computed((): string => getPlanOperationId(props.item))
 	/** 限制重置确认弹层的可用窗口高度。 */
 	const resetModalMaxHeight = computed((): string => windowHeightPx(0.9))
 
@@ -281,10 +280,9 @@
 	const statusClass = computed((): string => status.value === 3 ? 'completed' : (status.value === 1 ? 'in-progress' : 'planned'))
 	/** 允许下载需要页面开启下载入口，且本机未下载、未被他人锁定。 */
 	const canDownload = computed((): boolean => props.showDownload && !isLockedByOther.value && !isDownloaded.value)
-	/** 将下载清单转换为复制验货选择弹层使用的选项。 */
-	type DownloadTemplateOption = { value: string, label: string, raw: UTSJSONObject }
 	type CardAction = { key: string, label: string, icon: string, disabled: boolean }
-	const downloadTemplateOptions = computed((): DownloadTemplateOption[] => downloadTemplates.value.map((item: UTSJSONObject): DownloadTemplateOption => ({ value: (item['id'] ?? '').toString(), label: (item['name'] ?? '').toString(), raw: item })))
+	/** 将下载清单转换为选择弹层选项；只传 UTSJSONObject 字面量，自定义类型实例跨组件传递会在 Android 原生端触发类型转换闪退。 */
+	const downloadTemplateOptions = computed((): UTSJSONObject[] => downloadTemplates.value.map((item: UTSJSONObject): UTSJSONObject => ({ value: (item['id'] ?? '').toString(), label: (item['name'] ?? '').toString(), raw: item })))
 	/** 返回下载弹层当前清单显示名称。 */
 	const downloadTemplateDisplayName = computed((): string => downloadTemplateName.value !== '' ? downloadTemplateName.value : '请选择清单')
 		/** 按下载状态、计划状态和合并标记生成卡片“更多”操作项。 */
@@ -622,10 +620,11 @@
 			if (planId === '') { uni.showToast({ title: t('计划ID缺失，无法进入详情'), icon: 'none' }); return }
 			uni.navigateTo({ url: `/pages/report/detail?planId=${encodeURIComponent(planId)}` })
 		}
-		/** 从卡片操作菜单打开本地详情或报告摘要。 */
-		function openDetailPageFromMenu(): void {
+		/** 临时验证【显示报告】是否能调起系统浏览器打开百度；调起失败则提示用户。 */
+		function openReportInBrowser(): void {
 			closeActionSheet()
-			openDetailPage()
+			if (openUrlInSystemBrowser('https://www.baidu.com')) return
+			uni.showToast({ title: t('唤起浏览器失败'), icon: 'none' })
 		}
 
 		/**
@@ -650,10 +649,7 @@
 				showResetModal.value = true
 				return
 			}
-			if (actionKey === 'report') {
-				openDetailPageFromMenu()
-				return
-			}
+			if (actionKey === 'report') { openReportInBrowser(); return }
 			closeActionSheet()
 			if (actionKey === 'unlock') {
 				if (props.delegateRemoteActions) {
@@ -807,11 +803,12 @@
 	.goods-extra-value { color: #64748b; font-size: 20rpx; }
 		.card-right { position: absolute; top: 20rpx; right: 24rpx; z-index: 1; flex-direction: row; align-items: center; }
 		.merge-flag { width: 46rpx; height: 46rpx; margin-right: 10rpx; border-radius: 12rpx; background-color: #ecfdf5; border-width: 2rpx; border-color: #a7f3d0; align-items: center; justify-content: center; box-shadow: 0 2rpx 4rpx rgba(5, 150, 105, 0.12); }
-		.merge-check-wrapper { width: 68rpx; height: 68rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 18rpx; background-color: #ffffff; align-items: center; justify-content: center; box-shadow: 0 3rpx 8rpx rgba(15, 23, 42, 0.08); }
+		.merge-check-wrapper { width: 56rpx; height: 56rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 14rpx; background-color: #ffffff; align-items: center; justify-content: center; box-shadow: 0 3rpx 8rpx rgba(15, 23, 42, 0.08); }
 		.merge-check-wrapper.selected { border-color: #22c55e; background-color: #ecfdf5; }
 		.merge-check-wrapper.disabled { border-color: #94a3b8; background-color: #cbd5e1; }
-		.merge-check-label { width: 68rpx; height: 68rpx; align-items: center; justify-content: center; }
-		.merge-checkbox { width: 42rpx; height: 42rpx; }
+		.merge-checkbox { width: 36rpx; height: 36rpx; border-width: 2rpx; border-style: solid; border-color: #94a3b8; border-radius: 6rpx; background-color: #ffffff; align-items: center; justify-content: center; }
+		.merge-checkbox.checked { border-color: #1a5f3f; background-color: #1a5f3f; }
+		.merge-check-mark { color: #ffffff; font-size: 24rpx; font-weight: 700; line-height: 28rpx; }
 		.merge-disabled-mark { color: #475569; font-size: 36rpx; font-weight: 700; line-height: 42rpx; }
 		.card-more-btn { width: 46rpx; height: 46rpx; background-color: #f8fafc; border-width: 2rpx; border-color: #e2e8f0; border-radius: 12rpx; flex-direction: row; align-items: center; justify-content: center; box-shadow: 0 2rpx 4rpx rgba(15, 23, 42, 0.08); }
 		.menu-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); z-index: 2000; justify-content: flex-end; }
