@@ -131,7 +131,7 @@
 	.preview-video { width: 100%; border-radius: 20rpx; background-color: #020617; }
 	.meta { margin-top: 18rpx; align-items: center; color: #fff; font-size: 23rpx; }
 	.actions { margin-top: 24rpx; flex-direction: row; }
-	.button { flex: 1; height: 80rpx; margin: 0 8rpx; border-radius: 17rpx; font-size: 25rpx; }
+	.button { flex: 1; height: 80rpx; line-height: 80rpx; margin: 0 8rpx; border-radius: 17rpx; font-size: 25rpx; }
 	.close-button { color: #334155; background-color: #fff; }
 	.edit-button { color: #fff; background-color: #16a34a; }
 	.delete-button { color: #fff; background-color: #ef4444; }

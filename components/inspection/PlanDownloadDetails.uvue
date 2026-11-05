@@ -43,7 +43,7 @@
 </script>
 
 <style>
-	.download-info-scroll { flex: 1; }
+	.download-info-scroll { flex: 1; min-height: 0; }
 	.merged-info-card { margin-bottom: 20rpx; padding: 20rpx 8rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; background-color: #ffffff; }
 	.merged-title { margin-bottom: 14rpx; color: #334155; font-size: 26rpx; font-weight: 600; }
 	.copy-info-card { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; border-radius: 24rpx; padding: 16rpx 8rpx; }

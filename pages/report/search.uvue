@@ -524,7 +524,7 @@
 	.search-input { flex: 1; height: 84rpx; padding: 0 32rpx; border-radius: 42rpx; background-color: #f5f5f5; font-size: 30rpx; color: #0f172a; }
 	.scan-icon { width: 76rpx; margin-left: 20rpx; align-items: center; justify-content: center; }
 	.search-button-container { padding: 12rpx 32rpx 24rpx; }
-	.search-btn { height: 88rpx; color: #ffffff; background-color: #00b050; border-radius: 44rpx; font-size: 30rpx; font-weight: 600; }
+	.search-btn { height: 88rpx; line-height: 88rpx; color: #ffffff; background-color: #00b050; border-radius: 44rpx; font-size: 30rpx; font-weight: 600; }
 	.result-toolbar { padding: 16rpx 32rpx 24rpx; border-top-width: 2rpx; border-top-color: #f1f5f9; background-color: #ffffff; }
 	.result-toolbar-left { flex: 1; }
 	.result-title { color: #1e293b; font-size: 30rpx; font-weight: 700; }
@@ -532,7 +532,7 @@
 	.toolbar-btn { min-width: 128rpx; height: 64rpx; margin-left: 16rpx; padding: 0 24rpx; flex-direction: row; align-items: center; justify-content: center; border-width: 2rpx; border-style: solid; border-color: #d1d5db; border-radius: 16rpx; background-color: #ffffff; }
 	.toolbar-btn-text { color: #0f172a; font-size: 26rpx; font-weight: 600; text-align: center; }
 	.merge-action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; flex-direction: row; padding: 20rpx 28rpx 40rpx; border-top-width: 2rpx; border-top-color: #e5e7eb; background-color: #ffffff; }
-	.merge-action-btn { height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.merge-action-btn { height: 88rpx; line-height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.merge-action-btn.cancel { width: 200rpx; margin-right: 20rpx; border-width: 2rpx; border-color: #e5e7eb; color: #334155; background-color: #ffffff; }
 	.merge-action-btn.confirm { flex: 1; color: #ffffff; background-color: #03ae4f; }
 	.merge-action-btn.confirm.disabled { background-color: #9ca3af; }
@@ -562,7 +562,7 @@
 	.search-pagination-bar { padding: 24rpx 0 12rpx; }
 	.pagination-info { color: #64748b; font-size: 24rpx; text-align: center; }
 	.pagination-actions { margin-top: 20rpx; }
-	.page-nav-btn, .load-more-btn { flex: 1; height: 80rpx; margin: 0 8rpx; border-radius: 24rpx; font-size: 28rpx; }
+	.page-nav-btn, .load-more-btn { flex: 1; height: 80rpx; line-height: 80rpx; margin: 0 8rpx; border-radius: 24rpx; font-size: 28rpx; }
 	.page-nav-btn { color: #ffffff; background-color: #00b050; }
 	.load-more-btn { color: #94a3b8; background-color: #e2e8f0; }
 	.content-space { height: 36rpx; }

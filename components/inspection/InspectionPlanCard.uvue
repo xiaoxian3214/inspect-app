@@ -153,8 +153,7 @@
 	import AppIcon from '../icons/AppIcon.uvue'
 	import MergePlanIcon from '../icons/MergePlanIcon.uvue'
 	import MoreDotsIcon from '../icons/MoreDotsIcon.uvue'
-		import { buildCardActions, resolveCardClickAction, resolveDownloadState } from '../../domain/listActionViewModel.uts'
-	import { openUrlInSystemBrowser } from '../../domain/openUrlInSystemBrowser.uts'
+		import { buildCardActions, buildReportPcUrl, resolveCardClickAction, resolveDownloadState } from '../../domain/listActionViewModel.uts'
 		import { normalizePlanStatus } from '../../domain/planViewModel.uts'
 	import { extractCopiedPlanId, firstNonEmptyText, getItemInspectType, getItemParentPlanId, getMergePreviewRow, getPlanInspectTypeLabel, getPlanOperationId } from '../../domain/searchViewModel.uts'
 	import { initializeRuntime, planApi, planDownloadService, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
@@ -620,11 +619,22 @@
 			if (planId === '') { uni.showToast({ title: t('计划ID缺失，无法进入详情'), icon: 'none' }); return }
 			uni.navigateTo({ url: `/pages/report/detail?planId=${encodeURIComponent(planId)}` })
 		}
-		/** 临时验证【显示报告】是否能调起系统浏览器打开百度；调起失败则提示用户。 */
-		function openReportInBrowser(): void {
+		/** 将当前验货计划的环境对应报告地址复制到剪贴板，成功后提示用户到浏览器粘贴打开。 */
+		function copyReportLink(): void {
 			closeActionSheet()
-			if (openUrlInSystemBrowser('https://www.baidu.com')) return
-			uni.showToast({ title: t('唤起浏览器失败'), icon: 'none' })
+			const reportUrl = buildReportPcUrl(getDetailPlanId())
+			if (reportUrl === '') {
+				uni.showToast({ title: t('计划ID缺失，无法查看报告'), icon: 'none' })
+				return
+			}
+			uni.setClipboardData({
+				data: reportUrl,
+				success: (): void => uni.showModal({ title: t('报告链接已复制'), content: t('请前往浏览器粘贴打开报告链接'), showCancel: false }),
+				fail: (error): void => {
+					console.warn('[copyReportLink] 复制报告链接失败', error)
+					uni.showToast({ title: t('复制报告链接失败，请重试'), icon: 'none' })
+				}
+			})
 		}
 
 		/**
@@ -649,7 +659,7 @@
 				showResetModal.value = true
 				return
 			}
-			if (actionKey === 'report') { openReportInBrowser(); return }
+			if (actionKey === 'report') { copyReportLink(); return }
 			closeActionSheet()
 			if (actionKey === 'unlock') {
 				if (props.delegateRemoteActions) {
@@ -818,7 +828,7 @@
 	.confirm-message { padding: 32rpx 40rpx; color: #475569; font-size: 28rpx; line-height: 44rpx; }
 	.confirm-actions { flex-direction: row; padding: 0 40rpx 40rpx; }
 	.confirm-actions.single-row { padding-top: 20rpx; }
-	.confirm-btn { height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.confirm-btn { height: 88rpx; line-height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.confirm-btn.cancel { flex: 1; margin-right: 20rpx; color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
 	.confirm-btn.agree { flex: 1; background-color: #03ae4f; color: #ffffff; }
 	.confirm-btn.full { width: 100%; }
@@ -831,7 +841,7 @@
 	.copy-label { color: #64748b; font-size: 28rpx; }
 	.copy-value { max-width: 420rpx; color: #111827; font-size: 28rpx; text-align: right; }
 	.copy-actions { flex-direction: row; margin-top: 36rpx; }
-	.copy-btn { flex: 1; height: 88rpx; margin: 0 12rpx; border-radius: 20rpx; font-size: 32rpx; font-weight: 600; }
+	.copy-btn { flex: 1; height: 88rpx; line-height: 88rpx; margin: 0 12rpx; border-radius: 20rpx; font-size: 32rpx; font-weight: 600; }
 	.copy-btn.close { background-color: #ffffff; border-width: 2rpx; border-color: #e5e7eb; color: #334155; }
 	.copy-btn.create { background-color: #03ae4f; color: #ffffff; }
 	.reset-tip { margin-top: 28rpx; color: #b45309; font-size: 28rpx; text-align: center; }

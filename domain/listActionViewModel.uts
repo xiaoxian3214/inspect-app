@@ -20,7 +20,7 @@ const CARD_ACTIONS = {
 }
 
 /**
- * 生成计划在 PC 报告页的浏览地址，供【显示报告】调起系统浏览器。
+ * 生成计划在 PC 报告页的浏览地址，供【显示报告】复制后在外部浏览器打开。
  * planId 为空时返回空串，调用方应提示计划 ID 缺失而不是打开无效链接。
  * H5 站基地址从 API_BASE_URL 自动推导：
  *   测试环境 (含 'test') → https://inspecttest.letright.com.cn/qcm/#/pages/report/detail-pc?planId=xxx

@@ -293,6 +293,7 @@
 
 	.login-btn {
 		height: 48px;
+		line-height: 48px;
 		color: #ffffff;
 		background-color: #00b050;
 		border-radius: 24px;

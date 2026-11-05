@@ -86,39 +86,25 @@ test('list page opens the APK link in the system browser', async () => {
   assert.doesNotMatch(service, /uni\.downloadFile|uni\.openDocument|uni\.installApk|downloadAndOpen|cancelDownload/)
 })
 
-/** 跨平台打开浏览器函数（domain/openUrlInSystemBrowser.uts）用 Android ACTION_VIEW 调起系统浏览器。 */
-test('shared domain function uses Android ACTION_VIEW and iOS UIApplication', async () => {
+/** 普通业务模块不直接引入 UIKit 或 Android 原生 SDK，统一复用跨平台插件。 */
+test('shared browser helper delegates URLs to the existing openSchema plugin', async () => {
   const shared = await readFile('domain/openUrlInSystemBrowser.uts', 'utf8')
+  assert.match(shared, /import \{ openSchema \} from '@\/uni_modules\/uts-openSchema'/)
   assert.match(shared, /export function openUrlInSystemBrowser\(url: string\): boolean/)
   assert.match(shared, /const target = url\.trim\(\)/)
-  assert.doesNotMatch(shared, /String\(url/)
-  assert.match(shared, /new Intent\(Intent\.ACTION_VIEW, Uri\.parse\(target\)\)/)
-  assert.match(shared, /UTSAndroid\.getUniActivity\(\)/)
-  assert.match(shared, /activity\.startActivity\(intent\)/)
-  assert.doesNotMatch(shared, /plus\./)
+  assert.match(shared, /!target\.startsWith\('http/)
+  assert.match(shared, /openSchema\(target\)/)
+  assert.doesNotMatch(shared, /qcm-open-url|from 'UIKit'|from 'Foundation'|from 'android\.content/)
 })
 
-/** iOS 端同样用 uts 插件调起系统浏览器（UIApplication.open），卡片的平台守卫必须覆盖 APP-IOS，否则会固定提示“唤起浏览器失败”。 */
-test('openUrlInSystemBrowser shared domain function ships both Android and iOS implementations', async () => {
-  const shared = await readFile('domain/openUrlInSystemBrowser.uts', 'utf8')
-  // 安全边界：只放行 http/https
-  assert.match(shared, /!target\.startsWith\('http/)
-  assert.doesNotMatch(shared, /String\(url/)
-  // Android 分支：Intent.ACTION_VIEW + Uri.parse + startActivity
-  assert.match(shared, /Intent\.ACTION_VIEW/)
-  assert.match(shared, /Uri\.parse/)
-  assert.match(shared, /activity\.startActivity\(intent\)/)
-  // iOS 分支：URL 解析 + UIApplication 调起
-  assert.match(shared, /UIApplication\.shared\.canOpenURL/)
-  assert.match(shared, /UIApplication\.shared\.open/)
-  assert.doesNotMatch(shared, /plus\./)
-  // 卡片通过 domain 导入并使用同一函数
+/** iOS 浏览器插件直接提交 HTTPS 地址，不使用可误拦截的 canOpenURL 查询。 */
+test('existing openSchema plugin supports native Android and iOS URL opening', async () => {
+  const android = await readFile('uni_modules/uts-openSchema/utssdk/app-android/index.uts', 'utf8')
+  const ios = await readFile('uni_modules/uts-openSchema/utssdk/app-ios/index.uts', 'utf8')
+  assert.match(android, /Intent\.ACTION_VIEW/)
+  assert.match(ios, /UIApplication\.shared\.open\(uri!\)/)
+  assert.doesNotMatch(ios.split('export const openSchema')[1]?.split('export const canOpenURL')[0] ?? '', /if \(canOpenURL\(url\)\)/)
   const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
-  assert.match(card, /openUrlInSystemBrowser/)
-  assert.match(card, /from '\.\.\/\.\.\/domain\/openUrlInSystemBrowser\.uts'/)
-  const reportBranch = card.split("if (actionKey === 'report')")[1]?.split('return')[0] ?? ''
-  assert.match(reportBranch, /openReportInBrowser/)
-  // list 页面也使用同一函数打开下载链接
-  const list = await readFile('pages/report/list.uvue', 'utf8')
-  assert.match(list, /openUrlInSystemBrowser/)
+  assert.doesNotMatch(card, /from '\.\.\/\.\.\/domain\/openUrlInSystemBrowser\.uts'/)
+  assert.match(card.split("if (actionKey === 'report')")[1]?.split('return')[0] ?? '', /copyReportLink/)
 })

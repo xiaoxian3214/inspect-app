@@ -2,8 +2,10 @@
 	<page-container :show="visible" position="bottom" :overlay="true" :z-index="2200" overlay-style="background-color: rgba(15, 23, 42, 0.42)" @clickoverlay="closeSheet">
 		<view class="sheet-panel" :style="{ maxHeight: sheetMaxHeight, minHeight: sheetMinHeight }">
 			<text class="sheet-title">{{ translateText('拆分验货') }}</text>
-			<text class="summary-text">{{ resultItems.length > 0 ? '拆分完成，可逐项下载' : `将拆分 ${previewItems.length} 条合并明细` }}</text>
-			<PlanMemberTable :items="displayItems" :downloadable="resultItems.length > 0" :localized-headers="true" :downloaded-ids="downloadedIds" :submitting="submitting" @download="downloadItem" />
+			<scroll-view class="split-body" :style="{ maxHeight: splitBodyMaxHeight }" direction="vertical">
+				<text class="summary-text">{{ resultItems.length > 0 ? '拆分完成，可逐项下载' : `将拆分 ${previewItems.length} 条合并明细` }}</text>
+				<PlanMemberTable :items="displayItems" :downloadable="resultItems.length > 0" :localized-headers="true" :downloaded-ids="downloadedIds" :submitting="submitting" @download="downloadItem" />
+			</scroll-view>
 			<view class="sheet-actions">
 				<button class="action-button secondary" :disabled="submitting" @click="closeSheet">{{ translateText('关闭') }}</button>
 				<button v-if="resultItems.length === 0" class="action-button primary" :disabled="submitting || previewItems.length === 0" @click="confirmSplit">
@@ -34,6 +36,8 @@
 	const sheetMaxHeight = computed((): string => windowHeightPx(0.88))
 	/** 拆分弹层整体最小高度，内容少时面板也能占据约 80% 窗口，与合并确认阶段一致。 */
 	const sheetMinHeight = computed((): string => windowHeightPx(0.8))
+	/** 拆分成员区最大高度：为标题和底部按钮预留空间后，合并成员较多时在成员区内纵向滚动，避免内容被裁且按钮够不到。 */
+	const splitBodyMaxHeight = computed((): string => windowHeightPx(0.62))
 
 	/**
 	 * 返回拆分前预览或拆分后的结果列表。
@@ -65,9 +69,10 @@
 <style>
 	.sheet-panel { width: 100%; padding: 36rpx 32rpx 48rpx; border-top-left-radius: 40rpx; border-top-right-radius: 40rpx; background-color: #ffffff; }
 	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }
+	.split-body { width: 100%; flex: 1; min-height: 0; }
 	.summary-text { margin-top: 14rpx; color: #64748b; font-size: 26rpx; }
 	.sheet-actions { flex-direction: row; margin-top: 32rpx; }
-	.action-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.action-button { flex: 1; height: 88rpx; line-height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.action-button.secondary { color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
 	.action-button.primary { color: #ffffff; background-color: #16a34a; }
 </style>

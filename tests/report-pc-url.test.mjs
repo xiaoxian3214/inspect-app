@@ -33,15 +33,30 @@ test('report url is empty without a plan id', () => {
   assert.equal(viewModel.buildReportPcUrl('   '), '')
 })
 
-/** 临时验收：卡片“显示报告”直接让系统浏览器打开百度，而非在 App 内导航。 */
-test('card report action opens Baidu in the system browser for verification', async () => {
+/** 当前配置为测试环境，报告链接需包含 /qcm/ 路径与真实计划 ID。 */
+test('current environment builds a test report link', async () => {
+  const config = await readFile('config/appConfig.uts', 'utf8')
+  const base = config.match(/^export const API_BASE_URL = '([^']+)'/m)?.[1]
+  assert.equal(base, 'https://inspecttest.letright.com.cn/qcm')
+  assert.equal(viewModel.buildReportPcUrl('2111252079774388226'),
+    'https://inspect.letright.com.cn/#/pages/report/detail-pc?planId=2111252079774388226')
+  const current = await import(`data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(viewModelSource.replace("const API_BASE_URL = 'https://inspect.letright.com.cn'", `const API_BASE_URL = '${base}'`))).toString('base64')}`)
+  assert.equal(current.buildReportPcUrl('2111252079774388226'),
+    'https://inspecttest.letright.com.cn/qcm/#/pages/report/detail-pc?planId=2111252079774388226')
+})
+
+/** 显示报告只复制对应环境真实计划链接，并给出浏览器打开提示；失败不得误称已复制。 */
+test('card report action copies report URL and tells user to open it in a browser', async () => {
   const source = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
-  assert.match(source, /function openReportInBrowser\(\): void/)
-  assert.match(source, /openUrlInSystemBrowser\('https:\/\/www\.baidu\.com'\)/)
+  const handler = source.split('function copyReportLink(): void {')[1]?.split('\n\t\t}')[0] ?? ''
+  assert.match(handler, /buildReportPcUrl\(getDetailPlanId\(\)\)/)
+  assert.match(handler, /if \(reportUrl === ''\)[\s\S]*?计划ID缺失，无法查看报告/)
+  assert.match(handler, /uni\.setClipboardData\(\{[\s\S]*?data: reportUrl/)
+  assert.match(handler, /success: \(\): void => uni\.showModal\(\{[\s\S]*?报告链接已复制[\s\S]*?请前往浏览器粘贴打开报告链接/)
+  assert.match(handler, /fail: \(error\): void =>[\s\S]*?复制报告链接失败，请重试/)
+  assert.doesNotMatch(handler, /openUrlInSystemBrowser|https:\/\/www\.baidu\.com/)
   const reportBranch = source.split("if (actionKey === 'report')")[1]?.split('return')[0] ?? ''
-  assert.match(reportBranch, /openReportInBrowser/)
-  assert.doesNotMatch(reportBranch, /openDetailPageFromMenu|openDetailPage\(\)/)
-  assert.match(source, /title: t\('唤起浏览器失败'\), icon: 'none'/)
+  assert.match(reportBranch, /copyReportLink\(\)/)
 })
 
 /** 菜单不展示无法打开外部页面的 navigator 测试占位。 */
@@ -51,7 +66,9 @@ test('action sheet has no ineffective navigator test link', async () => {
 })
 
 /** 计划ID缺失的提示需要补齐三语翻译。 */
-test('missing plan id toast has translations', async () => {
+test('report link clipboard messages have translations', async () => {
   const translations = await readFile('i18n/translate.uts', 'utf8')
-  assert.equal(translations.match(/\["计划ID缺失，无法查看报告",/g)?.length, 2)
+  for (const message of ['计划ID缺失，无法查看报告', '报告链接已复制', '请前往浏览器粘贴打开报告链接', '复制报告链接失败，请重试']) {
+    assert.equal(translations.split(`\u0022${message}\u0022,`).length - 1, 2, `${message} 需要英文及越南文翻译`)
+  }
 })

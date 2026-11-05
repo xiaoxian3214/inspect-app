@@ -3,22 +3,24 @@
 		<view class="sheet-panel" :style="{ maxHeight: sheetMaxHeight, minHeight: sheetMinHeight }">
 			<text class="sheet-title">{{ translateText(stage === 'type' ? '选择合并验货类型' : '确认合并以下验货数据') }}</text>
 
-			<view v-if="stage === 'type'" class="section">
-				<text class="section-label">{{ translateText('验货类型') }}</text>
-				<view class="type-grid">
-					<view v-for="(row, rowIndex) in typeRows" :key="rowIndex" class="type-row">
-						<view v-for="cell in row" :key="cell.value" class="type-cell">
-							<view v-if="cell.placeholder" class="type-chip placeholder"></view>
-							<view v-else class="type-chip" :class="{ active: selectedInspectType == cell.value }" @click="selectInspectType(cell.value)">
-								<text class="type-chip-text" :class="{ active: selectedInspectType == cell.value }">{{ cell.label }}</text>
+			<scroll-view v-if="stage === 'type'" class="type-body" :style="{ maxHeight: typeBodyMaxHeight }" direction="vertical">
+				<view class="section">
+					<text class="section-label">{{ translateText('验货类型') }}</text>
+					<view class="type-grid">
+						<view v-for="(row, rowIndex) in typeRows" :key="rowIndex" class="type-row">
+							<view v-for="cell in row" :key="cell.value" class="type-cell">
+								<view v-if="cell.placeholder" class="type-chip placeholder"></view>
+								<view v-else class="type-chip" :class="{ active: selectedInspectType == cell.value }" @click="selectInspectType(cell.value)">
+									<text class="type-chip-text" :class="{ active: selectedInspectType == cell.value }">{{ cell.label }}</text>
+								</view>
 							</view>
 						</view>
 					</view>
+					<text v-if="inspectTypeOptions.length === 0" class="empty-text">{{ translateText('暂无可选验货类型') }}</text>
 				</view>
-				<text v-if="inspectTypeOptions.length === 0" class="empty-text">{{ translateText('暂无可选验货类型') }}</text>
-			</view>
+			</scroll-view>
 
-			<view v-else>
+			<scroll-view v-else class="confirm-body" :style="{ maxHeight: confirmBodyMaxHeight }" direction="vertical">
 				<text class="summary-text">{{ translateText('已选择 {count} 条计划', { count: selectedItems.length }) }}</text>
 				<view class="merge-table">
 					<view class="merge-table-header">
@@ -40,10 +42,11 @@
 						<view class="picker-value">{{ translateText(selectedTemplateName ?? '请选择清单') }}</view>
 					</picker>
 				</view>
-				<view v-if="mergedPlanId !== ''" class="success-box">
-					<text class="success-title">{{ translateText('合并成功') }}</text>
-					<text class="success-text">{{ translateText('可立即下载并保存到本地。') }}</text>
-				</view>
+			</scroll-view>
+
+			<view v-if="mergedPlanId !== '' && stage !== 'type'" class="success-box">
+				<text class="success-title">{{ translateText('合并成功') }}</text>
+				<text class="success-text">{{ translateText('可立即下载并保存到本地。') }}</text>
 			</view>
 
 			<view class="sheet-actions">
@@ -91,8 +94,12 @@
 	const sheetMaxHeight = computed((): string => windowHeightPx(0.88))
 	/** 当前是否处于“确认合并以下验货数据”阶段。 */
 	const confirmStage = computed((): boolean => props.stage !== 'type')
-	/** 确认阶段明细全部展开、不内滚，弹层整体加高到至少 70% 窗口高；类型阶段保持自然高度。 */
+	/** 确认阶段弹层整体加高到至少 70% 窗口高，给可滚动明细区留出足够可视高度；类型阶段保持自然高度。 */
 	const sheetMinHeight = computed((): string => confirmStage.value ? windowHeightPx(0.7) : '0px')
+	/** 确认阶段明细区最大高度：为标题、清单模板与底部按钮预留空间后，超出的计划在明细区内纵向滚动，避免数据多时撑出屏幕却无法滑动。 */
+	const confirmBodyMaxHeight = computed((): string => windowHeightPx(0.62))
+	/** 类型阶段类型网格最大高度：验货类型较多或系统字号放大时在弹层内纵向滚动，避免把“开始选择”按钮顶出屏幕。 */
+	const typeBodyMaxHeight = computed((): string => windowHeightPx(0.55))
 	/** 将检查类型字典转换为模板可读取的选项。 */
 	const displayTypes = computed((): MergeOption[] => (props.inspectTypeOptions as UTSJSONObject[]).map((raw: UTSJSONObject): MergeOption => ({ value: (raw['value'] ?? '').toString(), label: (raw['label'] ?? '').toString() })))
 	/**
@@ -183,6 +190,7 @@
 	.sheet-title { color: #111827; font-size: 38rpx; font-weight: 700; }
 	.section { margin-top: 30rpx; }
 	.section-label { color: #334155; font-size: 28rpx; font-weight: 600; }
+	.type-body { width: 100%; }
 	.type-grid { margin-top: 20rpx; }
 	.type-row { flex-direction: row; }
 	.type-cell { flex: 1; margin-left: 10rpx; margin-right: 10rpx; margin-bottom: 16rpx; }
@@ -192,6 +200,7 @@
 	.type-chip-text { color: #9ca3af; font-size: 26rpx; line-height: 36rpx; text-align: center; }
 	.type-chip-text.active { color: #047857; font-weight: 600; }
 	.summary-text { margin-top: 24rpx; color: #166534; font-size: 28rpx; font-weight: 600; }
+	.confirm-body { width: 100%; flex: 1; min-height: 0; }
 	.merge-table { margin-top: 18rpx; border-width: 2rpx; border-color: #e5e7eb; border-radius: 20rpx; overflow: hidden; }
 	.merge-table-header, .merge-table-row { flex-direction: row; align-items: center; }
 	.merge-table-header { background-color: #f8fafc; }
@@ -204,7 +213,7 @@
 	.success-title { color: #166534; font-size: 28rpx; font-weight: 700; }
 	.success-text { margin-top: 6rpx; color: #15803d; font-size: 24rpx; }
 	.sheet-actions { flex-direction: row; margin-top: 32rpx; }
-	.action-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.action-button { flex: 1; height: 88rpx; line-height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.action-button.secondary { color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
 	.action-button.primary { color: #ffffff; background-color: #16a34a; }
 </style>

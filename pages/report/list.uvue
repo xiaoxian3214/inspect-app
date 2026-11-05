@@ -1038,7 +1038,7 @@
 	.tab-text { margin-top: 4px; color: #ffffff; font-size: 13px; line-height: 16px; }
 	.tab-badge { position: absolute; top: 4px; right: 10px; min-width: 18px; height: 18px; padding: 0 5px; color: #ffffff; background-color: #ff4444; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; }
 	.merge-action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; flex-direction: row; padding: 20rpx 28rpx 40rpx; border-top-width: 2rpx; border-top-color: #e5e7eb; background-color: #ffffff; }
-	.merge-action-btn { height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.merge-action-btn { height: 88rpx; line-height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.merge-action-btn.cancel { width: 200rpx; margin-right: 20rpx; border-width: 2rpx; border-color: #e5e7eb; color: #334155; background-color: #ffffff; }
 	.merge-action-btn.confirm { flex: 1; color: #ffffff; background-color: #03ae4f; }
 	.merge-action-btn.confirm.disabled { background-color: #9ca3af; }
@@ -1048,10 +1048,10 @@
 	.tip-card { margin: 16px; padding: 28px 20px; border-radius: 18px; background-color: #ffffff; align-items: center; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04); }
 	.tip-title { color: #1e293b; font-size: 18px; font-weight: 600; text-align: center; }
 	.tip-sub { margin-top: 10px; color: #94a3b8; font-size: 13px; line-height: 20px; text-align: center; }
-	.retry-btn { min-width: 120px; height: 40px; margin-top: 18px; color: #ffffff; background-color: #16a34a; border-radius: 20px; font-size: 14px; }
+	.retry-btn { min-width: 120px; height: 40px; line-height: 40px; margin-top: 18px; color: #ffffff; background-color: #16a34a; border-radius: 20px; font-size: 14px; }
 	.group-list { padding: 16px 0 0; }
 	.inline-notice { margin: 0 16px 12px; padding: 10px 12px; border-radius: 12px; color: #c2410c; background-color: #fff7ed; font-size: 12px; line-height: 18px; }
-	.local-refresh-btn { height: 36px; margin: 0 16px 12px; color: #15803d; background-color: #ecfdf5; border-radius: 10px; font-size: 13px; }
+	.local-refresh-btn { height: 36px; line-height: 36px; margin: 0 16px 12px; color: #15803d; background-color: #ecfdf5; border-radius: 10px; font-size: 13px; }
 	.plan-group { margin: 0 16px 14px; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05); }
 	.order-header { padding: 12px 14px 10px; background-color: #f5f5f5; flex-direction: row; align-items: center; justify-content: space-between; }
 	.group-select-all { width: 56rpx; height: 56rpx; border-width: 2rpx; border-color: #cbd5e1; border-radius: 14rpx; background-color: #ffffff; align-items: center; justify-content: center; box-shadow: 0 3rpx 8rpx rgba(15, 23, 42, 0.08); }
@@ -1066,10 +1066,10 @@
 	.supplier-name { color: #64748b; font-size: 12px; }
 	.order-date { color: #94a3b8; font-size: 12px; }
 	.pagination-bar { padding: 10px 16px 0; }
-	.load-more-btn { height: 40px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
+	.load-more-btn { height: 40px; line-height: 40px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
 	.pagination-info { margin-top: 10px; color: #64748b; font-size: 12px; text-align: center; }
 	.pagination-actions { flex-direction: row; margin-top: 10px; }
-	.page-nav-btn { flex: 1; height: 40px; margin: 0 4px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
+	.page-nav-btn { flex: 1; height: 40px; line-height: 40px; margin: 0 4px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
 	.content-space { height: 100px; }
 	.fab { position: fixed; right: 20px; bottom: 40px; width: 60px; height: 60px; border-radius: 30px; align-items: center; justify-content: center; background-color: #05b552; box-shadow: 0 8px 16px rgba(5, 181, 82, 0.32); z-index: 1200; }
 </style>

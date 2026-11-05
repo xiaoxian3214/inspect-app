@@ -155,7 +155,7 @@
 	.date-text { color: #334155; font-size: 26rpx; text-align: center; }
 	.date-separator { margin: 0 16rpx; color: #94a3b8; font-size: 26rpx; }
 	.sheet-actions { margin-top: 32rpx; }
-	.action-button { flex: 1; height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.action-button { flex: 1; height: 88rpx; line-height: 88rpx; margin: 0 10rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.action-button.secondary { color: #334155; border-width: 2rpx; border-color: #e2e8f0; background-color: #ffffff; }
 	.action-button.primary { color: #ffffff; background-color: #16a34a; }
 </style>

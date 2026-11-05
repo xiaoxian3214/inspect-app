@@ -67,17 +67,72 @@ test('search flow sheets share the page-container popup pattern', async () => {
 /**
  * 【确认合并以下验货数据】弹层契约。
  *
- * H5 基准（list.vue merge-confirm-modal）：明细表整体随弹窗自然展开，表格本身没有内部滚动；
- * App 端原实现给表格套了 max-height: 360rpx 的 scroll-view，条目稍多就要上下滚动，
- * 与 H5 不一致且小屏上操作局促。要求：明细表不再内滚、全部展开；确认阶段弹层加高。
+ * 缺陷（数据多时无法滑动）：H5 基准（list.vue merge-confirm-modal）虽然限制 80vh，
+ * 但浏览器会给超出部分纵向滚动条；App 端面板同样以 88% 窗口高兜底，却没有任何滚动容器，
+ * 已选计划一多，超出面板的明细被直接裁掉：用户既看不到剩余计划，也够不到底部按钮。
+ * 要求：标题与底部操作固定在滚动区之外，明细表格 + 清单模板放进纵向 scroll-view，
+ * 滚动高度按窗口比例限制，面板继续以窗口高度兜底。
  */
-test('merge confirm sheet expands rows without inner scrolling and grows taller', async () => {
+test('merge confirm sheet scrolls overflowing rows and keeps actions reachable', async () => {
   const source = await readFile('components/search/MergePlanSheet.uvue', 'utf8')
-  // 明细表不得再套 scroll-view 或 max-height 限制
+  const template = source.split('</template>')[0]
+  const style = source.split('<style>')[1] ?? ''
+  // 明细区包在纵向 scroll-view 中：占满面板剩余高度，并以窗口比例高度兜底
+  const scrollTag = template.match(/<scroll-view[^>]*confirm-body[^>]*>/)?.[0] ?? ''
+  assert.match(scrollTag, /direction="vertical"/)
+  assert.match(scrollTag, /:style="\{ maxHeight: confirmBodyMaxHeight \}"/)
+  assert.match(style, /\.confirm-body\s*\{[^}]*flex:\s*1/s)
+  assert.match(style, /\.confirm-body\s*\{[^}]*min-height:\s*0/s)
+  // 滚动高度按窗口比例计算，且低于面板 88% 上限，为标题和底部按钮留出空间
+  assert.match(source, /const confirmBodyMaxHeight = computed\(\(\): string => windowHeightPx\(0\.62\)\)/)
+  assert.match(source, /const sheetMaxHeight = computed\(\(\): string => windowHeightPx\(0\.88\)\)/)
+  // 表格与清单模板都在滚动区内
+  const bodyStart = template.indexOf(scrollTag)
+  const bodyEnd = template.indexOf('</scroll-view>', bodyStart)
+  assert.ok(bodyStart > 0 && bodyEnd > bodyStart)
+  const bodyBlock = template.slice(bodyStart, bodyEnd)
+  assert.match(bodyBlock, /class="merge-table"/)
+  assert.match(bodyBlock, /v-for="row in previewRows"/)
+  assert.match(bodyBlock, /templateNames/)
+  // 标题、合并成功提示和底部按钮都在滚动区之外，计划再多也始终可见
+  const titleIndex = template.indexOf('class="sheet-title"')
+  const successIndex = template.indexOf('class="success-box"')
+  const actionsIndex = template.indexOf('class="sheet-actions"')
+  assert.ok(titleIndex > 0 && titleIndex < bodyStart)
+  assert.ok(successIndex > bodyEnd && successIndex < actionsIndex)
+  assert.ok(actionsIndex > bodyEnd)
+  // 面板仍以窗口高度兜底，不做无限增高
+  assert.match(template, /:style="\{ maxHeight: sheetMaxHeight, minHeight: sheetMinHeight \}"/)
+  assert.match(source, /confirmStage[\s\S]*?windowHeightPx\(0\.7\)/)
+  // 只滚动整个明细区，表格自身不再单独套一层滚动容器
   assert.doesNotMatch(source, /<scroll-view[^>]*merge-table-body/)
   assert.doesNotMatch(source, /\.merge-table-body\s*\{[^}]*max-height/)
-  // 确认阶段弹层整体最小高度加高（> 50% 窗口高），不足时撑开
-  assert.match(source, /confirmStage[\s\S]*?windowHeightPx\(0\.7\)/)
-  // 面板通过 :style 绑定 confirm 阶段高度，同时保留 maxHeight 兜底
-  assert.match(source, /:style="\{ maxHeight: sheetMaxHeight, minHeight: sheetMinHeight \}"/)
+})
+
+/**
+ * 【选择合并验货类型】阶段的溢出兜底。
+ *
+ * 类型弹层原先与确认阶段同病：面板只以 88% 窗口高兜底，类型网格没有任何滚动容器。
+ * 字典验货类型较多或系统字号放大时，“开始选择”按钮会被顶出面板下缘、无法触达。
+ * 要求：类型网格放进纵向 scroll-view，按窗口比例限制高度，底部按钮固定在滚动区外。
+ */
+test('merge type grid scrolls when inspect types overflow the panel', async () => {
+  const source = await readFile('components/search/MergePlanSheet.uvue', 'utf8')
+  const template = source.split('</template>')[0]
+  const style = source.split('<style>')[1] ?? ''
+  const scrollTag = template.match(/<scroll-view[^>]*type-body[^>]*>/)?.[0] ?? ''
+  assert.match(scrollTag, /direction="vertical"/)
+  assert.match(scrollTag, /:style="\{ maxHeight: typeBodyMaxHeight \}"/)
+  assert.match(style, /\.type-body\s*\{[^}]*width:\s*100%/s)
+  // 类型阶段面板 minHeight 为 0，类型区不能加 flex:1（会把网格塌成 0 高），只能靠 maxHeight 限高
+  assert.doesNotMatch(style, /\.type-body\s*\{[^}]*flex:\s*1/s)
+  assert.match(source, /const typeBodyMaxHeight = computed\(\(\): string => windowHeightPx\(0\.55\)\)/)
+  const bodyStart = template.indexOf(scrollTag)
+  const bodyEnd = template.indexOf('</scroll-view>', bodyStart)
+  assert.ok(bodyStart > 0 && bodyEnd > bodyStart)
+  const bodyBlock = template.slice(bodyStart, bodyEnd)
+  assert.match(bodyBlock, /v-for="\(row, rowIndex\) in typeRows"/)
+  // “开始选择”按钮在滚动区之外，类型再多也始终可点
+  const actionsIndex = template.indexOf('class="sheet-actions"')
+  assert.ok(actionsIndex > bodyEnd)
 })
