@@ -1038,7 +1038,7 @@
 	.tab-text { margin-top: 4px; color: #ffffff; font-size: 13px; line-height: 16px; }
 	.tab-badge { position: absolute; top: 4px; right: 10px; min-width: 18px; height: 18px; padding: 0 5px; color: #ffffff; background-color: #ff4444; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; }
 	.merge-action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; flex-direction: row; padding: 20rpx 28rpx 40rpx; border-top-width: 2rpx; border-top-color: #e5e7eb; background-color: #ffffff; }
-	.merge-action-btn { height: 88rpx; line-height: 88rpx; border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
+	.merge-action-btn {  border-radius: 20rpx; font-size: 30rpx; font-weight: 600; }
 	.merge-action-btn.cancel { width: 200rpx; margin-right: 20rpx; border-width: 2rpx; border-color: #e5e7eb; color: #334155; background-color: #ffffff; }
 	.merge-action-btn.confirm { flex: 1; color: #ffffff; background-color: #03ae4f; }
 	.merge-action-btn.confirm.disabled { background-color: #9ca3af; }
@@ -1066,7 +1066,7 @@
 	.supplier-name { color: #64748b; font-size: 12px; }
 	.order-date { color: #94a3b8; font-size: 12px; }
 	.pagination-bar { padding: 10px 16px 0; }
-	.load-more-btn { height: 40px; line-height: 40px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
+	.load-more-btn { color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }
 	.pagination-info { margin-top: 10px; color: #64748b; font-size: 12px; text-align: center; }
 	.pagination-actions { flex-direction: row; margin-top: 10px; }
 	.page-nav-btn { flex: 1; height: 40px; line-height: 40px; margin: 0 4px; color: #ffffff; background-color: #16a34a; border-radius: 12px; font-size: 14px; }

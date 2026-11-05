@@ -33,30 +33,28 @@ test('report url is empty without a plan id', () => {
   assert.equal(viewModel.buildReportPcUrl('   '), '')
 })
 
-/** 当前配置为测试环境，报告链接需包含 /qcm/ 路径与真实计划 ID。 */
-test('current environment builds a test report link', async () => {
+/** 按实际配置选择正式或测试环境报告链接，避免硬编码环境导致误报。 */
+test('current environment builds its corresponding report link', async () => {
   const config = await readFile('config/appConfig.uts', 'utf8')
   const base = config.match(/^export const API_BASE_URL = '([^']+)'/m)?.[1]
-  assert.equal(base, 'https://inspecttest.letright.com.cn/qcm')
-  assert.equal(viewModel.buildReportPcUrl('2111252079774388226'),
-    'https://inspect.letright.com.cn/#/pages/report/detail-pc?planId=2111252079774388226')
+  assert.ok(base)
   const current = await import(`data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(viewModelSource.replace("const API_BASE_URL = 'https://inspect.letright.com.cn'", `const API_BASE_URL = '${base}'`))).toString('base64')}`)
+  const site = base.includes('test') ? 'https://inspecttest.letright.com.cn/qcm' : 'https://inspect.letright.com.cn'
   assert.equal(current.buildReportPcUrl('2111252079774388226'),
-    'https://inspecttest.letright.com.cn/qcm/#/pages/report/detail-pc?planId=2111252079774388226')
+    `${site}/#/pages/report/detail-pc?planId=2111252079774388226`)
 })
 
-/** 显示报告只复制对应环境真实计划链接，并给出浏览器打开提示；失败不得误称已复制。 */
-test('card report action copies report URL and tells user to open it in a browser', async () => {
+/** 显示报告直接用 App 跨平台浏览器能力打开当前环境链接；失败提示而不复制链接。 */
+test('card report action opens report URL in the system browser', async () => {
   const source = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
-  const handler = source.split('function copyReportLink(): void {')[1]?.split('\n\t\t}')[0] ?? ''
+  const handler = source.split('function openReportInBrowser(): void {')[1]?.split('\n\t\t}')[0] ?? ''
+  assert.match(source, /import \{ openUrlInSystemBrowser \} from '\.\.\/\.\.\/domain\/openUrlInSystemBrowser\.uts'/)
   assert.match(handler, /buildReportPcUrl\(getDetailPlanId\(\)\)/)
   assert.match(handler, /if \(reportUrl === ''\)[\s\S]*?计划ID缺失，无法查看报告/)
-  assert.match(handler, /uni\.setClipboardData\(\{[\s\S]*?data: reportUrl/)
-  assert.match(handler, /success: \(\): void => uni\.showModal\(\{[\s\S]*?报告链接已复制[\s\S]*?请前往浏览器粘贴打开报告链接/)
-  assert.match(handler, /fail: \(error\): void =>[\s\S]*?复制报告链接失败，请重试/)
-  assert.doesNotMatch(handler, /openUrlInSystemBrowser|https:\/\/www\.baidu\.com/)
+  assert.match(handler, /if \(!openUrlInSystemBrowser\(reportUrl\)\)[\s\S]*?唤起浏览器失败/)
+  assert.doesNotMatch(handler, /setClipboardData|window\.open|document\.|https:\/\/www\.baidu\.com/)
   const reportBranch = source.split("if (actionKey === 'report')")[1]?.split('return')[0] ?? ''
-  assert.match(reportBranch, /copyReportLink\(\)/)
+  assert.match(reportBranch, /openReportInBrowser\(\)/)
 })
 
 /** 菜单不展示无法打开外部页面的 navigator 测试占位。 */

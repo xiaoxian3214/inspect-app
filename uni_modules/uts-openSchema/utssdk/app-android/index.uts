@@ -2,17 +2,14 @@ import Intent from 'android.content.Intent'
 import Uri from 'android.net.Uri'
 import { OpenSchema, CanOpenURL } from '../interface.uts'
 
-export const openSchema : OpenSchema = function (url : string) {
-  if (canOpenURL(url)) {
-    const context = UTSAndroid.getUniActivity()!
-    const uri = Uri.parse(url)
-    const intent = new Intent(Intent.ACTION_VIEW, uri)
-    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    intent.setData(uri)
-    context.startActivity(intent)
-  } else {
-    console.error('[uts-openSchema] url param Error：', JSON.stringify(url))
-  }
+/** 直接请求系统打开网址；Android 包可见性可能使 resolveActivity 预检误判，启动失败则抛给调用方。 */
+export const openSchema : OpenSchema = function (url : string) : void {
+  if (url.length === 0) throw new Error('打开链接失败：网址为空')
+  const context = UTSAndroid.getUniActivity()!
+  const uri = Uri.parse(url)
+  const intent = new Intent(Intent.ACTION_VIEW, uri)
+  intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+  context.startActivity(intent)
 }
 
 export const canOpenURL : CanOpenURL = function (url : string) : boolean {

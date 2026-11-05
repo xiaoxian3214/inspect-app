@@ -97,6 +97,16 @@ test('shared browser helper delegates URLs to the existing openSchema plugin', a
   assert.doesNotMatch(shared, /qcm-open-url|from 'UIKit'|from 'Foundation'|from 'android\.content/)
 })
 
+/** Android 不以 resolveActivity 预检拦截 HTTPS；Android 11 包可见性限制可能误判浏览器不存在。 */
+test('Android browser open attempts ACTION_VIEW directly and reports actual launch failure', async () => {
+  const android = await readFile('uni_modules/uts-openSchema/utssdk/app-android/index.uts', 'utf8')
+  const open = android.split('export const openSchema')[1]?.split('export const canOpenURL')[0] ?? ''
+  assert.match(open, /Intent\.ACTION_VIEW/)
+  assert.match(open, /context\.startActivity\(intent\)/)
+  assert.doesNotMatch(open, /if\s*\(canOpenURL\(url\)\)|resolveActivity/)
+  assert.doesNotMatch(open, /url param Error/)
+})
+
 /** iOS 浏览器插件直接提交 HTTPS 地址，不使用可误拦截的 canOpenURL 查询。 */
 test('existing openSchema plugin supports native Android and iOS URL opening', async () => {
   const android = await readFile('uni_modules/uts-openSchema/utssdk/app-android/index.uts', 'utf8')
@@ -105,6 +115,6 @@ test('existing openSchema plugin supports native Android and iOS URL opening', a
   assert.match(ios, /UIApplication\.shared\.open\(uri!\)/)
   assert.doesNotMatch(ios.split('export const openSchema')[1]?.split('export const canOpenURL')[0] ?? '', /if \(canOpenURL\(url\)\)/)
   const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
-  assert.doesNotMatch(card, /from '\.\.\/\.\.\/domain\/openUrlInSystemBrowser\.uts'/)
-  assert.match(card.split("if (actionKey === 'report')")[1]?.split('return')[0] ?? '', /copyReportLink/)
+  assert.match(card, /import \{ openUrlInSystemBrowser \} from '\.\.\/\.\.\/domain\/openUrlInSystemBrowser\.uts'/)
+  assert.match(card.split("if (actionKey === 'report')")[1]?.split('return')[0] ?? '', /openReportInBrowser/)
 })

@@ -51,7 +51,7 @@
 	.hint { margin-top: 12rpx; color: #64748b; font-size: 23rpx; }
 	.quantity-input { height: 86rpx; margin-top: 26rpx; padding: 0 20rpx; border-width: 2rpx; border-color: #dbe3ec; border-radius: 18rpx; color: #172033; font-size: 28rpx; background-color: #f8fafc; }
 	.actions { margin-top: 28rpx; flex-direction: row; }
-	.button { flex: 1; height: 82rpx; line-height: 82rpx; margin: 0 8rpx; border-radius: 18rpx; font-size: 26rpx; }
+	.button { flex: 1; margin: 0 8rpx; border-radius: 18rpx; font-size: 26rpx; }
 	.button.cancel { color: #475569; background-color: #f1f5f9; }
 	.button.save { color: #ffffff; background-color: #03ae4f; }
 </style>

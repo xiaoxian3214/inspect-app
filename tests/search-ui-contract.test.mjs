@@ -2,6 +2,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
+/** 搜索页返回入口复用详情页的 AppIcon 返回箭头，并保留原有返回行为。 */
+test('search page uses the shared back icon instead of a text arrow', async () => {
+  const source = await readFile('pages/report/search.uvue', 'utf8')
+  const detailHeader = await readFile('components/detail/InspectionDetailHeader.uvue', 'utf8')
+  assert.match(detailHeader, /<AppIcon type="back" :size="22" color="#ffffff"\s*\/>/)
+  assert.match(source, /class="back-btn" @click="goBack"[^>]*><AppIcon type="back" :size="22" color="#03ae4f"\s*\/><\/view>/)
+  assert.match(source, /function goBack\(\): void \{ uni\.navigateBack\(\) \}/)
+  assert.match(source, /\.back-btn\s*\{[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/s)
+  assert.doesNotMatch(source, /class="back-btn"[^>]*>←/)
+})
+
 /** 搜索结果中的合并下载同样须把已选成员卡片持久化。 */
 test('merged search download forwards selected member cards', async () => {
   const source = await readFile('pages/report/search.uvue', 'utf8')
@@ -164,6 +175,16 @@ test('search toolbar filter button uses aligned view pill', async () => {
   assert.match(source, /\.toolbar-btn\s*\{[^}]*align-items:\s*center/s)
   assert.match(source, /\.toolbar-btn\s*\{[^}]*justify-content:\s*center/s)
   assert.match(source, /\.toolbar-btn\s*\{[^}]*border-width:\s*2rpx/s)
+})
+
+/** 原生 Android 的跨组件筛选值按内容比较，不能用引用严格相等导致点击后不高亮。 */
+test('filter chips compare selected values by content', async () => {
+  const source = await readFile('components/search/SearchFilterSheet.uvue', 'utf8')
+  assert.match(source, /filterDraft\.status == option\.value/g)
+  assert.match(source, /filterDraft\.inspectType == option\.value/g)
+  assert.doesNotMatch(source, /filterDraft\.(?:status|inspectType) === option\.value/)
+  assert.match(source, /@click="selectStatus\(option\.value\)"/)
+  assert.match(source, /@click="selectInspectType\(option\.value\)"/)
 })
 
 /** 筛选弹层罗列全部状态与验货类型选项，可换行且每个选项带外边框。 */
