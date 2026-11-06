@@ -86,19 +86,21 @@ test('merge confirm sheet scrolls overflowing rows and keeps actions reachable',
   // 滚动高度按窗口比例计算，且低于面板 88% 上限，为标题和底部按钮留出空间
   assert.match(source, /const confirmBodyMaxHeight = computed\(\(\): string => windowHeightPx\(0\.62\)\)/)
   assert.match(source, /const sheetMaxHeight = computed\(\(\): string => windowHeightPx\(0\.88\)\)/)
-  // 表格与清单模板都在滚动区内
+  // 表格在滚动区内，清单选择行固定在滚动区外，计划再多也无需滚动才能选清单
   const bodyStart = template.indexOf(scrollTag)
   const bodyEnd = template.indexOf('</scroll-view>', bodyStart)
   assert.ok(bodyStart > 0 && bodyEnd > bodyStart)
   const bodyBlock = template.slice(bodyStart, bodyEnd)
   assert.match(bodyBlock, /class="merge-table"/)
   assert.match(bodyBlock, /v-for="row in previewRows"/)
-  assert.match(bodyBlock, /templateNames/)
-  // 标题、合并成功提示和底部按钮都在滚动区之外，计划再多也始终可见
+  assert.doesNotMatch(bodyBlock, /class="select-field"/)
+  // 标题、清单选择行、合并成功提示和底部按钮都在滚动区之外，计划再多也始终可见
   const titleIndex = template.indexOf('class="sheet-title"')
+  const selectIndex = template.indexOf('class="select-field"')
   const successIndex = template.indexOf('class="success-box"')
   const actionsIndex = template.indexOf('class="sheet-actions"')
   assert.ok(titleIndex > 0 && titleIndex < bodyStart)
+  assert.ok(selectIndex > bodyEnd && selectIndex < successIndex)
   assert.ok(successIndex > bodyEnd && successIndex < actionsIndex)
   assert.ok(actionsIndex > bodyEnd)
   // 面板仍以窗口高度兜底，不做无限增高
@@ -107,6 +109,51 @@ test('merge confirm sheet scrolls overflowing rows and keeps actions reachable',
   // 只滚动整个明细区，表格自身不再单独套一层滚动容器
   assert.doesNotMatch(source, /<scroll-view[^>]*merge-table-body/)
   assert.doesNotMatch(source, /\.merge-table-body\s*\{[^}]*max-height/)
+})
+
+/** 清单仅在合并成功后可见；合并完成即预置默认清单，下载前仍可改选。 */
+test('merge checklist is deferred until download in both entry pages', async () => {
+  const sheet = await readFile('components/search/MergePlanSheet.uvue', 'utf8')
+  const confirmBody = sheet.split('<scroll-view v-else class="confirm-body"')[1]?.split('</scroll-view>')[0] ?? ''
+  assert.doesNotMatch(confirmBody, /class="select-field"/)
+  assert.match(sheet, /v-if="mergedPlanId !== '' && stage !== 'type'" class="section">[\s\S]*?class="select-field" @click="openTemplatePicker"/)
+  // 清单用下拉选择行展示：左侧标题、右侧值 + 展开箭头，和复制弹层的选择项样式一致
+  assert.doesNotMatch(sheet, /<picker\b/)
+  assert.match(sheet, /class="select-field" @click="openTemplatePicker"/)
+  assert.match(sheet, /class="select-label">\{\{ translateText\('清单模板'\) \}\}/)
+  assert.match(sheet, /class="select-text"[^>]*>\{\{ templateValueText \}\}/)
+  assert.match(sheet, /class="select-chevron">›<\/text>/)
+  // 选择清单改用可调高度的底部选项弹层，不再是系统 picker
+  assert.match(sheet, /import OptionSelectSheet from '\.\/OptionSelectSheet\.uvue'/)
+  assert.match(sheet, /<OptionSelectSheet[^>]*:visible="showTemplateSheet"[^>]*:options="templateOptionRows"[^>]*:selected-value="selectedTemplateId"[^>]*@confirm="confirmTemplateOption"/)
+  // 选择框优先回显页面预置的清单名称，未选择时才提示“请选择清单”
+  assert.match(sheet, /selectedTemplateName: \{ type: String, default: '' \}/)
+  assert.match(sheet, /const templateValueText = computed/)
+  assert.match(sheet, /if \(props\.selectedTemplateName != ''\) return props\.selectedTemplateName/)
+  assert.match(sheet, /name != '' \? name : translateText\('请选择清单'\)/)
+  for (const page of ['pages/report/search.uvue', 'pages/report/list.uvue']) {
+    const source = await readFile(page, 'utf8')
+    const openConfirm = source.match(/function openMergeConfirm\(\): void \{([\s\S]*?)\n\t\}/)?.[1] ?? ''
+    const merge = source.split('async function confirmMerge()')[1]?.split('async function downloadMergedPlan()')[0] ?? ''
+    const templateLoader = source.split('async function prepareMergeTemplates()')[1]?.split('async function ')[0] ?? ''
+    const defaultTemplate = source.split('function applyDefaultMergeTemplate(): void {')[1]?.split('async function ')[0] ?? ''
+    const download = source.split('async function downloadMergedPlan()')[1]?.split('async function ')[0] ?? ''
+    // 打开确认弹层时既不请求清单，也不预选清单；合并成功后才预置默认清单
+    assert.doesNotMatch(openConfirm, /loadTemplateOptions|setMergeTemplate/)
+    assert.match(openConfirm, /mergeTemplateId\.value = ''/)
+    assert.match(openConfirm, /mergeTemplateName\.value = ''/)
+    assert.match(openConfirm, /mergedPlanId\.value = ''/)
+    assert.match(merge, /planOperationService\.mergePlans\(sourcePlanIds\)/)
+    assert.match(merge, /await prepareMergeTemplates\(\)[\s\S]*?applyDefaultMergeTemplate\(\)/)
+    assert.match(templateLoader, /await loadTemplateOptions\(\)/)
+    // 默认清单优先取首个已选计划自带的模板（与 H5 一致），否则退回模板列表第一条
+    assert.match(defaultTemplate, /getItemDownloadTemplate\(mergeSelectedItems\.value\[0\]\)/)
+    assert.match(defaultTemplate, /setMergeTemplate\(templateOptions\.value\[0\]\)/)
+    assert.match(source, /:selected-template-name="mergeTemplateName"/)
+    // 下载前未定清单时阻止并提示
+    assert.match(download, /if \(mergeTemplateId\.value === ''\)/)
+    assert.match(download, /t\('请选择清单'\)/)
+  }
 })
 
 /**

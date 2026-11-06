@@ -1027,16 +1027,59 @@ test('swipe cell mounts result actions only while swiping left', async () => {
   assert.match(swipeCell, /\.swipe-left-action\s*\{[^}]*z-index:\s*1/)
   assert.match(swipeCell, /function close\([^)]*\)[\s\S]*?scheduleRightActionsHide\(\)/)
   assert.match(swipeCell, /function scheduleRightActionsHide\([^)]*\)[^\n]*setTimeout\([^\n]*SWIPE_TRANSITION_MS/)
-  assert.match(swipeCell, /if \(gestureAxis !== 'horizontal'\) \{ if \(offsetX\.value >= 0\) scheduleRightActionsHide\(\); return \}/)
+  // 纵向手势（列表滚动）必须收起已展开行，而不是只处理左侧快捷区
+  assert.match(swipeCell, /if \(gestureAxis !== 'horizontal'\) \{\s*if \(offsetX\.value !== 0\) close\(\)/)
 })
 
-/** 右滑快捷块缩窄，左滑选择检查结果时不渲染左侧遮挡层。 */
+/**
+ * 侧滑行必须在任何新触摸后复位，且能兜底处理丢失的 touchend：
+ * 缺陷表现是部分机型上左/右滑完成后卡片停留在展开位置，多行叠在一起导致清单错乱。
+ * 修复约束：清单区域新触摸自增复位序号让所有行收起；手势中位移空闲超时按当前位移兜底结算。
+ */
+test('checklist swipe rows reset on new touches and settle lost touch sequences', async () => {
+  const checklist = await readFile('components/detail/ChecklistTab.uvue', 'utf8')
+  const swipeCell = await readFile('components/common/SwipeResultCell.uvue', 'utf8')
+  assert.match(checklist, /<view class="tab-content" @touchstart="closeActiveSwipe">/)
+  assert.match(checklist, /const swipeResetKey = ref\(0\)/)
+  assert.match(checklist, /function closeActiveSwipe\(\) \{ swipeResetKey\.value = swipeResetKey\.value \+ 1 \}/)
+  assert.equal((checklist.match(/:reset-key="swipeResetKey"/g) ?? []).length, 2)
+  assert.match(swipeCell, /resetKey: \{ type: Number, default: 0 \}/)
+  assert.match(swipeCell, /watch\(\(\): number => props\.resetKey, \(\) => \{ if \(offsetX\.value !== 0\) \{ close\(\); suppressedClick = true \} \}\)/)
+  // 复位收起本行时吞掉紧随的点击；结果按钮上轻点可选结果，滑动则收起本行
+  assert.match(swipeCell, /let suppressedClick = false/)
+  assert.match(swipeCell, /if \(suppressedClick\) \{ suppressedClick = false; movedDistance = 0; return \}/)
+  assert.match(swipeCell, /@touchstart\.stop="handleActionTouchStart"/)
+  assert.match(swipeCell, /@touchmove="handleActionTouchMove"/)
+  assert.match(swipeCell, /if \(Math\.max\(deltaX, deltaY\) <= uni\.rpx2px\(24\)\) return/)
+  assert.match(swipeCell, /let suppressedActionClick = false/)
+  assert.match(swipeCell, /function selectResult\(result: string\) \{ if \(suppressedActionClick\)/)
+  assert.match(swipeCell, /const SWIPE_SETTLE_MS = 300/)
+  assert.match(swipeCell, /let settleTimer: number \| null = null/)
+  assert.match(swipeCell, /function clearSettleTimer\(\)/)
+  assert.match(swipeCell, /function settleLostGesture\(\) \{\s*settleTimer = null\s+if \(!dragging\.value\) return\s+finishGesture\(\)/)
+  assert.match(swipeCell, /settleTimer = setTimeout\(settleLostGesture, SWIPE_SETTLE_MS\)/)
+  // 兜底结算后把下一段移动当作新手势，避免继续用过期起点计算位移
+  assert.match(swipeCell, /touchStartX = lastTouchX/)
+  assert.match(swipeCell, /function handleTouchEnd\(\) \{ clearSettleTimer\(\); finishGesture\(\) \}/)
+  assert.match(swipeCell, /function handleTouchCancel\(\) \{ clearSettleTimer\(\); close\(\) \}/)
+  // 触摸开始时同步收起本行，展开位置在方向锁定后才读取，避免父级复位与本手势并发时拿到过期位移
+  assert.match(swipeCell, /if \(offsetX\.value !== 0\) \{ close\(\); suppressedClick = true \}; touchStartX/)
+  assert.match(swipeCell, /if \(gestureAxis === 'horizontal'\) gestureStartOffset = offsetX\.value/)
+  assert.match(swipeCell, /onUnmounted\(\(\) => \{ clearAutoCloseTimer\(\); clearRightActionsHideTimer\(\); clearSettleTimer\(\) \}\)/)
+})
+
+/** 右滑快捷块缩窄，左滑选择检查结果时不渲染左侧遮挡层；右侧四态按钮同步收窄到 120rpx/个。 */
 test('checklist swipe keeps its left result block narrow and out of right actions', async () => {
   const swipeCell = await readFile('components/common/SwipeResultCell.uvue', 'utf8')
   assert.match(swipeCell, /<view v-if="offsetX > 0" class="swipe-left-action"/)
   assert.match(swipeCell, /function leftActionWidth\(\) \{ return uni\.rpx2px\(120\) \}/)
   assert.match(swipeCell, /\.swipe-left-action \{[^}]*width: 120rpx;/)
   assert.match(swipeCell, /<view v-if="showRightActions" class="swipe-right-actions">/)
+  // 右侧四态按钮比 H5 的 140rpx 更窄，避免右滑遮挡清单主信息；滑动宽度与样式必须一致
+  assert.match(swipeCell, /function rightActionWidth\(\) \{ return uni\.rpx2px\(480\) \}/)
+  assert.match(swipeCell, /\.swipe-right-actions \{[^}]*width: 480rpx;/)
+  assert.match(swipeCell, /\.swipe-action \{[^}]*width: 120rpx;/)
+  assert.doesNotMatch(swipeCell, /width:\s*(?:560|140)rpx/)
 })
 
 /** 多次快速检查只在空闲后保存最新草稿，不让本地写入压住回弹动画。 */

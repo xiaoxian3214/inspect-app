@@ -33,11 +33,15 @@ test('option sheet compares selection by content equality', async () => {
   assert.match(selector, /option\.value == draftValue\.value/)
 })
 
-/** 弹层更高：选项列表按窗口高度动态限高，替代原先固定的 640rpx。 */
+/** 弹层更高：面板使用按窗口计算的固定高度，选项列表随之撑满并在窗口内限高。 */
 test('option sheet is taller with window-based list height', async () => {
   const selector = await readFile('components/search/OptionSelectSheet.uvue', 'utf8')
-  assert.match(selector, /const listMaxHeight = computed\(\(\): string => windowHeightPx\(/)
+  assert.match(selector, /const sheetHeight = computed\(\(\): string => windowHeightPx\(0\.88\)\)/)
+  assert.match(selector, /<view class="option-panel" :style="\{ height: sheetHeight \}">/)
+  assert.match(selector, /const listMaxHeight = computed\(\(\): string => windowHeightPx\(0\.7\)\)/)
   assert.match(selector, /:style="\{ maxHeight: listMaxHeight \}"/)
+  assert.match(selector, /\.option-list\s*\{[^}]*flex:\s*1/s)
+  assert.match(selector, /\.option-list\s*\{[^}]*min-height:\s*0/s)
   assert.doesNotMatch(selector, /max-height:\s*640rpx/)
 })
 
@@ -53,9 +57,16 @@ test('option sheet renders dividers between options', async () => {
 test('parents feed option sheet with real UTSJSONObject arrays', async () => {
   const card = await readFile('components/inspection/InspectionPlanCard.uvue', 'utf8')
   const copy = await readFile('components/search/CopyPlanSheet.uvue', 'utf8')
+  const merge = await readFile('components/search/MergePlanSheet.uvue', 'utf8')
   assert.match(card, /const downloadTemplateOptions = computed\(\(\): UTSJSONObject\[\] =>/)
   assert.match(card, /value: \(item\['id'\] \?\? ''\)\.toString\(\), label: \(item\['name'\] \?\? ''\)\.toString\(\), raw: item/)
   assert.doesNotMatch(card, /type DownloadTemplateOption/)
   assert.match(copy, /const pickerOptions = computed\(\(\): UTSJSONObject\[\] =>/)
   assert.doesNotMatch(copy, /type CopyOption/)
+  // 合并弹层的清单选择同样只传 UTSJSONObject 字面量，确认事件按 raw 取回原始模板
+  assert.match(merge, /const templateOptionRows = computed\(\(\): UTSJSONObject\[\] =>/)
+  assert.match(merge, /value: \(item\['id'\] \?\? ''\)\.toString\(\), label: \(item\['name'\] \?\? ''\)\.toString\(\), raw: item/)
+  assert.doesNotMatch(merge, /type MergeTemplateOption/)
+  assert.match(merge, /const raw = \(option\['raw'\] as UTSJSONObject \| null\) \?\? option/)
+  assert.match(merge, /emit\('update-template', raw\)/)
 })

@@ -207,6 +207,17 @@ export function getMergePreviewRow(item: UTSJSONObject): UTSJSONObject {
 }
 
 /**
+ * 读取计划卡片自带的清单模板 ID 与名称，供合并下载时预置默认清单。
+ * item 为列表或详情中的计划 JSON，依次兼容嵌套 plan、平铺字段和 raw 包装；名称缺失时退回 ID，均缺失时返回空串。
+ * 返回 UTSJSONObject：id 为模板 ID，name 为模板展示名称。
+ */
+export function getItemDownloadTemplate(item: UTSJSONObject): UTSJSONObject {
+  const id = firstNonEmptyText([item?.plan?.templateId, item?.templateId, item?.raw?.templateId], '')
+  const name = firstNonEmptyText([item?.plan?.templateName, item?.templateName, item?.raw?.templateName], '')
+  return { id, name: name !== '' ? name : id }
+}
+
+/**
  * 合并成功后仅更新来源卡片的合并标记和父计划 ID，不修改未参与的列表记录。
  * items 为当前列表，sourcePlanIds 为参与合并的计划 ID，mergedPlanId 为父计划 ID；返回更新后的列表。
  */

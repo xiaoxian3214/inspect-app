@@ -1,5 +1,5 @@
 <template>
-	<view class="tab-content">
+	<view class="tab-content" @touchstart="closeActiveSwipe">
 		<view v-if="standardItems.length === 0" class="empty-state">
 			<text class="empty-icon">📋</text>
 			<text class="empty-text">{{ translateText('暂无检查项') }}</text>
@@ -22,7 +22,7 @@
 
 				<view v-if="expandedSections[section.id]" class="section-children">
 					<view v-for="child in section.children ?? []" :key="child.id" class="checklist-row-wrap">
-						<SwipeResultCell :result="getItemResult(child.id)" @left-open="handleSwipeOpen(child.raw)" @select-result="setResult(child.raw, $event as string)" @content-click="openItem(child.raw)">
+						<SwipeResultCell :result="getItemResult(child.id)" :reset-key="swipeResetKey" @left-open="handleSwipeOpen(child.raw)" @select-result="setResult(child.raw, $event as string)" @content-click="openItem(child.raw)">
 							<view class="check-item-block" :class="rowClass(child.id)">
 								<view v-if="getItemDefects(child.id).length > 0" class="defect-indicator" :class="getItemResult(child.id)"></view>
 								<view v-if="getItemResult(child.id) !== '' && getItemDefects(child.id).length === 0" class="status-indicator checklist-result-indicator" :class="getItemResult(child.id)"></view>
@@ -59,7 +59,7 @@
 						</SwipeResultCell>
 
 						<view v-if="hasMergedInspectionPlans && expandedItems[child.id]" class="inspection-plan-list">
-							<SwipeResultCell v-for="(plan, planIndex) in planRows" :key="`${child.id}-${plan.id === '' ? planIndex : plan.id}`" :result="getItemResult(child.id, plan.id)" @left-open="handleSwipeOpen(child.raw, plan.id)" @select-result="setResult(child.raw, $event as string, plan.id)" @content-click="openItem(child.raw, plan.id)">
+							<SwipeResultCell v-for="(plan, planIndex) in planRows" :key="`${child.id}-${plan.id === '' ? planIndex : plan.id}`" :result="getItemResult(child.id, plan.id)" :reset-key="swipeResetKey" @left-open="handleSwipeOpen(child.raw, plan.id)" @select-result="setResult(child.raw, $event as string, plan.id)" @content-click="openItem(child.raw, plan.id)">
 								<view class="check-item-block inspection-plan-card" :class="rowClass(child.id, plan.id)">
 									<view v-if="getItemDefects(child.id, plan.id).length > 0" class="defect-indicator" :class="getItemResult(child.id, plan.id)"></view>
 									<view v-if="getItemResult(child.id, plan.id) !== '' && getItemDefects(child.id, plan.id).length === 0" class="status-indicator checklist-result-indicator" :class="getItemResult(child.id, plan.id)"></view>
@@ -111,6 +111,10 @@
 	const expandedSections = ref<UTSJSONObject>({})
 	const expandedItems = ref<UTSJSONObject>({})
 	const hasInitialSection = ref(false)
+	/** 侧滑复位序号：清单区域每次收到新的触摸都自增，通知所有已展开的检查项行收起侧滑操作区。 */
+	const swipeResetKey = ref(0)
+	/** 新触摸开始时收起已展开的侧滑行，避免多行同时停留在展开状态导致错乱。 */
+	function closeActiveSwipe() { swipeResetKey.value = swipeResetKey.value + 1 }
 	/** 默认展开第一个 H5 清单章节，保留用户后续手动折叠状态。 */
 	function ensureInitialSection(items: UTSJSONObject[]) { if (items.length === 0 || hasInitialSection.value) return; expandedSections.value = { [(items[0]['id'] ?? 'section-0').toString()]: true }; hasInitialSection.value = true }
 	/** 切换章节展开状态。 */

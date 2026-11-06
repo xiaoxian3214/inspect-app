@@ -36,13 +36,16 @@
 						</view>
 					</view>
 				</view>
-				<view class="section">
-					<text class="section-label">{{ translateText('清单模板') }}</text>
-					<picker :range="templateNames" :value="templateIndex" @change="changeTemplate">
-						<view class="picker-value">{{ translateText(selectedTemplateName ?? '请选择清单') }}</view>
-					</picker>
-				</view>
 			</scroll-view>
+
+			<!-- 清单在合并成功后固定展示在滚动区之外，计划再多也不用滚动才能看到 -->
+			<view v-if="mergedPlanId !== '' && stage !== 'type'" class="section">
+				<view class="select-field" @click="openTemplatePicker">
+					<text class="select-label">{{ translateText('清单模板') }}</text>
+					<text class="select-text" :class="{ placeholder: selectedTemplateName == '' }">{{ templateValueText }}</text>
+					<text class="select-chevron">›</text>
+				</view>
+			</view>
 
 			<view v-if="mergedPlanId !== '' && stage !== 'type'" class="success-box">
 				<text class="success-title">{{ translateText('合并成功') }}</text>
@@ -60,6 +63,7 @@
 				</button>
 			</view>
 		</view>
+		<OptionSelectSheet :visible="showTemplateSheet" title="清单模板" empty-text="暂无可选清单" :options="templateOptionRows" :selected-value="selectedTemplateId" @close="closeTemplateSheet" @confirm="confirmTemplateOption" />
 	</page-container>
 </template>
 
@@ -67,7 +71,8 @@
 	import { t } from '../../i18n/index.uts'
 	import { firstNonEmptyText, getMergePreviewRow } from '../../domain/searchViewModel.uts'
 	import { windowHeightPx } from '../../domain/nativeLayout.uts'
-	import { computed } from 'vue'
+	import OptionSelectSheet from './OptionSelectSheet.uvue'
+	import { computed, ref, watch } from 'vue'
 	type MergeOption = { value: string, label: string }
 	type MergePreview = { key: string, orderNo: string, itemBatch: string, productName: string }
 	/** 合并类型格子：placeholder 为 true 时仅占位，保持最后一行同样三等分铺满整行。 */
@@ -84,6 +89,8 @@
 		selectedItems: { type: Array, default: () => [] },
 		templates: { type: Array, default: () => [] },
 		selectedTemplateId: { type: String, default: '' },
+		/** 页面已确定的清单名称：合并成功时由页面按计划自带清单预置，用于未在模板列表中找到同名项时回显。 */
+		selectedTemplateName: { type: String, default: '' },
 		mergedPlanId: { type: String, default: '' },
 		submitting: { type: Boolean, default: false }
 	})
@@ -124,18 +131,27 @@
 	/** 从嵌套或平铺的计划对象中读取稳定 ID。 */
 	function getItemId(item: UTSJSONObject): string { const plan = (item['plan'] as UTSJSONObject | null) ?? {}; return firstNonEmptyText([plan['id'], plan['planId'], item['planId'], item['id']], '') }
 
-	/** 返回模板名称数组供原生 picker 使用。 */
-	const templateNames = computed((): string[] => (props.templates as UTSJSONObject[]).map((item: UTSJSONObject): string => (item['name'] ?? '').toString()))
+	/** 把清单模板转换为选择弹层可用的 UTSJSONObject 选项；raw 原样带回页面，避免自定义类型实例跨组件传递。 */
+	const templateOptionRows = computed((): UTSJSONObject[] => (props.templates as UTSJSONObject[]).map((item: UTSJSONObject): UTSJSONObject => ({ value: (item['id'] ?? '').toString(), label: (item['name'] ?? '').toString(), raw: item })))
+	/** 清单模板选择弹层是否可见；仅在合并成功、准备下载时由页面数据驱动打开。 */
+	const showTemplateSheet = ref(false)
+	/** 父层关闭合并弹层时同步收起清单选择弹层，避免内层弹层遮罩残留在空页面上。 */
+	watch((): boolean => props.visible, (visible: boolean) => { if (!visible) showTemplateSheet.value = false })
 
 	/**
-	 * 返回当前模板在 picker 中的索引。
+	 * 按已选清单 ID 在模板列表中查找名称；模板列表未命中时返回空串。
 	 */
-	const templateIndex = computed((): number => Math.max(0, (props.templates as UTSJSONObject[]).findIndex((item: UTSJSONObject) => (item['id'] ?? '').toString() === props.selectedTemplateId)))
+	const templateNameFromOptions = computed((): string => { const match = (props.templates as UTSJSONObject[]).find((item: UTSJSONObject) => (item['id'] ?? '').toString() === props.selectedTemplateId); return (match?.['name'] ?? '').toString() })
 
 	/**
-	 * 返回当前已选清单模板名称。
+	 * 返回清单选择框的展示文案：优先显示页面传入的已选清单名称（合并成功时由计划自带的模板预置），
+	 * 其次按 ID 在模板列表里查找，最后提示“请选择清单”，避免下载前只看到空白框。
 	 */
-	const selectedTemplateName = computed((): string => { const match = (props.templates as UTSJSONObject[]).find((item: UTSJSONObject) => (item['id'] ?? '').toString() === props.selectedTemplateId); return (match?.['name'] ?? '').toString() })
+	const templateValueText = computed((): string => {
+		if (props.selectedTemplateName != '') return props.selectedTemplateName
+		const name = templateNameFromOptions.value
+		return name != '' ? name : translateText('请选择清单')
+	})
 
 	/** 将已选计划转换为稳定 ID 与 H5 三列展示字段，供原生表格渲染。 */
 	const previewRows = computed((): MergePreview[] => (props.selectedItems as UTSJSONObject[]).map((item: UTSJSONObject): MergePreview => { const preview = getMergePreviewRow(item) as UTSJSONObject; return { key: getItemId(item), orderNo: (preview['orderNo'] ?? '').toString(), itemBatch: (preview['itemBatch'] ?? '').toString(), productName: (preview['productName'] ?? '').toString() } }))
@@ -162,12 +178,26 @@
 	}
 
 	/**
-	 * 根据 picker 索引更新合并下载模板。
+	 * 打开清单模板选择弹层；合并完成前清单不可选，提交中也不允许打开。
 	 */
-	function changeTemplate(event: UniPickerChangeEvent) {
-		const index = parseInt((event.detail.value ?? '0').toString())
-		const option = props.templates[index]
-		if (option != null) emit('update-template', option)
+	function openTemplatePicker(): void {
+		if (props.mergedPlanId === '' || props.submitting) return
+		showTemplateSheet.value = true
+	}
+
+	/**
+	 * 关闭清单模板选择弹层，不改动页面已选清单。
+	 */
+	function closeTemplateSheet(): void { showTemplateSheet.value = false }
+
+	/**
+	 * 回传用户选中的清单模板原始对象，由页面更新下载参数后关闭选择弹层。
+	 * option 为 OptionSelectSheet 的确认事件参数，raw 为原始模板对象。
+	 */
+	function confirmTemplateOption(option: UTSJSONObject): void {
+		showTemplateSheet.value = false
+		const raw = (option['raw'] as UTSJSONObject | null) ?? option
+		emit('update-template', raw)
 	}
 
 	/**
@@ -208,7 +238,11 @@
 	.merge-table-cell { flex: 1; min-width: 0; padding: 18rpx 10rpx; color: #334155; font-size: 24rpx; line-height: 34rpx; }
 	.merge-table-header-cell { color: #0f172a; font-weight: 700; }
 	.empty-text { margin-top: 8rpx; color: #64748b; font-size: 24rpx; }
-	.picker-value { height: 80rpx; margin-top: 16rpx; padding: 0 24rpx; border-width: 2rpx; border-color: #d1d5db; border-radius: 16rpx; color: #334155; font-size: 27rpx; line-height: 80rpx; }
+	.select-field { min-height: 88rpx; margin-top: 18rpx; padding: 0 24rpx; border-width: 2rpx; border-style: solid; border-color: #e5e7eb; border-radius: 16rpx; background-color: #f8fafc; flex-direction: row; align-items: center; }
+	.select-label { color: #0f172a; font-size: 27rpx; font-weight: 600; }
+	.select-text { flex: 1; margin-left: 16rpx; color: #334155; font-size: 27rpx; text-align: right; }
+	.select-text.placeholder { color: #94a3b8; }
+	.select-chevron { margin-left: 10rpx; color: #94a3b8; font-size: 34rpx; }
 	.success-box { margin-top: 24rpx; padding: 22rpx; border-radius: 18rpx; background-color: #ecfdf5; }
 	.success-title { color: #166534; font-size: 28rpx; font-weight: 700; }
 	.success-text { margin-top: 6rpx; color: #15803d; font-size: 24rpx; }

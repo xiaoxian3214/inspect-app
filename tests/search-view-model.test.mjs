@@ -144,6 +144,17 @@ test('builds H5 merge confirmation columns from nested and flat plans', () => {
   })
 })
 
+/** 合并下载默认清单优先沿用计划自带模板，再兼容平铺与 raw 包装，缺失时退化为空串。 */
+test('resolves the plan checklist template for the merge download default', () => {
+  assert.deepEqual(viewModel.getItemDownloadTemplate({
+    plan: { templateId: 't-1', templateName: '鞋类清单' },
+    templateId: 'ignored', templateName: 'ignored'
+  }), { id: 't-1', name: '鞋类清单' })
+  assert.deepEqual(viewModel.getItemDownloadTemplate({ templateId: 't-2' }), { id: 't-2', name: 't-2' })
+  assert.deepEqual(viewModel.getItemDownloadTemplate({ raw: { templateId: 't-3', templateName: '服装清单' } }), { id: 't-3', name: '服装清单' })
+  assert.deepEqual(viewModel.getItemDownloadTemplate({ plan: { templateId: '', templateName: '' } }), { id: '', name: '' })
+})
+
 /** 合并成功后立即标记来源计划，防止远程列表刷新前再次选择。 */
 test('marks merged source cards without changing unrelated rows', () => {
   const source = { plan: { id: 'p-1', status: 0, mergeType: 0 }, raw: { id: 'p-1' } }

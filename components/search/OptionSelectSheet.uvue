@@ -1,6 +1,6 @@
 <template>
 	<page-container :show="visible" position="bottom" :overlay="true" :z-index="3200" overlay-style="background-color: rgba(15, 23, 42, 0.48)" @clickoverlay="closeSheet">
-		<view class="option-panel" :style="{ maxHeight: sheetMaxHeight }">
+		<view class="option-panel" :style="{ height: sheetHeight }">
 			<text class="option-title">{{ translateText(title) }}</text>
 			<scroll-view class="option-list" :style="{ maxHeight: listMaxHeight }" direction="vertical">
 				<text v-if="options.length === 0" class="option-empty">{{ translateText(emptyText) }}</text>
@@ -36,10 +36,10 @@
 	function translateText(key: string): string { return t(key) }
 	/** 将父组件传入的 UTSJSONObject 选项转换为模板可读取的固定字段，索引取值只在真正的 UTSJSONObject 上执行。 */
 	const optionRows = computed((): OptionRow[] => (props.options as UTSJSONObject[]).map((option: UTSJSONObject): OptionRow => ({ value: (option['value'] ?? '').toString(), label: (option['label'] ?? '').toString(), raw: (option['raw'] as UTSJSONObject | null) ?? option })))
-	/** 按窗口高度限制弹层总高度，避免小屏设备溢出屏幕。 */
-	const sheetMaxHeight = computed((): string => windowHeightPx(0.85))
+	/** 弹层统一使用较高的固定高度（对齐 H5 清单选择弹层的 90vh），选项少时也保持底部大弹层的观感。 */
+	const sheetHeight = computed((): string => windowHeightPx(0.88))
 	/** 抬高选项列表的最大高度（原固定 640rpx），让清单选择弹层展示更多选项。 */
-	const listMaxHeight = computed((): string => windowHeightPx(0.6))
+	const listMaxHeight = computed((): string => windowHeightPx(0.7))
 
 	/** 每次打开选项弹层时同步当前已选值，取消不会改变业务状态。 */
 	watch((): boolean => props.visible, (visible: boolean) => { if (visible) draftValue.value = props.selectedValue })
@@ -64,7 +64,7 @@
 <style>
 	.option-panel { width: 100%; padding: 32rpx 28rpx 48rpx; border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; background-color: #ffffff; }
 	.option-title { color: #111827; font-size: 34rpx; font-weight: 700; text-align: center; }
-	.option-list { margin-top: 24rpx; }
+	.option-list { flex: 1; min-height: 0; margin-top: 24rpx; }
 	.option-row { min-height: 88rpx; flex-direction: row; align-items: center; justify-content: space-between; padding: 18rpx 24rpx; border-bottom-width: 2rpx; border-bottom-style: solid; border-bottom-color: #e5e7eb; }
 	.option-row.selected { background-color: #ecfdf5; }
 	.option-name { flex: 1; color: #334155; font-size: 28rpx; }

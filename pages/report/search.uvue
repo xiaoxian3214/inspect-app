@@ -82,7 +82,7 @@
 		<BottomActionSheet :visible="showMenu" :actions="searchFabActions" :show-icons="true" @select="handleFabAction" @cancel="hideActionMenu" />
 
 		<SearchFilterSheet :visible="showFilterModal" :draft="draftFilters" :status-options="filterStatusOptions" :inspect-type-options="filterInspectTypeOptions" :loading-types="optionsLoading" @close="closeFilterModal" @clear="clearDraftFilters" @update-status="updateDraftStatus" @update-inspect-type="updateDraftInspectType" @update-start-date="updateDraftStartDate" @update-end-date="updateDraftEndDate" @confirm="applyFilters" />
-		<MergePlanSheet :visible="showMergeSheet" :stage="mergeSheetStage" :inspect-type-options="inspectTypeOptions" :selected-inspect-type="mergeInspectType" :selected-items="mergeSelectedItems" :templates="templateOptions" :selected-template-id="mergeTemplateId" :merged-plan-id="mergedPlanId" :submitting="operationSubmitting" @close="closeMergeSheet" @update-inspect-type="setMergeInspectType" @start-selection="startMergeSelection" @update-template="setMergeTemplate" @confirm-merge="confirmMerge" @download="downloadMergedPlan" />
+		<MergePlanSheet :visible="showMergeSheet" :stage="mergeSheetStage" :inspect-type-options="inspectTypeOptions" :selected-inspect-type="mergeInspectType" :selected-items="mergeSelectedItems" :templates="templateOptions" :selected-template-id="mergeTemplateId" :selected-template-name="mergeTemplateName" :merged-plan-id="mergedPlanId" :submitting="operationSubmitting" @close="closeMergeSheet" @update-inspect-type="setMergeInspectType" @start-selection="startMergeSelection" @update-template="setMergeTemplate" @confirm-merge="confirmMerge" @download="downloadMergedPlan" />
 		<SplitPlanSheet :visible="showSplitSheet" :preview-items="splitPreviewItems" :result-items="splitResultItems" :downloaded-ids="splitDownloadedIds" :submitting="operationSubmitting" @close="closeSplitSheet" @confirm="confirmSplit" @download="downloadSplitItem" />
 		<CopyPlanSheet :visible="showCopySheet" :mode="copyMode" :item="copyTarget" :inspect-type-options="inspectTypeOptions" :templates="templateOptions" :merged-items="copyMergedItems" :merged-loading="copyMergedLoading" :selected-inspect-type="copyInspectType" :selected-template-id="copyTemplateId" :selected-template-name="copyTemplateName" :created="copyCreated" :submitting="operationSubmitting" @close="closeCopySheet" @update-inspect-type="setCopyInspectType" @update-template="setCopyTemplate" @confirm="confirmCopy" @download="downloadCopiedPlan" />
 	</view>
@@ -104,7 +104,7 @@
 	import CopyPlanSheet from '../../components/search/CopyPlanSheet.uvue'
 	import AppIcon from '../../components/icons/AppIcon.uvue'
 	import { getPlanUniqueId, groupPlans, normalizePlanStatus } from '../../domain/planViewModel.uts'
-	import { buildSearchParams, buildSplitPreview, extractCopiedPlanId, getMergeGroupTargets, getMergedPlanId, getItemInspectType, getItemParentPlanId, getPlanOperationId, isBaseMergeEligible, isMergeSelectable, isSplitAvailable, markMergedSourcePlans, markReleasedGroupPlans, markSplitSourcePlans, mergeRemoteWithLocal } from '../../domain/searchViewModel.uts'
+	import { buildSearchParams, buildSplitPreview, extractCopiedPlanId, getMergeGroupTargets, getMergedPlanId, getItemDownloadTemplate, getItemInspectType, getItemParentPlanId, getPlanOperationId, isBaseMergeEligible, isMergeSelectable, isSplitAvailable, markMergedSourcePlans, markReleasedGroupPlans, markSplitSourcePlans, mergeRemoteWithLocal } from '../../domain/searchViewModel.uts'
 	import { getCurrentSession, initializeRuntime, isNetworkOnline, planApi, planOperationService, reportRepository } from '../../runtime/appRuntime.uts'
 
 	/** 按客户订单号聚合后的计划分组；items 与 raw 都保留原始计划对象，供卡片与合并流程继续使用。 */
@@ -328,17 +328,20 @@
 		if (!isMergeSelectableItem(item)) { uni.showToast({ title: t('需与首条计划保持同工厂、同货类、同验货类型'), icon: 'none' }); return }
 		mergeSelectedItems.value = [...mergeSelectedItems.value, item]
 	}
-	/** 退出合并多选模式并清空流程状态。 */
-	function cancelMergeMode(): void { mergeMode.value = false; showMergeSheet.value = false; mergeSelectedItems.value = []; mergedPlanId.value = '' }
-	/** 加载清单并打开合并确认弹层。 */
-	async function openMergeConfirm(): Promise<void> {
+	/** 退出合并多选模式并清空流程状态，包括上一次合并选定的清单。 */
+	function cancelMergeMode(): void { mergeMode.value = false; showMergeSheet.value = false; mergeSelectedItems.value = []; mergedPlanId.value = ''; mergeTemplateId.value = ''; mergeTemplateName.value = '' }
+	/** 打开合并确认弹层；清单延后到合并成功、准备下载时才选择，此处只清空上一次的合并结果和清单。 */
+	function openMergeConfirm(): void {
 		if (mergeSelectedItems.value.length < 2) return
-		try { await loadTemplateOptions(); if (mergeTemplateId.value === '' && templateOptions.value.length > 0) setMergeTemplate(templateOptions.value[0]); mergeSheetStage.value = 'confirm'; showMergeSheet.value = true }
-		catch (error) { uni.showToast({ title: (error?.message ?? t('加载清单失败')).toString(), icon: 'none' }) }
+		mergedPlanId.value = ''
+		mergeTemplateId.value = ''
+		mergeTemplateName.value = ''
+		mergeSheetStage.value = 'confirm'
+		showMergeSheet.value = true
 	}
 	/** 更新合并计划下载使用的清单模板。 */
 	function setMergeTemplate(option: UTSJSONObject): void { mergeTemplateId.value = (option['id'] ?? '').toString(); mergeTemplateName.value = (option['name'] ?? '').toString() }
-	/** 校验全部已选计划后调用远程合并接口。 */
+	/** 校验全部已选计划后调用远程合并接口；合并成功后再懒加载下载所需的清单模板。 */
 	async function confirmMerge(): Promise<void> {
 		if (operationSubmitting.value || mergeSelectedItems.value.length < 2) return
 		const anchor = mergeSelectedItems.value[0]
@@ -351,14 +354,42 @@
 			if (mergedPlanId.value === '') throw new Error('合并成功但未返回计划ID')
 			results.value = markMergedSourcePlans(results.value, sourcePlanIds, mergedPlanId.value) as UTSJSONObject[]
 			localPlans.value = markMergedSourcePlans(localPlans.value, sourcePlanIds, mergedPlanId.value) as UTSJSONObject[]
+			await prepareMergeTemplates()
+			applyDefaultMergeTemplate()
 			uni.showToast({ title: t('合并成功'), icon: 'success' })
 		} catch (error) { uni.showToast({ title: (error?.message ?? t('合并失败')).toString(), icon: 'none' }) }
 		finally { operationSubmitting.value = false }
 	}
-	/** 下载合并成功的新计划并刷新本地与远程回显。 */
+	/** 合并成功后预取清单模板，供下载时选择；加载失败不阻断合并结果，下载前会再次尝试。 */
+	async function prepareMergeTemplates(): Promise<void> {
+		try { await loadTemplateOptions() } catch (error) { console.warn('[search] load merge templates failed:', error) }
+	}
+	/**
+	 * 合并成功后预置下载默认清单：优先沿用首个已选计划自带的清单（与 H5 一致），
+	 * 计划没有清单时退回模板列表第一条；用户仍可在清单选择框里改选。
+	 */
+	function applyDefaultMergeTemplate(): void {
+		if (mergeTemplateId.value !== '') return
+		if (mergeSelectedItems.value.length > 0) {
+			const planTemplate = getItemDownloadTemplate(mergeSelectedItems.value[0])
+			const planTemplateId = (planTemplate['id'] ?? '').toString()
+			if (planTemplateId !== '') {
+				const planTemplateName = (planTemplate['name'] ?? '').toString()
+				mergeTemplateId.value = planTemplateId
+				mergeTemplateName.value = planTemplateName !== '' ? planTemplateName : planTemplateId
+				return
+			}
+		}
+		if (templateOptions.value.length > 0) setMergeTemplate(templateOptions.value[0])
+	}
+	/** 下载合并成功的新计划并刷新本地与远程回显；未选清单时提示并重试加载模板。 */
 	async function downloadMergedPlan(): Promise<void> {
 		if (mergedPlanId.value === '' || operationSubmitting.value) return
-		if (mergeTemplateId.value === '') { uni.showToast({ title: t('请选择清单'), icon: 'none' }); return }
+		if (mergeTemplateId.value === '') {
+			if (templateOptions.value.length === 0) await prepareMergeTemplates()
+			uni.showToast({ title: templateOptions.value.length === 0 ? t('暂无可选清单') : t('请选择清单'), icon: 'none' })
+			return
+		}
 		operationSubmitting.value = true
 		try { await planOperationService.downloadToLocal(mergedPlanId.value, { templateId: mergeTemplateId.value, templateName: mergeTemplateName.value }, [], mergeSelectedItems.value); await refreshLocalOverlay(); showMergeSheet.value = false; mergeMode.value = false; mergeSelectedItems.value = []; uni.showToast({ title: t('已下载到本地'), icon: 'success' }) }
 		catch (error) { uni.showToast({ title: (error?.message ?? t('下载失败')).toString(), icon: 'none' }) }
