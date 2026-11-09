@@ -221,7 +221,7 @@
 	.item-comment { width: 100%; margin-bottom: 8rpx; padding: 4rpx 8rpx; border-radius: 8rpx; color: #64748b; font-size: 23rpx; background-color: #f1f5f9; }
 	.item-right { margin-left: 16rpx; flex-direction: row; align-items: center; }
 	.item-sub-progress { width: 104rpx; margin-right: 16rpx; }
-	.photo-button { position: relative; width: 72rpx; height: 72rpx; align-items: center; justify-content: center; border-radius: 16rpx; background-color: #f1f5f9; }
+	.photo-button { position: relative; width: 72rpx; height: 72rpx; align-items: center; justify-content: center; border-radius: 4rpx; background-color: #f1f5f9; }
 	.photo-button.active { border-width: 2rpx; border-color: #e5e7eb; background-color: #ffffff; }
 	.photo-button.requiredError { border-width: 2rpx; border-color: #ef4444; }
 	.photo-thumbnail { position: absolute; left: 0; top: 0; z-index: 1; width: 100%; height: 100%; border-radius: 14rpx; }
