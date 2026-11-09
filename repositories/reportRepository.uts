@@ -893,19 +893,84 @@ export function createReportRepository(database) {
   async function getPlanById(planId) {
     const normalizedPlanId = String(planId ?? '').trim()
     if (normalizedPlanId === '') return null
-    const plans = await listPlans()
-    return plans.find((plan) => {
-      const candidates = [
-        plan?.id,
-        plan?.planId,
-        plan?.reportId,
-        plan?.plan?.id,
-        plan?.plan?.planId,
-        plan?.report?.id
-      ].filter((id) => id !== undefined && id !== null).map((id) => String(id))
-      return candidates.includes(normalizedPlanId)
-    }) || plans.find((plan) => database.readTable('inspection_plan').some((row) =>
-      String(row.planId) === String(plan.planId) && String(row.groupPlanId) === normalizedPlanId)) || null
+    return readSinglePlan(database, normalizedPlanId)
+  }
+
+  /** 先筛选后复制目标行；兼容旧内存适配器，避免单报告读取触发全库快照。 */
+  function selectRows(reader: any, tableName: string, predicate: (row: any) => boolean): any[] {
+    if (typeof reader.readWhere === 'function') return reader.readWhere(tableName, predicate)
+    return (typeof reader.readTable === 'function' ? reader.readTable(tableName) : reader.read(tableName)).filter(predicate)
+  }
+
+  /** 仅组合一个计划或共享报告，兼容旧快照与旧合并组，不构造其它计划的详情。 */
+  function readSinglePlan(reader: any, planKey: string): any {
+    const members = selectRows(reader, 'inspection_plan', (row: any): boolean => String(row?.planId ?? '') === planKey || String(row?.groupPlanId ?? '') === planKey)
+    let member = members.find((row: any): boolean => String(row?.planId ?? '') === planKey) ?? members[0]
+    if (member == null) {
+      const report = selectRows(reader, 'report', (row: any): boolean => String(row?.id ?? '') === planKey && String(row?.planId ?? '') !== '')[0]
+      if (report != null) member = selectRows(reader, 'inspection_plan', (row: any): boolean => String(row?.groupPlanId ?? '') === String(report.reportId))[0]
+    }
+    if (member != null) {
+      const groupId = String(member.groupPlanId)
+      const tables = {
+        inspection_plan: selectRows(reader, 'inspection_plan', (row: any): boolean => String(row?.groupPlanId ?? '') === groupId),
+        report: selectRows(reader, 'report', (row: any): boolean => String(row?.reportId ?? '') === groupId),
+        app_setting: selectRows(reader, 'app_setting', (row: any): boolean => row?.key === sharedStateKey(groupId)),
+        item_result: selectRows(reader, 'item_result', (row: any): boolean => String(row?.planId ?? '') === groupId),
+        defect: selectRows(reader, 'defect', (row: any): boolean => String(row?.reportId ?? '') === groupId),
+        photo: selectRows(reader, 'photo', (row: any): boolean => String(row?.reportId ?? '') === groupId)
+      }
+      return composeRelationalPlan(tables, member)
+    }
+    const oldMember = selectRows(reader, 'report_member', (row: any): boolean => String(row?.planId ?? '') === planKey)[0]
+    const oldGroup = selectRows(reader, 'report_group', (row: any): boolean => String(row?.groupId ?? '') === String(oldMember?.groupId ?? planKey))[0]
+    if (oldGroup != null) {
+      const selectedMember = oldMember ?? selectRows(reader, 'report_member', (row: any): boolean => String(row?.groupId ?? '') === String(oldGroup.groupId))[0]
+      if (selectedMember != null) return composeMergedPlan(oldGroup, selectedMember)
+    }
+    const legacy = selectRows(reader, 'report', (row: any): boolean => !row?.planId).find((row: any): boolean => {
+      if (String(row?.reportId ?? '') === planKey) return true
+      const data = parseJson(row.jsonData)
+      return [data?.id, data?.planId, data?.reportId, data?.plan?.id, data?.plan?.planId, data?.report?.id].some((id: any): boolean => id != null && String(id) === planKey)
+    })
+    if (legacy == null) return null
+    const data = parseJson(legacy.jsonData)
+    return { ...data, id: data?.plan?.id || legacy.reportId, planId: legacy.reportId,
+      reportId: data?.report?.id || legacy.reportId, status: legacy.status,
+      downloadedAt: legacy.downloadAt ?? '', lockStatus: legacy.lockStatus ?? '', lockerId: legacy.lockerId ?? '',
+      lockExpireAt: legacy.lockExpireAt ?? '', syncRetry: parseInt(String(legacy.syncRetry ?? 0)) }
+  }
+
+  /** 上传记录已独立持久化；只在串行事务内重建最新普通草稿 payload，禁止改写业务行或重新置脏。 */
+  async function refreshPendingPhotoPayload(planId: string, buildPayload: (detail: any) => any): Promise<any> {
+    let payload: any = null
+    await database.transaction(async (transaction: any): Promise<void> => {
+      const current = readSinglePlan(transaction, String(planId ?? '').trim())
+      if (current == null || current.syncStatus !== 'DIRTY' || current.pendingSyncPayload == null) return
+      const previous = current.pendingSyncPayload
+      if (String(previous?.finishFlag ?? previous?.report?.finishFlag ?? previous?.plan?.finishFlag ?? '') === '1' || previous?.finishFlag === true || previous?.report?.finishFlag === true || previous?.plan?.finishFlag === true) return
+      const draftPlanId = String(previous?.planId ?? '').trim()
+      const payloadDetail = draftPlanId !== '' && draftPlanId !== String(current.planId)
+        ? (readSinglePlan(transaction, draftPlanId) ?? current) : current
+      payload = buildPayload(payloadDetail)
+      const member = selectRows(transaction, 'inspection_plan', (row: any): boolean => String(row?.planId ?? '') === String(current.planId))[0]
+      if (member != null) {
+        const groupId = String(member.groupPlanId)
+        const report = selectRows(transaction, 'report', (row: any): boolean => String(row?.reportId ?? '') === groupId)[0]
+        const shared = readSharedState({ app_setting: selectRows(transaction, 'app_setting', (row: any): boolean => row?.key === sharedStateKey(groupId)) }, groupId, report)
+        writeSharedState(transaction, groupId, { ...shared, pendingSyncPayload: payload })
+        return
+      }
+      const oldMember = selectRows(transaction, 'report_member', (row: any): boolean => String(row?.planId ?? '') === String(current.planId))[0]
+      if (oldMember != null) {
+        const group = selectRows(transaction, 'report_group', (row: any): boolean => String(row?.groupId ?? '') === String(oldMember.groupId))[0]
+        transaction.upsert('report_group', 'groupId', { ...group, jsonData: JSON.stringify({ ...parseJson(group.jsonData), pendingSyncPayload: payload }) })
+        return
+      }
+      const row = selectRows(transaction, 'report', (item: any): boolean => String(item?.reportId ?? '') === String(current.planId))[0]
+      transaction.upsert('report', 'reportId', { ...row, jsonData: JSON.stringify({ ...parseJson(row.jsonData), pendingSyncPayload: payload }) })
+    })
+    return payload
   }
 
   /** 按计划只读取一条已落库的检查点结果，避免诊断页组装并渲染全部报告详情。 */
@@ -1282,10 +1347,12 @@ export function createReportRepository(database) {
         })
       })
       transaction.removeWhere('photo', (row) => String(row?.reportId ?? '') === storageId)
+      const siblingPhotoIds = new Set<string>(groupMember == null
+        ? selectRows(transaction, 'photo', (row: any): boolean => sharedPlanIds.has(String(row?.reportId ?? '')) && String(row?.reportId ?? '') !== normalizedPlanId)
+          .map((row: any): string => String(row?.sourcePhotoId ?? '')) : ([] as string[]))
       detail.photos.forEach((photo, index) => {
         const sourcePhotoId = String(photo?.photoId ?? photo?.id ?? `local-${index}`)
-        const ownedBySibling = groupMember == null && transaction.read('photo').some((row) => sharedPlanIds.has(String(row?.reportId ?? ''))
-          && String(row?.reportId ?? '') !== normalizedPlanId && String(row?.sourcePhotoId ?? '') === sourcePhotoId)
+        const ownedBySibling = siblingPhotoIds.has(sourcePhotoId)
         if (ownedBySibling) return
         transaction.upsert('photo', 'photoId', {
           photoId: `${storageId}::${sourcePhotoId}`,
@@ -1469,6 +1536,7 @@ export function createReportRepository(database) {
     completeDraftSync,
     savePlans,
     saveDetailSnapshot,
+    refreshPendingPhotoPayload,
     saveDraftChanges,
     removePlansByIds,
     clearPlans

@@ -103,5 +103,15 @@ export function createInspectionDetailService(options) {
     return saved
   }
 
-  return { loadDetail, saveDraft }
+  /** 仅为已有待同步的普通草稿重算上传文件信息，不改动照片、检查项和清洁报告。 */
+  async function refreshUploadedPhotoPayload(planId: string): Promise<UTSJSONObject | null> {
+    if (typeof reportRepository.refreshPendingPhotoPayload !== 'function') return null
+    return await reportRepository.refreshPendingPhotoPayload(planId, (detail: UTSJSONObject): UTSJSONObject => {
+      const photos = Array.isArray(detail?.photos) ? detail.photos : ([] as UTSJSONObject[])
+      const refreshed = viewModel.mergeDetailPhotos(detail, photos)
+      return viewModel.buildGeneratePayload(refreshed)
+    })
+  }
+
+  return { loadDetail, saveDraft, refreshUploadedPhotoPayload }
 }

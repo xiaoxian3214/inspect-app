@@ -1,3 +1,5 @@
+import type { DefectCategoryPath } from './defectCategoryPath.uts'
+
 /**
  * 从服务端或本地疵点恢复编辑草稿，保留检查项和合并验货关联。
  * 服务端记录只带三级编码时（defectCode 有值、defectDesc 为空），以 tier3Code 兜底，
@@ -38,6 +40,39 @@ export function createDefectDraft(defect: UTSJSONObject): UTSJSONObject {
     sonPlanId: defect?.sonPlanId ?? null,
     photos: Array.isArray(defect?.photos) ? [...defect.photos] : ([] as UTSJSONObject[])
   }
+}
+
+/**
+ * 历史疵点只保存三级编码但缺少描述时，使用分类树里的三级名称补齐编辑草稿。
+ * 分类树不可用或未命中时不伪造类别名称，保留原草稿供用户重新选择。
+ * @param draft 从现有疵点建立的编辑草稿
+ * @param categoryTree 已下载或离线缓存的分类树
+ * @param resolvePath 从分类树按编码反查三级路径的纯函数
+ * @returns 保留原身份及输入、仅补齐缺失分类名称的草稿
+ */
+export function restoreDefectDraftCategory(draft: UTSJSONObject, categoryTree: UTSJSONObject[], resolvePath: (tree: UTSJSONObject[], stored: UTSJSONObject) => DefectCategoryPath): UTSJSONObject {
+  const code = String(draft?.defectCode ?? draft?.tier3Code ?? '').trim()
+  if (code === '' || String(draft?.defectDesc ?? '').trim() !== '') return draft
+  const path = resolvePath(categoryTree, draft)
+  const name = String(path?.tier3Name ?? '').trim()
+  if (path?.tier3Code !== code || name === '') return draft
+  return { ...draft, defectCode: code, defectDesc: name,
+    tier1Code: String(draft?.tier1Code ?? '').trim() !== '' ? draft.tier1Code : path.tier1Code,
+    tier2Code: String(draft?.tier2Code ?? '').trim() !== '' ? draft.tier2Code : path.tier2Code,
+    tier3Code: code }
+}
+
+/**
+ * 编辑时父页面可能因拍照或同步生成新疵点对象：只取媒体更新，保留用户正在编辑的类别与备注。
+ * @param draft 当前弹层尚未保存的表单
+ * @param refreshed 同一个疵点的父页面最新记录
+ * @returns 保留编辑内容且更新媒体列表的草稿
+ */
+export function mergeDefectDraftPhotos(draft: UTSJSONObject, refreshed: UTSJSONObject): UTSJSONObject {
+  const previousId = String(draft?.defectId ?? draft?.id ?? '').trim()
+  const nextId = String(refreshed?.defectId ?? refreshed?.id ?? '').trim()
+  if (previousId !== nextId && (previousId !== '' || nextId !== '')) return draft
+  return { ...draft, photos: Array.isArray(refreshed?.photos) ? refreshed.photos : draft?.photos }
 }
 
 /**

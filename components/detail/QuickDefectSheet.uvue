@@ -30,7 +30,7 @@
 	import AppButton from '../common/AppButton.uvue'
 	import DefectCategorySheet from './DefectCategorySheet.uvue'
 	import InspectionMediaGrid from './InspectionMediaGrid.uvue'
-	import { createDefectDraft, getDefectQuantity, selectDefectQuantity, setDefectCommon, validateDefectDraft } from '../../domain/quickDefectForm.uts'
+	import { createDefectDraft, getDefectQuantity, mergeDefectDraftPhotos, restoreDefectDraftCategory, selectDefectQuantity, setDefectCommon, validateDefectDraft } from '../../domain/quickDefectForm.uts'
 	import { resolveDefectCategoryPath } from '../../domain/defectCategoryPath.uts'
 	/** 疵点编辑草稿；身份与关联字段（id/defectId/checkItemResultId/sonPlanId）必须在类型中声明，否则 UTSJSONObject as DefectDraft 转换会裁掉它们，导致照片 ownerId 与保存后的疵点 id 对不上。 */
 	type DefectDraft = { id: string, defectId: string, type: string, photos: UTSJSONObject[], quantity: number | string | null, customQuantity: string, commonFlag: number, defectCode: string, defectDesc: string, checkItemName: string, checkItemId: string, checkItemResultId: string, sonPlanId: string | null, description: string, tier1Code: string, tier2Code: string, tier3Code: string }
@@ -66,7 +66,7 @@
 		return '点击以选择疵点类别'
 	})
 	/** 用传入疵点重置编辑草稿，保留只读的检查项关联。 */
-	function resetDraft(defect: UTSJSONObject): void { draft.value = createDefectDraft(defect) as DefectDraft }
+	function resetDraft(defect: UTSJSONObject): void { draft.value = restoreDefectDraftCategory(createDefectDraft(defect), props.categoryTree as UTSJSONObject[], resolveDefectCategoryPath) as DefectDraft }
 	/** 选择疵点严重等级。 */
 	function selectSeverity(value: string): void { draft.value = { ...draft.value, type: value } }
 	/** 更新评论或其他数量的输入值。 */
@@ -89,8 +89,13 @@
 	function previewPhoto(photo: UTSJSONObject): void { emit('preview-photo', { defect: draft.value, photo, photos: draft.value.photos }) }
 	/** 请求页面重新上传失败的疵点图片。 */
 	function retryPhoto(photo: UTSJSONObject): void { emit('retry-photo', { defect: draft.value, photo }) }
-	/** 校验类别和有效数量，保存数值型数量或普遍性 null。 */
-	function saveDefect(): void { const error = validateDefectDraft(draft.value); if (error) { uni.showToast({ title: t(error), icon: 'none' }); return }; emit('save', { ...draft.value, quantity: getDefectQuantity(draft.value) }) }
+	/** 保存前按现有分类树补齐历史三级编码的名称，再校验数量并输出当前草稿。 */
+	function saveDefect(): void {
+		const restored = restoreDefectDraftCategory(draft.value as UTSJSONObject, props.categoryTree as UTSJSONObject[], resolveDefectCategoryPath) as DefectDraft
+		const error = validateDefectDraft(restored)
+		if (error !== '') { uni.showToast({ title: t(error), icon: 'none' }); return }
+		emit('save', { ...restored, quantity: getDefectQuantity(restored) })
+	}
 	/** 关闭疵点编辑弹层；只通知父页面，关闭阶段不再改写内部状态。 */
 	function closeSheet(): void { emit('close') }
 	/** 编辑时请求二次确认删除，新增时关闭弹层。 */
@@ -104,12 +109,21 @@
 	function isSheetVisible(): boolean { return props.visible === true }
 
 	/**
-	 * 传入的疵点切换时更新可编辑草稿。
-	 * 弹层关闭期间禁止写入草稿：本组件实例仍然挂载，此时写入会驱动已经销毁的弹层渲染子树
-	 * 在 vapor 原生渲染线程重新渲染，触发共享数据字段追踪的野指针崩溃。
-	 * 疵点每次更新都会生成新对象，因此按身份变化监听即可，无需深度监听。
+	 * 编辑中父页面拍照、重试或上传会更新疵点对象：只同步媒体，不覆盖用户刚选择的分类及备注。
+	 * 用户切换到另一条疵点才重新建草稿；关闭期间不写入已销毁的 vapor 子树。
 	 */
-	watch((): UTSJSONObject => props.defect as UTSJSONObject, (defect: UTSJSONObject) => { if (isSheetVisible()) resetDraft(defect) })
+	watch((): UTSJSONObject => props.defect as UTSJSONObject, (defect: UTSJSONObject) => {
+		if (!isSheetVisible()) return
+		const currentId = String(draft.value.defectId || draft.value.id || '')
+		const nextId = String(defect['defectId'] ?? defect['id'] ?? '')
+		if (currentId !== nextId && (currentId !== '' || nextId !== '')) { resetDraft(defect); return }
+		draft.value = mergeDefectDraftPhotos(draft.value as UTSJSONObject, defect) as DefectDraft
+	})
+	/** 分类树延迟加载完成后为编辑中的历史疵点补齐缺失名称，不修改已选择的完整类别。 */
+	watch((): UTSJSONObject[] => props.categoryTree as UTSJSONObject[], (tree: UTSJSONObject[]) => {
+		if (!isSheetVisible()) return
+		draft.value = restoreDefectDraftCategory(draft.value as UTSJSONObject, tree, resolveDefectCategoryPath) as DefectDraft
+	})
 
 	/**
 	 * 每次打开弹层时按最新疵点重建草稿并收起分类弹层。

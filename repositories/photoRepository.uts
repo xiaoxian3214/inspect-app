@@ -39,26 +39,42 @@ function isPendingPhoto(photo) {
  * 创建手机本地照片与上传状态仓库。
  */
 export function createPhotoRepository(database) {
+  /** 在支持条件读取的持久层先筛选后克隆，兼容不具备 readWhere 的旧内存数据库。 */
+  function photoRows(predicate) {
+    if (typeof database.readWhere === 'function') return database.readWhere('photo', predicate)
+    return database.readTable('photo').filter(predicate)
+  }
+
+  /** 事务内先筛选后克隆，避免单张媒体状态更新时序列化历史照片。 */
+  function transactionPhotoRows(transaction, predicate) {
+    if (typeof transaction.readWhere === 'function') return transaction.readWhere('photo', predicate)
+    return transaction.read('photo').filter(predicate)
+  }
+
+  /** 条件读取业务表，避免每次解析媒体归属时复制全部报告记录。 */
+  function readRows(tableName, predicate) {
+    if (typeof database.readWhere === 'function') return database.readWhere(tableName, predicate)
+    return database.readTable(tableName).filter(predicate)
+  }
+
   /** 从验货计划主表解析照片共享计划 ID，兼容尚未迁移的旧合并组。 */
   function resolveStorageId(planId) {
     const normalizedPlanId = String(planId ?? '').trim()
-    const member = database.readTable('inspection_plan').find((row) => String(row?.planId ?? '') === normalizedPlanId)
+    const member = readRows('inspection_plan', (row) => String(row?.planId ?? '') === normalizedPlanId)[0]
     if (member != null) return String(member.groupPlanId)
-    const legacyMember = database.readTable('report_member').find((row) => String(row?.planId ?? '') === normalizedPlanId)
+    const legacyMember = readRows('report_member', (row) => String(row?.planId ?? '') === normalizedPlanId)[0]
     return String(legacyMember?.groupId ?? normalizedPlanId)
   }
 
   /** 根据相同报告实体与合并父计划确定共享媒体的成员计划 ID；普通报告仅返回自身。 */
   function getSharedPlanIds(planId) {
     const normalizedPlanId = String(planId ?? '').trim()
-    if (database.readTable('inspection_plan').some((row) => String(row?.planId ?? '') === normalizedPlanId)) {
-      return new Set([resolveStorageId(normalizedPlanId)])
-    }
-    const member = database.readTable('report_member').find((row) => String(row?.planId ?? '') === normalizedPlanId)
+    const currentMember = readRows('inspection_plan', (row) => String(row?.planId ?? '') === normalizedPlanId)[0]
+    if (currentMember != null) return new Set([String(currentMember.groupPlanId)])
+    const member = readRows('report_member', (row) => String(row?.planId ?? '') === normalizedPlanId)[0]
     if (member != null) return new Set([String(member.groupId)])
-    if (database.readTable('report_group').some((row) => String(row?.groupId ?? '') === normalizedPlanId)) return new Set([normalizedPlanId])
-    const rows = database.readTable('report')
-    const current = rows.find((row) => String(row?.reportId ?? '') === normalizedPlanId)
+    if (readRows('report_group', (row) => String(row?.groupId ?? '') === normalizedPlanId).length > 0) return new Set([normalizedPlanId])
+    const current = readRows('report', (row) => String(row?.reportId ?? '') === normalizedPlanId)[0]
     if (current == null) return new Set([normalizedPlanId])
     const detail = parseReportRow(current)
     const parentPlanId = String(detail?.plan?.parentPlanId ?? '').trim()
@@ -67,9 +83,8 @@ export function createPhotoRepository(database) {
     const memberIds = new Set((Array.isArray(detail?.inspectionPlans) ? detail.inspectionPlans : [])
       .map((plan) => String(plan?.id ?? plan?.planId ?? '').trim()).filter((id) => id !== ''))
     const sharedIds = new Set([normalizedPlanId])
-    rows.forEach((row) => {
+    readRows('report', (row) => memberIds.has(String(row?.reportId ?? ''))).forEach((row) => {
       const siblingId = String(row?.reportId ?? '')
-      if (!memberIds.has(siblingId)) return
       const sibling = parseReportRow(row)
       if (String(sibling?.report?.id ?? '') === reportEntityId && String(sibling?.plan?.parentPlanId ?? '') === parentPlanId) sharedIds.add(siblingId)
     })
@@ -83,8 +98,7 @@ export function createPhotoRepository(database) {
     const normalizedReportId = String(reportId ?? '').trim()
     const sharedPlanIds = getSharedPlanIds(normalizedReportId)
     const seen = new Set<string>()
-    return database.readTable('photo')
-      .filter((row) => sharedPlanIds.has(String(row?.reportId ?? '')))
+    return photoRows((row) => sharedPlanIds.has(String(row?.reportId ?? '')))
       .sort((left, right) => parseInt(String(left?.sortNo ?? 0)) - parseInt(String(right?.sortNo ?? 0)))
       .filter((row) => {
         const photoId = String(row?.sourcePhotoId ?? row?.photoId ?? '')
@@ -101,17 +115,15 @@ export function createPhotoRepository(database) {
   async function listPendingByReportId(reportId) {
     const normalizedReportId = String(reportId ?? '').trim()
     const storageId = resolveStorageId(normalizedReportId)
-    return database.readTable('photo')
-      .filter((row) => String(row?.reportId ?? '') === storageId)
+    return photoRows((row) => String(row?.reportId ?? '') === storageId && isPendingPhoto(parsePhotoRow(row)))
       .map(parsePhotoRow)
-      .filter(isPendingPhoto)
   }
 
   /**
    * 读取全部报告中仍需上传或重试的媒体记录。
    */
   async function listPending() {
-    return database.readTable('photo').map(parsePhotoRow).filter(isPendingPhoto)
+    return photoRows((row) => isPendingPhoto(parsePhotoRow(row))).map(parsePhotoRow)
   }
 
   /**
@@ -120,9 +132,9 @@ export function createPhotoRepository(database) {
   async function listPendingReportIds() {
     const reportIds: string[] = []
     const seen = new Set<string>()
-    database.readTable('photo').forEach((row) => {
+    photoRows((row) => isPendingPhoto(parsePhotoRow(row))).forEach((row) => {
       const reportId = String(row?.reportId ?? '').trim()
-      if (reportId === '' || seen.has(reportId) || !isPendingPhoto(parsePhotoRow(row))) return
+      if (reportId === '' || seen.has(reportId)) return
       seen.add(reportId)
       reportIds.push(reportId)
     })
@@ -170,10 +182,10 @@ export function createPhotoRepository(database) {
     let saved = photo
     await database.transaction(async (transaction) => {
       const sharedPlanIds = getSharedPlanIds(normalizedReportId)
-      const ownerRow = transaction.read('photo').find((row) => sharedPlanIds.has(String(row?.reportId ?? ''))
-        && String(row?.sourcePhotoId ?? '') === sourcePhotoId)
+      const ownerRow = transactionPhotoRows(transaction, (row) => sharedPlanIds.has(String(row?.reportId ?? ''))
+        && String(row?.sourcePhotoId ?? '') === sourcePhotoId)[0]
       const ownerPlanId = String(ownerRow?.reportId ?? storageId)
-      const existing = transaction.read('photo').filter((row) => String(row?.reportId ?? '') === ownerPlanId)
+      const existing = transactionPhotoRows(transaction, (row) => String(row?.reportId ?? '') === ownerPlanId)
       const previous = existing.find((row) => String(row?.sourcePhotoId ?? '') === sourcePhotoId)
       saved = { ...(previous != null ? parsePhotoRow(previous) : {}), ...photo, reportId: ownerPlanId }
       transaction.upsert('photo', 'photoId', {
@@ -203,7 +215,7 @@ export function createPhotoRepository(database) {
     const normalizedPhotoId = String(photoId ?? '').trim()
     let uploaded = null
     await database.transaction(async (transaction) => {
-      const previous = transaction.read('photo').find((row) => String(row?.reportId ?? '') === storageId && String(row?.sourcePhotoId ?? '') === normalizedPhotoId)
+      const previous = transactionPhotoRows(transaction, (row) => String(row?.reportId ?? '') === storageId && String(row?.sourcePhotoId ?? '') === normalizedPhotoId)[0]
       if (previous == null) throw new Error('本地照片不存在')
       uploaded = { ...parsePhotoRow(previous), ...(remoteFile ?? {}), uploadStatus: 'done', uploadError: '', uploadedAt: new Date().toISOString() }
       transaction.upsert('photo', 'photoId', {

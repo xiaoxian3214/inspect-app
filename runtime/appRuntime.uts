@@ -151,15 +151,10 @@ const persistentOperationService = createPersistentOperationService({ requestQue
 const syncQueueOverviewService = createSyncQueueOverviewService({ reportRepository, photoRepository, requestQueueRepository, isPlanPendingSync })
 
 /**
- * 将已上传图片写回本地详情；仅已有待同步业务草稿时更新其 payload，纯拍照不生成报告任务。
+ * 已上传媒体独立落库；仅刷新已有脏草稿的文件 payload，不重写整份报告。
  */
 async function refreshDraftPhotosAfterUpload(planId) {
-  const localDetail = await reportRepository.getPlanById(planId)
-  if (localDetail == null) return null
-  const photos = await photoRepository.listByReportId(planId)
-  const refreshed = detailViewModel.mergeDetailPhotos(localDetail, photos)
-  const hasPendingDraft = localDetail.syncStatus === 'DIRTY' && localDetail.pendingSyncPayload != null
-  return inspectionDetailService.saveDraft(localDetail.planId, refreshed, { markDirty: hasPendingDraft })
+  return inspectionDetailService.refreshUploadedPhotoPayload(planId)
 }
 
 /** 查找尚未到期的照片重试记录，供自动同步在退避时间结束时重新运行。 */

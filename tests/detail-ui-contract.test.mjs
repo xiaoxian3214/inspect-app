@@ -138,10 +138,14 @@ test('merged final submission targets the parent and does not save members one b
   assert.match(source, /photoPlanId: planId\.value/)
 })
 
-/** 自动上传回写共享组时必须选真实成员入口保存草稿，避免创建旧 report 行。 */
+/** 上传回写共享组时仍按真实成员解析现有脏草稿，且不再保存整份报告。 */
 test('automatic photo refresh resolves group IDs to a member before saving', async () => {
-  const source = await readFile('runtime/appRuntime.uts', 'utf8')
-  assert.match(source, /saveDraft\(localDetail\.planId, refreshed/)
+  const runtime = await readFile('runtime/appRuntime.uts', 'utf8')
+  const repository = await readFile('repositories/reportRepository.uts', 'utf8')
+  assert.match(runtime, /refreshUploadedPhotoPayload\(planId\)/)
+  assert.match(repository, /readSinglePlan\(transaction, String\(planId \?\? ''\)\.trim\(\)\)/)
+  assert.match(repository, /const members = selectRows\(reader, 'inspection_plan'/)
+  assert.doesNotMatch(runtime, /saveDraft\(localDetail\.planId, refreshed/)
 })
 
 /** 保证详情首次渲染时，总结弹层引用的统计数据已由响应式计算属性提供。 */
@@ -889,7 +893,7 @@ test('defect editor scrolls through 1–19 and the H5 other quantity option', as
   assert.match(sheet, /\.qty-item, \.qty-other \{[^}]*flex-shrink: 0;/)
   assert.match(sheet, /<input v-if="draft\.quantity === 'other' && draft\.commonFlag !== 1" class="other-input"[^>]*@input="updateField\('customQuantity', \$event as UniInputEvent\)"/)
   assert.match(sheet, /\.other-input \{[^}]*border-width: 2rpx;[^}]*border-style: solid;[^}]*border-color: #e5e7eb;/)
-  assert.match(sheet, /quantity: getDefectQuantity\(draft\.value\)/)
+  assert.match(sheet, /quantity: getDefectQuantity\(restored\)/)
 })
 
 /** 类别标题和必选标签共享一行的垂直中心及下方间距。 */
@@ -1068,6 +1072,17 @@ test('checklist swipe rows reset on new touches and settle lost touch sequences'
   assert.match(swipeCell, /onUnmounted\(\(\) => \{ clearAutoCloseTimer\(\); clearRightActionsHideTimer\(\); clearSettleTimer\(\) \}\)/)
 })
 
+/** 右滑露出的整段背景与左侧状态块同色，避免状态色条与背景之间出现白缝。 */
+test('right swipe paints a continuous result background behind the narrow action', async () => {
+  const swipeCell = await readFile('components/common/SwipeResultCell.uvue', 'utf8')
+  assert.match(swipeCell, /<view v-if="offsetX > 0" class="swipe-left-background" :class="leftActionClass"><\/view>/)
+  assert.match(swipeCell, /\.swipe-left-background \{[^}]*position: absolute;[^}]*left: 0;[^}]*right: 0;[^}]*background-color: #22c55e;/)
+  assert.match(swipeCell, /\.swipe-left-background\.action-fail \{ background-color: #ef4444; \}/)
+  assert.match(swipeCell, /\.swipe-left-background\.action-pending \{ background-color: #f59e0b; \}/)
+  assert.match(swipeCell, /\.swipe-left-background\.action-na \{ background-color: #64748b; \}/)
+  assert.match(swipeCell, /\.swipe-left-action \{[^}]*width: 120rpx;/)
+})
+
 /** 右滑快捷块缩窄，左滑选择检查结果时不渲染左侧遮挡层；右侧四态按钮同步收窄到 120rpx/个。 */
 test('checklist swipe keeps its left result block narrow and out of right actions', async () => {
   const swipeCell = await readFile('components/common/SwipeResultCell.uvue', 'utf8')
@@ -1080,6 +1095,20 @@ test('checklist swipe keeps its left result block narrow and out of right action
   assert.match(swipeCell, /\.swipe-right-actions \{[^}]*width: 480rpx;/)
   assert.match(swipeCell, /\.swipe-action \{[^}]*width: 120rpx;/)
   assert.doesNotMatch(swipeCell, /width:\s*(?:560|140)rpx/)
+})
+
+/**
+ * 回归：左滑展开必须按 CSS 的 rpx 操作区宽度收口。
+ * uni.rpx2px 在系统字体放大时小于 CSS 的 480rpx，若直接把这个 px 写进 transform，
+ * 滑动只能露出三个按钮，最左侧【合格】会被清单内容遮住。
+ */
+test('swipe cell settles the reveal on the CSS rpx action width', async () => {
+  const swipeCell = await readFile('components/common/SwipeResultCell.uvue', 'utf8')
+  assert.match(swipeCell, /const RIGHT_ACTIONS_WIDTH_RPX = 480/)
+  assert.match(swipeCell, /const LEFT_ACTION_WIDTH_RPX = 120/)
+  assert.match(swipeCell, /import \{ resolveGestureAxis, resolveSwipeMove, resolveSwipeRelease, resolveSwipeVisualOffsetRpx \} from '\.\.\/\.\.\/domain\/swipeCellGesture\.uts'/)
+  assert.match(swipeCell, /translateX\(\$\{swipeOffsetRpx\(offsetX\.value\)\}rpx\)/)
+  assert.doesNotMatch(swipeCell, /translateX\(\$\{offsetX\.value\}px\)/)
 })
 
 /** 多次快速检查只在空闲后保存最新草稿，不让本地写入压住回弹动画。 */

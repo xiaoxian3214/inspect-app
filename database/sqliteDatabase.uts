@@ -92,17 +92,19 @@ function upsertSql(tableName, row) {
 }
 
 /** 对比事务前后行的主键与内容，仅写入实际变化的 SQLite 行。 */
-function diffTable(tableName, previous, next) {
+function diffTable(tableName, previous, next, dirtyKeys) {
   const primaryKey = TABLE_KEYS[tableName]
+  const statements: string[] = []
   const before = new Map(previous.map((row) => [String(row[primaryKey]), row]))
   const after = new Map(next.map((row) => [String(row[primaryKey]), row]))
-  const statements: string[] = []
-  before.forEach((_row, key) => {
-    if (!after.has(key)) statements.push(`DELETE FROM ${physicalTableName(tableName)} WHERE ${primaryKey} = ${sqlValue(key)}`)
-  })
-  next.forEach((row) => {
-    const existing = before.get(String(row[primaryKey]))
-    if (existing == null || JSON.stringify(existing) !== JSON.stringify(row)) statements.push(upsertSql(tableName, row))
+  dirtyKeys.forEach((key) => {
+    const existing = before.get(key)
+    const row = after.get(key)
+    if (row == null) {
+      if (existing != null) statements.push(`DELETE FROM ${physicalTableName(tableName)} WHERE ${primaryKey} = ${sqlValue(key)}`)
+    } else if (existing == null || JSON.stringify(existing) !== JSON.stringify(row)) {
+      statements.push(upsertSql(tableName, row))
+    }
   })
   return statements
 }
@@ -247,14 +249,18 @@ export function createSqliteDatabase(driver: any, schemaSqlList: string[], legac
     return true
   }
 
-  /** 构造仅在本事务内可写的表上下文，未改动的表不会写回磁盘。 */
+  /** 构造行级 COW 事务：表数组浅复制，写入行单独复制，记录脏主键避免全表 JSON 比较。 */
   function createTransactionContext(working, changed) {
+    /** 为指定表登记本次变更主键；删除后重插和 replace 同样在提交时按最终状态结算。 */
+    function markDirty(tableName, row) {
+      changed.get(tableName).add(String(row[TABLE_KEYS[tableName]]))
+    }
     /** 首次写入时复制对应表，避免事务失败污染已提交镜像。 */
     function writable(tableName) {
       if (!(tableName in TABLE_KEYS)) throw new Error(`未知数据表: ${tableName}`)
       if (!changed.has(tableName)) {
-        working[tableName] = clone(working[tableName])
-        changed.add(tableName)
+        working[tableName] = working[tableName].slice()
+        changed.set(tableName, new Set<string>())
       }
       return working[tableName]
     }
@@ -262,6 +268,11 @@ export function createSqliteDatabase(driver: any, schemaSqlList: string[], legac
       read(tableName) {
         if (!(tableName in TABLE_KEYS)) throw new Error(`未知数据表: ${tableName}`)
         return clone(working[tableName])
+      },
+      /** 先筛选再复制匹配行，上传状态查询不再深拷贝全部历史照片。 */
+      readWhere(tableName, predicate) {
+        if (!(tableName in TABLE_KEYS)) throw new Error(`未知数据表: ${tableName}`)
+        return clone(working[tableName].filter(predicate))
       },
       upsert(tableName, primaryKey, row) {
         if (TABLE_KEYS[tableName] !== primaryKey) throw new Error(`${tableName}.${primaryKey} 不是主键`)
@@ -271,27 +282,34 @@ export function createSqliteDatabase(driver: any, schemaSqlList: string[], legac
         const index = table.findIndex((item) => item?.[primaryKey] === value)
         if (index >= 0) table[index] = { ...table[index], ...clone(row) }
         else table.push(clone(row))
+        markDirty(tableName, row)
       },
       removeWhere(tableName, predicate) {
         writable(tableName)
-        working[tableName] = working[tableName].filter((row) => !predicate(row))
+        working[tableName] = working[tableName].filter((row) => {
+          if (!predicate(row)) return true
+          markDirty(tableName, row)
+          return false
+        })
       },
       replace(tableName, rows) {
         writable(tableName)
+        working[tableName].forEach((row) => markDirty(tableName, row))
         working[tableName] = clone(Array.isArray(rows) ? rows : [])
+        working[tableName].forEach((row) => markDirty(tableName, row))
       }
     }
   }
 
-  /** 逐笔串行执行仓库事务，原生提交成功后才更新可见内存镜像。 */
+  /** 逐笔串行执行仓库事务，仅比较被标记的主键；原生提交成功后才更新可见内存镜像。 */
   async function transaction(executor) {
     await open()
     const task = writeTail.then(async () => {
       const working = { ...state }
-      const changed = new Set<string>()
+      const changed = new Map<string, Set<string>>()
       const result = await executor(createTransactionContext(working, changed))
       const statements: string[] = []
-      changed.forEach((tableName) => statements.push(...diffTable(tableName, state[tableName], working[tableName])))
+      changed.forEach((dirtyKeys, tableName) => statements.push(...diffTable(tableName, state[tableName], working[tableName], dirtyKeys)))
       if (statements.length > 0) await driver.executeBatch(statements)
       state = working
       return result
@@ -305,6 +323,13 @@ export function createSqliteDatabase(driver: any, schemaSqlList: string[], legac
     if (state == null) throw new Error('SQLite 尚未初始化')
     if (!(tableName in TABLE_KEYS)) throw new Error(`未知数据表: ${tableName}`)
     return clone(state[tableName])
+  }
+
+  /** 先过滤内存镜像再复制匹配结果，避免单个报告上传时复制其他报告的媒体记录。 */
+  function readWhere(tableName, predicate) {
+    if (state == null) throw new Error('SQLite 尚未初始化')
+    if (!(tableName in TABLE_KEYS)) throw new Error(`未知数据表: ${tableName}`)
+    return clone(state[tableName].filter(predicate))
   }
 
   /** 等待已提交写入后执行只读 SQL，供列表按需 JOIN 查询。 */
@@ -327,5 +352,5 @@ export function createSqliteDatabase(driver: any, schemaSqlList: string[], legac
     state = null
   }
 
-  return { open, close, transaction, readTable, query, snapshot, finalizeLegacyTables }
+  return { open, close, transaction, readTable, readWhere, query, snapshot, finalizeLegacyTables }
 }

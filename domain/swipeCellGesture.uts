@@ -81,3 +81,26 @@ export function resolveSwipeRelease(offset: number, startOffset: number, deltaX:
   }
   return resolveSwipeTarget(offset, leftWidth, rightWidth, threshold)
 }
+/**
+ * 将手势位移换算成与样式表一致的 rpx 展示位移。
+ *
+ * 说明：`uni.rpx2px` 在 Android 上按 `scaledDensity`（含系统字体缩放）把 rpx 换算成像素，
+ * 系统字体放大时会小于 CSS 中真实的 rpx 宽度；若直接把像素位移写进 transform，
+ * 右滑展开距离会短一截，最左侧【合格】结果就被清单内容遮住。
+ * 这里先按操作区像素宽度归一化，再乘以样式里声明的 rpx 宽度，
+ * 保证完全展开时位移与操作区宽度严格相等（-480rpx / 120rpx）。
+ *
+ * @param offsetPx 当前手势位移（像素，负值展开右侧结果，正值展开左侧快捷状态）
+ * @param actionWidthPx 操作区运行时像素宽度（与手势阈值同源的换算结果）
+ * @param actionWidthRpx 操作区在样式中声明的 rpx 设计宽度
+ * @returns 与操作区 rpx 宽度严格对齐的展示位移（rpx）
+ */
+export function resolveSwipeVisualOffsetRpx(offsetPx: number, actionWidthPx: number, actionWidthRpx: number): number {
+  const safeOffset = parseInt(String(offsetPx ?? 0))
+  const safeWidthPx = Math.max(0, parseInt(String(actionWidthPx ?? 0)))
+  const safeWidthRpx = Math.max(0, parseInt(String(actionWidthRpx ?? 0)))
+  if (safeOffset === 0) return 0
+  if (safeWidthPx <= 0) return safeOffset < 0 ? -safeWidthRpx : safeWidthRpx
+  const ratio = Math.max(-1, Math.min(1, safeOffset / safeWidthPx))
+  return Math.round(ratio * safeWidthRpx * 100) / 100
+}

@@ -1,5 +1,6 @@
 <template>
 	<view class="swipe-result-cell">
+		<view v-if="offsetX > 0" class="swipe-left-background" :class="leftActionClass"></view>
 		<view v-if="offsetX > 0" class="swipe-left-action" :class="leftActionClass">
 			<AppIcon :type="resultIcon(normalizedResult)" :size="27" color="#ffffff" />
 			<text class="swipe-left-label">{{ translateText(resultLabel(normalizedResult)) }}</text>
@@ -28,7 +29,7 @@
 <script setup lang="uts">
 	import { t } from '../../i18n/index.uts'
 	import { computed, onUnmounted, ref, watch } from 'vue'
-	import { resolveGestureAxis, resolveSwipeMove, resolveSwipeRelease } from '../../domain/swipeCellGesture.uts'
+	import { resolveGestureAxis, resolveSwipeMove, resolveSwipeRelease, resolveSwipeVisualOffsetRpx } from '../../domain/swipeCellGesture.uts'
 	import AppIcon from '../icons/AppIcon.uvue'
 
 	const props = defineProps({
@@ -41,6 +42,10 @@
 	const SWIPE_TRANSITION_MS = 220
 	/** 触摸事件丢失时的兜底结算间隔：部分机型手势被列表接管后不再派发 touchend/touchcancel。 */
 	const SWIPE_SETTLE_MS = 300
+	/** 右侧四个结果按钮在样式表中的设计宽度（rpx）：4 个 120rpx 按钮，必须与 .swipe-right-actions 的 width 一致。 */
+	const RIGHT_ACTIONS_WIDTH_RPX = 480
+	/** 左侧快捷状态在样式表中的设计宽度（rpx）：必须与 .swipe-left-action 的 width 一致。 */
+	const LEFT_ACTION_WIDTH_RPX = 120
 	const offsetX = ref(0)
 	const dragging = ref(false)
 	const showRightActions = ref(false)
@@ -74,18 +79,30 @@
 	/** 为原生模板翻译滑动结果操作的文案。 */
 	function translateText(key: string): string { return t(key) }
 
-	/** 返回设备上较窄的左侧快捷操作宽度，避免遮挡左滑结果选项。 */
+	/** 返回设备上较窄的左侧快捷操作宽度（像素），只用于手势位移与阈值，展示位移统一按 rpx 收口。 */
 	function leftActionWidth() { return uni.rpx2px(120) }
-	/** 返回右侧四个结果按钮的总宽度：由 H5 的 140rpx/个收窄为 120rpx/个，避免右滑时遮挡清单主信息。 */
+	/** 返回右侧四个结果按钮的像素总宽度（rpx2px 结果），只用于手势位移与阈值，展示位移统一按 rpx 收口。 */
 	function rightActionWidth() { return uni.rpx2px(480) }
 	/** 返回当前设备的横向滑动触发阈值。 */
 	function swipeThreshold() { return uni.rpx2px(96) }
+	/**
+	 * 把手势像素位移换算成与样式表一致的 rpx 展示位移。
+	 * uni.rpx2px 在系统字体放大等场景会小于 CSS 的 rpx 宽度，直接用像素收口会少滑一段，
+	 * 导致右滑展开时最左侧【合格】被内容遮住，因此这里按操作区宽度归一化后再换算成 rpx。
+	 * @param offset 当前手势位移（像素）
+	 * @returns 与左右操作区 rpx 宽度严格对齐的展示位移（rpx）
+	 */
+	function swipeOffsetRpx(offset: number): number {
+		if (offset < 0) return resolveSwipeVisualOffsetRpx(offset, rightActionWidth(), RIGHT_ACTIONS_WIDTH_RPX)
+		if (offset > 0) return resolveSwipeVisualOffsetRpx(offset, leftActionWidth(), LEFT_ACTION_WIDTH_RPX)
+		return 0
+	}
 	/** 将空结果转换为 H5 右滑默认展示的合格状态。 */
 	const normalizedResult = computed(() => props.result.trim() !== '' ? props.result.trim() : 'pass')
 	/** 返回左侧快捷操作对应的状态颜色类。 */
 	const leftActionClass = computed(() => `action-${normalizedResult.value}`)
-	/** 返回滑动内容层的实时位移和回弹动画。 */
-	const contentStyle = computed(() => ({ transform: `translateX(${offsetX.value}px)`, transitionDuration: dragging.value ? '0ms' : `${SWIPE_TRANSITION_MS}ms` }))
+	/** 返回滑动内容层的实时位移和回弹动画；位移以 rpx 收口，保证完全展开时与操作区样式宽度一致。 */
+	const contentStyle = computed(() => ({ transform: `translateX(${swipeOffsetRpx(offsetX.value)}rpx)`, transitionDuration: dragging.value ? '0ms' : `${SWIPE_TRANSITION_MS}ms` }))
 
 	/** 返回 H5 四种检查结果对应的 Uni Icons 图标类型。 */
 	function resultIcon(result: string): string { if (result === 'pass') return 'check'; if (result === 'fail') return 'warning'; if (result === 'pending') return 'help'; return 'clear' }
@@ -185,6 +202,10 @@
 
 <style>
 	.swipe-result-cell { position: relative; overflow: hidden; background-color: #ffffff; }
+	.swipe-left-background { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background-color: #22c55e; }
+	.swipe-left-background.action-fail { background-color: #ef4444; }
+	.swipe-left-background.action-pending { background-color: #f59e0b; }
+	.swipe-left-background.action-na { background-color: #64748b; }
 	.swipe-left-action { position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; width: 120rpx; flex-direction: column; align-items: center; justify-content: center; }
 	.swipe-left-action.action-pass { background-color: #22c55e; }
 	.swipe-left-action.action-fail { background-color: #ef4444; }

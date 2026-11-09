@@ -36,3 +36,26 @@ test('keeps an opened action when the reverse drag does not cross the close thre
   assert.deepEqual(gesture.resolveSwipeRelease(-250, -280, 30, 90, 280, 48), { offset: -280, position: 'right' })
   assert.deepEqual(gesture.resolveSwipeRelease(65, 90, -25, 90, 280, 48), { offset: 90, position: 'left' })
 })
+
+/**
+ * 回归：四个结果按钮的展开宽度必须以 CSS rpx 收口。
+ * uni.rpx2px 在 Android 上按 scaledDensity（含系统字体缩放）换算，系统字体放大后它会比 CSS 的 480rpx 小，
+ * 旧实现直接把像素位移写进 transform，滑动只能露出 3 个按钮，最左侧【合格】被清单内容遮住。
+ */
+test('swipe visual offset always lands exactly on the CSS rpx action width', () => {
+  // 常规字体：像素宽度与 CSS 一致，展开到 -480rpx
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(-230, 230, 480), -480)
+  // 系统字体放大：rpx2px 只给出 314px，仍必须收口到 -480rpx，而不是停在 -314px
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(-314, 314, 480), -480)
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(-157, 314, 480), -240)
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(120, 120, 120), 120)
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(0, 230, 480), 0)
+})
+
+test('swipe visual offset clamps drags that overshoot the action area and survives a zero width', () => {
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(-9999, 230, 480), -480)
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(9999, 120, 120), 120)
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(-90, 0, 480), -480)
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(90, 0, 120), 120)
+  assert.equal(gesture.resolveSwipeVisualOffsetRpx(0, 0, 480), 0)
+})

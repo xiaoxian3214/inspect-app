@@ -108,7 +108,8 @@ test('check item sheet closes without rewriting its own draft', async () => {
 /** 疵点弹层：同样只在可见时重建草稿，分类弹层复位移到打开阶段。 */
 test('quick defect sheet skips draft resets while hidden and closes without writes', async () => {
   const source = await readFile('components/detail/QuickDefectSheet.uvue', 'utf8')
-  assert.match(source, /watch\(\(\): UTSJSONObject => props\.defect as UTSJSONObject, \(defect: UTSJSONObject\) => \{ if \(isSheetVisible\(\)\) resetDraft\(defect\) \}\)/)
+  assert.match(source, /watch\(\(\): UTSJSONObject => props\.defect as UTSJSONObject, \(defect: UTSJSONObject\) => \{\s*if \(!isSheetVisible\(\)\) return/)
+  assert.match(source, /draft\.value = mergeDefectDraftPhotos\(draft\.value as UTSJSONObject, defect\) as DefectDraft/)
   assert.match(source, /watch\(\(\): boolean => props\.visible, \(visible: boolean\) => \{ if \(visible\) \{ showCategorySheet\.value = false; resetDraft\(props\.defect as UTSJSONObject\) \} \}, \{ immediate: true \}\)/)
   assert.match(source, /function closeSheet\(\): void \{ emit\('close'\) \}/)
 })
